@@ -6,6 +6,14 @@
 ## [Unreleased]
 
 ### Added
+- ✅ GitHub main 分支保护规则上线（Require PR + 1 approval + linear history + dismiss stale approval + Code Owners + 不许 bypass）
+- ✅ Fine-grained PAT 接入，agent 可自动开 PR
+- 演示工作流：agent 在 agent-claude/* 分支提交 → 自动 gh pr create → 人工 review + squash merge
+
+(此条会在合并到 main 后归到下一个版本)
+
+
+### Added
 - `CONTRIBUTING.md` — 完整贡献指南（分支 / commit / PR / 多 Agent 协作）
 - `VERSIONING.md` — 语义化版本 + 发版流程
 - `.github/PULL_REQUEST_TEMPLATE.md` — PR 模板
