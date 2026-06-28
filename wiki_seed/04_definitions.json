@@ -1,0 +1,200 @@
+[
+  {
+    "口径ID": "DEF001",
+    "口径名": "排除内部测试订单",
+    "业务描述": "GMV/订单 UV/成交单量等指标统计时，必须排除内部测试订单。",
+    "SQL片段": "order_source not in (66)",
+    "引用字段": ["FLD006"],
+    "关联维值": ["DIM002"],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "高频前置条件，所有 TBL001 订单分析都要带"
+  },
+  {
+    "口径ID": "DEF002",
+    "口径名": "成交单",
+    "业务描述": "成交订单口径：order_state = 80 且排除内部测试。",
+    "SQL片段": "order_state = 80 AND order_source not in (66)",
+    "引用字段": ["FLD006", "FLD007"],
+    "关联维值": ["DIM001", "DIM002"],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "GMV、成交单量、客单价计算基础"
+  },
+  {
+    "口径ID": "DEF003",
+    "口径名": "GMV(元)",
+    "业务描述": "GMV 必须把订单金额从分换成元。",
+    "SQL片段": "sum(order_amount) / 100",
+    "引用字段": ["FLD008"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "🚨 必须 /100，否则数据放大 100 倍"
+  },
+  {
+    "口径ID": "DEF004",
+    "口径名": "T+1 取最新分区",
+    "业务描述": "T+1 表必须取昨天分区，不能用当前日期。",
+    "SQL片段": "dt = date_format(date_sub(current_date(), 1), 'yyyy-MM-dd')",
+    "引用字段": ["FLD003"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "所有 T+1 表通用：TBL001/TBL002/TBL003/TBL004/TBL005 等"
+  },
+  {
+    "口径ID": "DEF005",
+    "口径名": "增量表跨分区扫描",
+    "业务描述": "增量表（TBL003 估价、TBL005 埋点）必须 dt between T and T+1，配合 to_date(eval_time)=T 或 to_date(timestamp/1000)=T，否则会少 0.17% 数据。",
+    "SQL片段": "dt between '${T}' and '${T+1}' AND to_date(eval_time) = '${T}'",
+    "引用字段": ["FLD015", "FLD016", "FLD025", "FLD026"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "🚨 单分区会丢数据"
+  },
+  {
+    "口径ID": "DEF006",
+    "口径名": "估价 PV 去重",
+    "业务描述": "估价 PV 用 qc_code 去重，不能直接 count(*)。",
+    "SQL片段": "count(distinct qc_code)",
+    "引用字段": ["FLD017"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": ""
+  },
+  {
+    "口径ID": "DEF007",
+    "口径名": "估价 UV",
+    "业务描述": "估价 UV = uid 去重数，需先做 token→uid 映射。",
+    "SQL片段": "count(distinct uid)",
+    "引用字段": ["FLD014"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": ""
+  },
+  {
+    "口径ID": "DEF008",
+    "口径名": "机况页 UV",
+    "业务描述": "进入机况页的用户数：TBL004 中 action_type='机况选择' 的 uid 去重。",
+    "SQL片段": "count(distinct uid) where action_type = '机况选择'",
+    "引用字段": ["FLD021", "FLD023"],
+    "关联维值": ["DIM008"],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": ""
+  },
+  {
+    "口径ID": "DEF009",
+    "口径名": "token→uid 映射选主 uid",
+    "业务描述": "TBL006 中 50% token 对应多个 uid，必须按 timestamp desc + uid asc row_number 取主 uid。",
+    "SQL片段": "row_number() over (partition by token order by timestamp desc, uid asc) = 1",
+    "引用字段": ["FLD030", "FLD031", "FLD032"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "🚨 不做这步会导致一个 token 关联多个 uid，造成数据重复"
+  },
+  {
+    "口径ID": "DEF010",
+    "口径名": "平台级活跃用户判断",
+    "业务描述": "判断用户是否活跃（流失人群圈选时排除近 N 天活跃用户），必须用 TBL002 t_zhuanzhuan_dau 平台日活表。",
+    "SQL片段": "uid in (select uid from t_zhuanzhuan_dau where dt between '${T-N}' and '${T}')",
+    "引用字段": ["FLD012", "FLD013"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "🚨 不能用估价表、订单表等业务表代替（口径不同）"
+  },
+  {
+    "口径ID": "DEF011",
+    "口径名": "品类分布防重复计算",
+    "业务描述": "按品类分析 GMV 时，同一订单可能含多品类，必须先建 uid+cate_id 桥表去重，再 join 订单金额。",
+    "SQL片段": "WITH bridge AS (SELECT DISTINCT uid, cate_id FROM ... ) SELECT b.cate_id, sum(o.order_amount)/100 FROM bridge b JOIN orders o ON b.uid = o.uid GROUP BY b.cate_id",
+    "引用字段": ["FLD001", "FLD004", "FLD008"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "🚨 不建桥表直接 join 会因笛卡尔积放大 GMV"
+  },
+  {
+    "口径ID": "DEF012",
+    "口径名": "排除差评单",
+    "业务描述": "用户画像/复购分析常需排除差评订单。",
+    "SQL片段": "is_bad_review = false",
+    "引用字段": ["FLD011"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": ""
+  },
+  {
+    "口径ID": "DEF013",
+    "口径名": "用户标签布尔值",
+    "业务描述": "TBL008 中布尔/二值标签 label_value 实际存储是 '1.0'/'0.0' 浮点字符串，等值比较要用 '1.0'。",
+    "SQL片段": "label_value = '1.0'",
+    "引用字段": ["FLD043"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "🚨 写 ='1' 或 =1 都查不到"
+  },
+  {
+    "口径ID": "DEF014",
+    "口径名": "用户画像取数时点",
+    "业务描述": "活动场景下，用户画像应取活动开始前一天的快照，避免被活动期间行为污染。",
+    "SQL片段": "dt = date_format(date_sub('${activity_start_date}', 1), 'yyyy-MM-dd')",
+    "引用字段": ["FLD041"],
+    "关联维值": [],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "DMP 人群包也同理"
+  },
+  {
+    "口径ID": "DEF015",
+    "口径名": "短信触达成功",
+    "业务描述": "短信触达成功口径：msg_receive_status=1 且 create_time 转秒。",
+    "SQL片段": "msg_receive_status = 1 AND from_unixtime(cast(create_time/1000 as bigint)) >= '${start_time}'",
+    "引用字段": ["FLD054", "FLD055"],
+    "关联维值": ["DIM022"],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "🚨 create_time 是毫秒，必须 /1000"
+  },
+  {
+    "口径ID": "DEF016",
+    "口径名": "Push 触达 / 未触达分组",
+    "业务描述": "未触达组 = push_status=2 OR (push_status=7 AND is_arrive=0)；触达组 = push_status=7 AND is_arrive=1；限定转转 APP app_id=7。",
+    "SQL片段": "app_id=7 AND ((push_status=2) OR (push_status=7 AND is_arrive=0))  -- 未触达组",
+    "引用字段": ["FLD058", "FLD059", "FLD060"],
+    "关联维值": ["DIM023", "DIM024", "DIM025", "DIM026"],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "AB 实验对照组常用此口径划分"
+  },
+  {
+    "口径ID": "DEF017",
+    "口径名": "AB 实验取用户 uid",
+    "业务描述": "TBL013 user_flag 同时存 token 和 uid，必须 user_type='uid' 过滤后再 cast 成 bigint。",
+    "SQL片段": "user_type = 'uid' AND cast(user_flag as bigint) as uid",
+    "引用字段": ["FLD062", "FLD063"],
+    "关联维值": ["DIM027"],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": "🚨 不过滤直接 cast 会因 token 是字符串而报错"
+  },
+  {
+    "口径ID": "DEF018",
+    "口径名": "AB 仅新进组用户",
+    "业务描述": "AB 实验通常只看新进组用户：new_old_user=1。",
+    "SQL片段": "new_old_user = 1",
+    "引用字段": ["FLD064"],
+    "关联维值": ["DIM029"],
+    "状态": "已审核",
+    "版本": "v1.0",
+    "备注": ""
+  }
+]

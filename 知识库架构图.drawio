@@ -1,0 +1,216 @@
+<mxfile host="app.diagrams.net" modified="2026-06-23T15:00:00.000Z" agent="Claude" version="22.1.0" type="device">
+  <diagram name="知识库架构" id="kb-architecture">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- 标题 -->
+        <mxCell id="title" value="数据分析工作流 - 知识库架构设计" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1;fontColor=#1A1A1A;" vertex="1" parent="1">
+          <mxGeometry x="500" y="20" width="650" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="索引层 + 分支层 + 文档层 的三层架构" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="500" y="60" width="650" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- ============ 第一层：索引层 ============ -->
+        <mxCell id="layer1-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E6;strokeColor=#FFB84D;strokeWidth=2;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="120" width="1500" height="220" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="layer1-title" value="第一层：索引层（治理中枢）" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;fontColor=#B25900;" vertex="1" parent="1">
+          <mxGeometry x="100" y="135" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="layer1-role" value="职责：管理全系统所有知识资产的元数据 / 不存储具体内容，只存储「指针」+「治理字段」/ 是所有版本审核与变更的入口" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#7A4500;" vertex="1" parent="1">
+          <mxGeometry x="100" y="165" width="900" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- 索引总表 -->
+        <mxCell id="index-table" value="📋 索引总表（Master Index）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;strokeWidth=3;fontSize=14;fontStyle=1;fontColor=#BF360C;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="450" y="210" width="760" height="120" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="index-fields" value="字段：&#xa;条目ID  |  条目名称  |  所属分支表  |  当前版本  |  状态（草稿/待审核/已审核/已归档）&#xa;责任人  |  审核人  |  最后更新时间  |  分支表跳转链接  |  详细文档链接  |  变更说明&#xa;&#xa;⚡ 核心特性：单一真相源 · 全局可审核 · 全局可追溯 · Agent 调用入口" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#5D2E00;" vertex="1" parent="1">
+          <mxGeometry x="455" y="235" width="750" height="90" as="geometry" />
+        </mxCell>
+        
+        <!-- ============ 第二层：分支层 ============ -->
+        <mxCell id="layer2-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#42A5F5;strokeWidth=2;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="380" width="1500" height="320" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="layer2-title" value="第二层：分支层（内容载体）" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="395" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="layer2-role" value="职责：按内容性质拆分的具体知识表 / 每张表只管自己领域内的字段 / 每个条目向索引总表注册并接受其治理" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#1565C0;" vertex="1" parent="1">
+          <mxGeometry x="100" y="425" width="900" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- 数据层 -->
+        <mxCell id="branch-data" value="📊 数据层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;strokeWidth=2;fontSize=13;fontStyle=1;fontColor=#0D47A1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="120" y="475" width="320" height="200" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="branch-data-content" value="• 指标定义表&#xa;&#xa;字段：&#xa;指标名  |  计算公式&#xa;数据源表  |  口径坑点&#xa;单位  |  适用范围&#xa;&#xa;装的是「数据怎么算」&#xa;的客观定义" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="125" y="500" width="310" height="170" as="geometry" />
+        </mxCell>
+        
+        <!-- 信息层 -->
+        <mxCell id="branch-info" value="📐 信息层（规则与参数）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;strokeWidth=2;fontSize=13;fontStyle=1;fontColor=#0D47A1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="490" y="475" width="320" height="200" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="branch-info-content" value="• 方法论框架表&#xa;• 分析模板表&#xa;• 规则库表&#xa;• 品类参数表&#xa;&#xa;字段：&#xa;触发场景  |  检查动作&#xa;期望输出  |  参数值&#xa;&#xa;装的是「怎么分析、怎么判断」&#xa;的方法论与规则" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="495" y="500" width="310" height="170" as="geometry" />
+        </mxCell>
+        
+        <!-- 案例层 -->
+        <mxCell id="branch-case" value="📚 案例层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;strokeWidth=2;fontSize=13;fontStyle=1;fontColor=#0D47A1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="860" y="475" width="320" height="200" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="branch-case-content" value="• 历史案例库表&#xa;&#xa;字段：&#xa;案例日期  |  品类&#xa;问题描述  |  使用框架&#xa;结论  |  后续验证&#xa;&#xa;装的是「真实发生过的分析」&#xa;沉淀经验、训练 AI" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="865" y="500" width="310" height="170" as="geometry" />
+        </mxCell>
+        
+        <!-- 未来扩展占位 -->
+        <mxCell id="branch-future" value="🔮 未来扩展" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;strokeWidth=2;fontSize=13;fontStyle=1;fontColor=#616161;dashed=1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="475" width="320" height="200" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="branch-future-content" value="（按需新增分支表）&#xa;&#xa;• 用户画像表&#xa;• 活动复盘表&#xa;• 数据看板表&#xa;• ...&#xa;&#xa;新增分支表只需：&#xa;1. 建表 + 设计字段&#xa;2. 向索引总表注册&#xa;架构不动，扩展无限" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#616161;" vertex="1" parent="1">
+          <mxGeometry x="1235" y="500" width="310" height="170" as="geometry" />
+        </mxCell>
+        
+        <!-- ============ 第三层：文档层 ============ -->
+        <mxCell id="layer3-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#66BB6A;strokeWidth=2;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="740" width="1500" height="200" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="layer3-title" value="第三层：文档层（详细叙述）" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="100" y="755" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="layer3-role" value="职责：承载分支表条目的「长篇说明」/ 提供人类阅读的上下文 / 通过链接挂载到分支表的对应字段" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#2E7D32;" vertex="1" parent="1">
+          <mxGeometry x="100" y="785" width="900" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- 文档块 -->
+        <mxCell id="doc-1" value="📄 方法论详细说明&#xa;（来龙去脉 / 徐超原话 / 应用案例）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;strokeWidth=1;fontSize=11;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="120" y="830" width="290" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="doc-2" value="📄 模板使用手册&#xa;（输入示例 / 步骤详解 / 常见误用）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;strokeWidth=1;fontSize=11;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="430" y="830" width="290" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="doc-3" value="📄 案例完整分析&#xa;（数据 / 推演 / 结论 / 验证）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;strokeWidth=1;fontSize=11;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="740" y="830" width="290" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="doc-4" value="📄 协作规范与上手指南&#xa;（怎么填表 / 审核流程 / 新人培训）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;strokeWidth=1;fontSize=11;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="830" width="290" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- ============ 关系连线 ============ -->
+        <!-- 索引层向下连到分支层各表 -->
+        <mxCell id="edge-index-data" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#E65100;strokeWidth=2;endArrow=classicThin;endFill=1;startArrow=classicThin;startFill=1;fontSize=10;fontColor=#BF360C;" edge="1" parent="1" source="index-table" target="branch-data">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="280" y="380" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="edge-index-info" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#E65100;strokeWidth=2;endArrow=classicThin;endFill=1;startArrow=classicThin;startFill=1;" edge="1" parent="1" source="index-table" target="branch-info">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="edge-index-case" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#E65100;strokeWidth=2;endArrow=classicThin;endFill=1;startArrow=classicThin;startFill=1;" edge="1" parent="1" source="index-table" target="branch-case">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="edge-index-future" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#E65100;strokeWidth=2;endArrow=classicThin;endFill=1;startArrow=classicThin;startFill=1;dashed=1;" edge="1" parent="1" source="index-table" target="branch-future">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1390" y="270" />
+              <mxPoint x="1390" y="475" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- 分支层向下连到文档层 -->
+        <mxCell id="edge-info-doc1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#388E3C;strokeWidth=1;endArrow=classicThin;endFill=1;dashed=1;" edge="1" parent="1" source="branch-info" target="doc-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="edge-info-doc2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#388E3C;strokeWidth=1;endArrow=classicThin;endFill=1;dashed=1;" edge="1" parent="1" source="branch-info" target="doc-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="edge-case-doc3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#388E3C;strokeWidth=1;endArrow=classicThin;endFill=1;dashed=1;" edge="1" parent="1" source="branch-case" target="doc-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- ============ 右侧说明：版本迭代流程 ============ -->
+        <mxCell id="flow-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#999999;strokeWidth=1;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="970" width="1500" height="170" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="flow-title" value="🔄 版本迭代与审核流程" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#1A1A1A;" vertex="1" parent="1">
+          <mxGeometry x="100" y="980" width="400" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- 流程步骤 -->
+        <mxCell id="step1" value="① 个人在分支表&#xa;新增/修改条目&#xa;（状态：草稿）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#FBC02D;strokeWidth=2;fontSize=11;fontColor=#5D4037;" vertex="1" parent="1">
+          <mxGeometry x="120" y="1030" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step2" value="② 自动同步到&#xa;索引总表&#xa;（状态：待审核）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#FB8C00;strokeWidth=2;fontSize=11;fontColor=#BF360C;" vertex="1" parent="1">
+          <mxGeometry x="370" y="1030" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step3" value="③ 审核人在索引表&#xa;完成三层校验&#xa;（数据/业务/协作）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCCBC;strokeColor=#E64A19;strokeWidth=2;fontSize=11;fontColor=#BF360C;" vertex="1" parent="1">
+          <mxGeometry x="620" y="1030" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step4" value="④ 审核通过&#xa;状态变为「已审核」&#xa;版本号+1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;strokeWidth=2;fontSize=11;fontColor=#1B5E20;" vertex="1" parent="1">
+          <mxGeometry x="870" y="1030" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step5" value="⑤ 进入生效区&#xa;Agent 可调用&#xa;团队可使用" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B2DFDB;strokeColor=#00796B;strokeWidth=2;fontSize=11;fontColor=#004D40;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="1030" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="step6" value="⑥ 旧版本归档&#xa;不删除&#xa;可追溯历史" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0E0E0;strokeColor=#616161;strokeWidth=2;fontSize=11;fontColor=#424242;" vertex="1" parent="1">
+          <mxGeometry x="1370" y="1030" width="200" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- 流程箭头 -->
+        <mxCell id="flow-arrow-1" style="edgeStyle=none;rounded=0;html=1;strokeColor=#666666;strokeWidth=2;endArrow=classic;endFill=1;" edge="1" parent="1" source="step1" target="step2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flow-arrow-2" style="edgeStyle=none;rounded=0;html=1;strokeColor=#666666;strokeWidth=2;endArrow=classic;endFill=1;" edge="1" parent="1" source="step2" target="step3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flow-arrow-3" style="edgeStyle=none;rounded=0;html=1;strokeColor=#666666;strokeWidth=2;endArrow=classic;endFill=1;" edge="1" parent="1" source="step3" target="step4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flow-arrow-4" style="edgeStyle=none;rounded=0;html=1;strokeColor=#666666;strokeWidth=2;endArrow=classic;endFill=1;" edge="1" parent="1" source="step4" target="step5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flow-arrow-5" style="edgeStyle=none;rounded=0;html=1;strokeColor=#666666;strokeWidth=2;endArrow=classic;endFill=1;" edge="1" parent="1" source="step5" target="step6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- ============ Agent 调用说明 ============ -->
+        <mxCell id="agent-callout" value="🤖 AI Agent 调用路径：&#xa;Agent → 索引总表（查找资产ID + 验证状态）→ 对应分支表（读取具体内容）→ 必要时跳转文档层（读取详细说明）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#8E24AA;strokeWidth=2;fontSize=12;fontStyle=2;fontColor=#4A148C;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1160" width="1500" height="50" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

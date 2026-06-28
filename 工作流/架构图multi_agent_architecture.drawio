@@ -1,0 +1,184 @@
+<mxfile host="app.diagrams.net" modified="2026-06-22T00:00:00.000Z" agent="Claude" version="22.0.0">
+  <diagram name="Multi-Agent 架构" id="multi-agent-arch">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- 标题 -->
+        <mxCell id="title" value="品类数据分析 · Multi-Agent 调用结构" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="400" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="subtitle" value="主 Agent → 专家 Agent → Skill → 通用能力 → 知识库" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontColor=#666666" vertex="1" parent="1">
+          <mxGeometry x="400" y="50" width="400" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- L1 用户层 -->
+        <mxCell id="user" value="品类运营同学&#xa;（在飞书机器人发起需求）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=13;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="500" y="90" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- L2 主 Agent -->
+        <mxCell id="main_agent" value="主 Agent&#xa;理解意图 · 路由分发 · 整合输出" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5F7;strokeColor=#7C5BC4;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="450" y="180" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- 用户 → 主Agent 箭头 -->
+        <mxCell id="e_user_main" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2" edge="1" parent="1" source="user" target="main_agent">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- L3 专家 Agent 层 -->
+        <mxCell id="expert_A" value="专家 Agent A&#xa;日常分析师" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B6E5D8;strokeColor=#0F6E56;fontSize=13;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="120" y="290" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="expert_B" value="专家 Agent B&#xa;活动复盘师" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B6E5D8;strokeColor=#0F6E56;fontSize=13;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="490" y="290" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="expert_C" value="专家 Agent C&#xa;诊断师" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B6E5D8;strokeColor=#0F6E56;fontSize=13;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="860" y="290" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- 主Agent → 三个专家 -->
+        <mxCell id="e_main_A" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2" edge="1" parent="1" source="main_agent" target="expert_A">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_main_B" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2" edge="1" parent="1" source="main_agent" target="expert_B">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_main_C" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2" edge="1" parent="1" source="main_agent" target="expert_C">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- L4 Skill 层（每个专家两个 Skill） -->
+        <!-- 专家 A 的 Skill -->
+        <mxCell id="skill_weekly" value="周报 Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAE0B5;strokeColor=#854F0B;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="120" y="410" width="100" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="skill_recall" value="召回分析 Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAE0B5;strokeColor=#854F0B;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="240" y="410" width="100" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- 专家 B 的 Skill -->
+        <mxCell id="skill_review" value="活动复盘 Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAE0B5;strokeColor=#854F0B;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="490" y="410" width="100" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="skill_coupon" value="券额实验 Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAE0B5;strokeColor=#854F0B;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="610" y="410" width="100" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- 专家 C 的 Skill -->
+        <mxCell id="skill_diag" value="诊断 Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAE0B5;strokeColor=#854F0B;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="860" y="410" width="100" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="skill_explore" value="探索 Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAE0B5;strokeColor=#854F0B;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="980" y="410" width="100" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- 专家 → Skill 箭头 -->
+        <mxCell id="e_A_weekly" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666" edge="1" parent="1" source="expert_A" target="skill_weekly">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_A_recall" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666" edge="1" parent="1" source="expert_A" target="skill_recall">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_B_review" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666" edge="1" parent="1" source="expert_B" target="skill_review">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_B_coupon" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666" edge="1" parent="1" source="expert_B" target="skill_coupon">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_C_diag" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666" edge="1" parent="1" source="expert_C" target="skill_diag">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_C_explore" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666" edge="1" parent="1" source="expert_C" target="skill_explore">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- L5 通用能力层（原子） - 容器 -->
+        <mxCell id="atom_layer" value="通用能力层（原子）· 所有 Skill 共享调用" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D6E8FB;strokeColor=#185FA5;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingTop=8" vertex="1" parent="1">
+          <mxGeometry x="120" y="510" width="960" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="atom_fetch" value="fetch_metrics&#xa;取数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85B7EB;strokeColor=#185FA5;fontSize=11;fontColor=#042C53" vertex="1" parent="1">
+          <mxGeometry x="150" y="550" width="150" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="atom_break" value="breakdown&#xa;拆解" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85B7EB;strokeColor=#185FA5;fontSize=11;fontColor=#042C53" vertex="1" parent="1">
+          <mxGeometry x="320" y="550" width="150" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="atom_diff" value="compute_diff&#xa;算差异" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85B7EB;strokeColor=#185FA5;fontSize=11;fontColor=#042C53" vertex="1" parent="1">
+          <mxGeometry x="490" y="550" width="150" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="atom_frame" value="apply_framework&#xa;套框架" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85B7EB;strokeColor=#185FA5;fontSize=11;fontColor=#042C53" vertex="1" parent="1">
+          <mxGeometry x="660" y="550" width="150" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="atom_case" value="retrieve_case&#xa;调案例" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85B7EB;strokeColor=#185FA5;fontSize=11;fontColor=#042C53" vertex="1" parent="1">
+          <mxGeometry x="830" y="550" width="150" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- Skill → 通用能力层（汇聚） -->
+        <mxCell id="e_skills_atoms" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;dashed=1" edge="1" parent="1" source="skill_weekly" target="atom_fetch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_skill_review_atom" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;dashed=1" edge="1" parent="1" source="skill_review" target="atom_frame">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_skill_diag_atom" style="endArrow=classic;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;dashed=1" edge="1" parent="1" source="skill_diag" target="atom_case">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- L6 知识库层 - 容器 -->
+        <mxCell id="kb_layer" value="知识库层 · 所有原子按需查询" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0D6;strokeColor=#993C1D;fontSize=13;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingTop=8" vertex="1" parent="1">
+          <mxGeometry x="120" y="660" width="960" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kb_metric" value="指标口径表&#xa;（数据分析维护）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0997B;strokeColor=#993C1D;fontSize=11;fontColor=#4A1B0C" vertex="1" parent="1">
+          <mxGeometry x="150" y="700" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kb_frame" value="分析框架库&#xa;（你 + 团队评审）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0997B;strokeColor=#993C1D;fontSize=11;fontColor=#4A1B0C" vertex="1" parent="1">
+          <mxGeometry x="370" y="700" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kb_case" value="历史案例库&#xa;（品类运营贡献）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0997B;strokeColor=#993C1D;fontSize=11;fontColor=#4A1B0C" vertex="1" parent="1">
+          <mxGeometry x="590" y="700" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kb_base" value="品类基线表&#xa;（数据分析维护）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0997B;strokeColor=#993C1D;fontSize=11;fontColor=#4A1B0C" vertex="1" parent="1">
+          <mxGeometry x="810" y="700" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- 原子 → 知识库（示例箭头） -->
+        <mxCell id="e_atom_kb1" style="endArrow=classic;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;dashed=1" edge="1" parent="1" source="atom_fetch" target="kb_metric">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_atom_kb2" style="endArrow=classic;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;dashed=1" edge="1" parent="1" source="atom_frame" target="kb_frame">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_atom_kb3" style="endArrow=classic;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;dashed=1" edge="1" parent="1" source="atom_case" target="kb_case">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 底部说明 -->
+        <mxCell id="note1" value="实线箭头 = 隶属/调用关系　|　虚线箭头 = 跨层调用（共享）" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#666666" vertex="1" parent="1">
+          <mxGeometry x="400" y="800" width="400" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="note2" value="关键设计：上层专家 Agent 互相隔离，下层通用能力和知识库被所有专家共享" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#666666;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="350" y="825" width="500" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
