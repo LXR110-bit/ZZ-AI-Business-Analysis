@@ -1,0 +1,142 @@
+[
+  {
+    "底表ID": "TBL001",
+    "中文名": "回收订单宽表",
+    "底表名": "hdp_ubu_zhuanzhuan_dm_c2b.dm_recycle_order_detail_full_1d",
+    "业务域": "交易",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "复卖分析、首单/次单迁移、人群圈选、订单 UV/成交单量/GMV、差评排除。dt 必须取最新分区 T-1；金额单位分需 /100；order_source not in (66) 排除内部测试；品类分布分析必须先建 uid+cate_id 桥表防 GMV 重复计算。"
+  },
+  {
+    "底表ID": "TBL002",
+    "中文名": "日活用户表",
+    "底表名": "hdp_ubu_zhuanzhuan_defaultdb.t_zhuanzhuan_dau",
+    "业务域": "用户",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "判断用户近期是否活跃（流失用户圈选时排除近 90 天活跃用户）。流失判断必须用本表（平台级活跃），不用估价表等业务表（口径不同）。"
+  },
+  {
+    "底表ID": "TBL003",
+    "中文名": "估价明细表",
+    "底表名": "hdp_ubu_zhuanzhuan_dw_c2b.dw_trade_recycle_eval_detail_inc_1d",
+    "业务域": "回收",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "增量表，必须跨分区扫描：dt between T 和 T+1 + to_date(eval_time)=T 双过滤；只用 dt=T 单分区会漏数甚至 UV=0。估价 PV 去重用 qc_code。"
+  },
+  {
+    "底表ID": "TBL004",
+    "中文名": "估价行为日志（机况页）",
+    "底表名": "hdp_ubu_zhuanzhuan_tmp_c2b.raw_tmp_c2b_user_eva_lego_info_inc_1d_day",
+    "业务域": "回收",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "页面进入或机况选择 UV、估价前置行为分析。机况页 UV 用 action_type='机况选择' 过滤。"
+  },
+  {
+    "底表ID": "TBL005",
+    "中文名": "埋点行为日志",
+    "底表名": "hdp_zhuanzhuan_dw_global.dw_log_lego_action_1d",
+    "业务域": "流量",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "活动页/搜索/资源位 UV/PV、回收首页曝光 UV。必须跨分区扫描：dt between T 和 T+1 + to_date(timestamp/1000)=T；单分区会少 0.17% 数据。region 分区按 actiontype 首字母小写命名。uid 是 bigint 类型，禁止写 uid != ''（会触发隐式转换全部过滤为空）。"
+  },
+  {
+    "底表ID": "TBL006",
+    "中文名": "token→uid 映射表",
+    "底表名": "hdp_zhuanzhuan_rawdb_global.raw_token",
+    "业务域": "用户",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "累积全量快照表，每个 dt 都是历史所有 (token,uid) 全量。50% token 对应多个 uid，必须用 row_number() over (partition by token order by timestamp desc, uid asc) 选主 uid，否则 UV 严重膨胀。单分区即可，不需要 between 多天。uid 是 bigint，join 业务表前先 cast。"
+  },
+  {
+    "底表ID": "TBL007",
+    "中文名": "机型价格定位标签表",
+    "底表名": "hdp_ubu_zhuanzhuan_dim_c2b.dim_info_model_tag_full_1d",
+    "业务域": "商品",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "给手机估价用户补充机型标签（model_tag/series_name）。强分区表，不能不带 dt 直接查。model_name 格式为'品牌-机型名'，如'苹果-iPhone 15 Pro'。手机过滤 cate_name='手机'。"
+  },
+  {
+    "底表ID": "TBL008",
+    "中文名": "用户标签表",
+    "底表名": "hdp_zhuanzhuan_dw_global.dw_user_label_data_full_1d",
+    "业务域": "用户",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "补性别、年龄、城市、生命周期等标签。dt 取活动前一天避免活动行为污染画像。布尔/二值标签普遍采用浮点字符串 '1.0'/'0.0'，写 label_value='1' 查不到。优先补 platform='zz'。"
+  },
+  {
+    "底表ID": "TBL009",
+    "中文名": "用户领券表",
+    "底表名": "hdp_ubu_zhuanzhuan_tmp_c2b.tmp_c2b_aladdin_t_user_coupon_total_full_1d",
+    "业务域": "营销",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "活动领券用户提取、券转化效果分析。常见关联键：coupon_id、equity_config_id。"
+  },
+  {
+    "底表ID": "TBL010",
+    "中文名": "订单券核销关联表",
+    "底表名": "hdp_zhuanzhuan_rawdb_global.raw_t_business_coupon_relation_full_1d",
+    "业务域": "营销",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "券核销下单关联分析。常见关联键：business_order_id（对应 rec_order_id）、coupon_id。state=1 表示已核销。"
+  },
+  {
+    "底表ID": "TBL011",
+    "中文名": "短信流水表",
+    "底表名": "hdp_zhuanzhuan_rawdb_global.raw_mysql_dbzz_zzsms_zzsms_flow_full_1d",
+    "业务域": "触达",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "全量覆盖表，只有最新分区有数据（dt 不保留历史）。create_time 是毫秒时间戳，必须 /1000。msg_receive_status=1 触达成功。"
+  },
+  {
+    "底表ID": "TBL012",
+    "中文名": "Push 操作明细表",
+    "底表名": "hdp_zhuanzhuan_dw_global.dw_push_opperation_handling_detail_inc_1d",
+    "业务域": "触达",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "Push 触达成功/未触达人群提取。app_id=7 转转 APP；is_arrive=1 触达成功；push_status=2 被过滤；push_status=7 已发出。未触达组：push_status=2 or (push_status=7 and is_arrive=0)。"
+  },
+  {
+    "底表ID": "TBL013",
+    "中文名": "AB 实验用户日志表",
+    "底表名": "hdp_zhuanzhuan_dw_global.dw_zz_ab_user_browse_log_inc_1d",
+    "业务域": "实验",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "🚨 该表没有 uid 字段，user_flag 同时存 token 和 uid（由 user_type 决定）。取 uid 必须：user_type='uid' + cast(user_flag as bigint) as uid。不过滤 user_type 会让 cast 部分行报错。new_old_user=1 仅新进组用户。"
+  },
+  {
+    "底表ID": "TBL014",
+    "中文名": "DMP 人群包表",
+    "底表名": "hdp_zhuanzhuan_dw_global.dw_user_label_group_uid_full_1d",
+    "业务域": "用户",
+    "状态": "已审核",
+    "更新频率": "T+1",
+    "版本": "v1.0",
+    "备注": "实验人群包用户提取、人群圈选验证。label_group_id 是人群包 ID。dt 取活动前一天或人群包生成日期。label_group_id 和 uid 类型不固定，join 前先 cast。"
+  }
+]
