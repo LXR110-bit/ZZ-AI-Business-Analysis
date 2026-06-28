@@ -1,0 +1,18 @@
+[project]
+name = "data-tools"
+version = "0.1.0"
+description = "MCP server: email reader + CSV parser + analysis atoms"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.6.0",
+    "pandas>=2.2.0",
+    "openpyxl>=3.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/data_tools"]

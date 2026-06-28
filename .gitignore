@@ -1,0 +1,38 @@
+# Secrets (NEVER commit)
+.env
+.env.local
+secrets/
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+
+# Codex / Lark CLI local state
+.codex/
+.lark-cli/
+
+# Logs
+logs/
+*.log
+
+# Cache
+.cache/
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
