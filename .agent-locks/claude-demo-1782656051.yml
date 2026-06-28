@@ -1,7 +1,0 @@
-agent: claude
-branch: agent-claude/docs/demo-pr-workflow
-files:
-  - CHANGELOG.md
-started: 2026-06-28T22:14:11+08:00
-expected_done: 2026-06-28T22:24:11+08:00
-reason: 演示 push→PR→merge 完整工作流
