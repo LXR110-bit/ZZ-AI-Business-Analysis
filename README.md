@@ -49,3 +49,19 @@
 - [ ] MVP-1：专家 A 日常分析师 + 周报 Skill
 - [ ] MVP-2：完整 3 专家 + 飞书 webhook
 - [ ] MVP-3：定时任务 + 监控
+
+
+## 贡献
+
+- 📜 [CONTRIBUTING.md](CONTRIBUTING.md) — 分支策略 / 多 Agent 协作 / commit 规范 / PR 流程
+- 🔖 [VERSIONING.md](VERSIONING.md) — 语义化版本 / 升版规则 / 发版流程
+- 📝 [CHANGELOG.md](CHANGELOG.md) — 变更日志
+
+## 多 Agent 写代码？
+
+**首要**：开工前先查锁：
+```bash
+ls .agent-locks/*.yml | xargs cat
+```
+
+详见 [CONTRIBUTING.md §六](CONTRIBUTING.md#六多-agent-协作规则关键章节)。

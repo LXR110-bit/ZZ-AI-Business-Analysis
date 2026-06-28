@@ -1,0 +1,22 @@
+# CODEOWNERS - 谁负责哪块代码（review 时自动 request）
+
+# 默认 owner（不在下面规则里的文件）
+*                          @LXR110-bit
+
+# 原则 / 架构 - 重大改动只有 owner 能批
+/principles/               @LXR110-bit
+/AGENTS.md                 @LXR110-bit
+/router/                   @LXR110-bit
+/review_gate/              @LXR110-bit
+/CONTRIBUTING.md           @LXR110-bit
+/VERSIONING.md             @LXR110-bit
+/.github/                  @LXR110-bit
+
+# Skills - 可由 owner 或团队 review
+/skills/                   @LXR110-bit
+
+# MCP servers - 可由 owner 或团队 review
+/mcp_servers/              @LXR110-bit
+
+# Knowledge - 业务团队维护
+/knowledge/                @LXR110-bit
