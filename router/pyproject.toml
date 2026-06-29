@@ -1,0 +1,26 @@
+[project]
+name = "router"
+version = "0.1.0"
+description = "Router 层：读 skill 元数据 + LLM 生成调用计划"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0.1",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/router"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
