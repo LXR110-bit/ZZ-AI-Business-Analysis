@@ -59,14 +59,19 @@ def test_04_definitions_has_link_fields():
     assert any("FLD" in str(x) for x in rec["引用字段"])
 
 
-def test_id_map_known_tables_present():
-    """_record_id_map.json 至少含 01/02/03 的映射（04 当前可能没有，pull 时补）."""
+def test_id_map_dormant_helpers_callable():
+    """pull-only 模式下 _record_id_map.json 可能不存在；helpers 仍应可调用。
+
+    load_id_map(): 文件存在 → 返回 dict；不存在 → 返回 {}。
+    （v1.1 删了 _record_id_map.json，留 helpers 给未来 push PR 复用）
+    """
     m = load_id_map()
-    assert "table_01_record_id_map" in m
-    assert "table_02_field_record_id_map" in m
-    assert "table_03_dim_record_id_map" in m
-    # 业务主键的命名约定保持
-    assert m["table_01_record_id_map"]["TBL001"].startswith("rec")
+    assert isinstance(m, dict), f"load_id_map 应该返回 dict，实际 {type(m)}"
+    # 如果文件存在，键名约定要对上
+    if m:
+        assert any(k.startswith("table_") for k in m), (
+            f"_record_id_map.json 存在但键名不符 table_*: {list(m)[:3]}"
+        )
 
 
 def test_link_fields_target_existing_tables():

@@ -35,27 +35,33 @@ TABLES: dict[str, TableMeta] = {
         table_id="tblftpX7cOIusYmF",
         business_id_field="底表ID",
         id_map_key="table_01_record_id_map",
+        # 飞书侧 "关联字段" 是 02_fields.所属底表 的反向 link 列，pull 拿到也应翻译
+        link_fields={"关联字段": "02_fields"},
     ),
     "02_fields": TableMeta(
         json_name="02_fields",
         table_id="tblWdOaeJzyxWdOe",
         business_id_field="字段ID",
         id_map_key="table_02_field_record_id_map",
-        link_fields={"所属底表": "01_tables"},
+        # 飞书 schema：所属底表 → 01_tables，关联口径 → 04_definitions
+        link_fields={"所属底表": "01_tables", "关联口径": "04_definitions"},
     ),
     "03_dim_values": TableMeta(
         json_name="03_dim_values",
         table_id="tblJ6CSz02t6NIaI",
         business_id_field="维值ID",
         id_map_key="table_03_dim_record_id_map",
-        # _所属字段 是 text（不是 link），脚本当字符串处理，不在 link_fields 里
+        # 飞书 schema 有 "关联口径" link 列 → 04_definitions
+        link_fields={"关联口径": "04_definitions"},
     ),
     "04_definitions": TableMeta(
         json_name="04_definitions",
         table_id="tbl1hVd85juddTNY",
         business_id_field="口径ID",
         id_map_key="table_04_definition_record_id_map",
-        link_fields={"引用字段": "02_fields", "关联维值": "03_dim_values"},
+        # 飞书 schema：引用字段 → 02_fields、引用维值 → 03_dim_values
+        # （注意：本地 JSON 用的旧名是 "关联维值"，pull merge 时旧字段会保留共存）
+        link_fields={"引用字段": "02_fields", "引用维值": "03_dim_values"},
     ),
 }
 
@@ -63,11 +69,18 @@ TABLES: dict[str, TableMeta] = {
 def lark_base(verb: str, args: dict, as_role: str = "user") -> dict:
     """调 lark-cli base +<verb> --as <role> ... --json，解析返回。
 
-    verb: "record-create" / "record-update" / "record-list" / "record-search" / "record-delete"
-    args: { "table-id": "tbl...", "fields-json": '{"k":"v"}', "page-size": 500, ... }
+    verb: "record-list" / "record-upsert" / "record-search" / ...（lark-cli base 子命令名，不带 +）
+    args: { "table-id": "tbl...", "limit": 200, "record-id": "rec...", "json": '{"k":"v"}', ... }
           list 值会展开成多次 --key value（如多个 --field-id）
+          None 值会被跳过
 
     非零退出 → RuntimeError 带 stderr/stdout 上下文。
+
+    注意 lark-cli 1.0.59 接口：
+    - `--format json` 是位置参数（带值），不是 `--json`
+    - `record-list` 返回列存结构 `{data: {data:[[v]], fields:[name], record_id_list:[rid], has_more}}`
+    - `record-list` 用 `--limit`（1-200）不是 `--page-size`
+    - `record-upsert` 用 `--json` 传 fields map（与 `--format json` 同名但参数位不同）
     """
     cmd = ["lark-cli", "base", f"+{verb}", "--as", as_role, "--base-token", BASE_TOKEN]
     for k, v in args.items():
@@ -78,7 +91,7 @@ def lark_base(verb: str, args: dict, as_role: str = "user") -> dict:
                 cmd += [f"--{k}", str(item)]
         else:
             cmd += [f"--{k}", str(v)]
-    cmd.append("--json")
+    cmd += ["--format", "json"]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
         raise RuntimeError(
@@ -108,8 +121,10 @@ def save_json(name: str, records: list[dict]) -> None:
     )
 
 
+# ─── Dormant helpers（pull-only 模式不用，但保留给未来 push PR 用） ───
+# 暂不在主流程调用。删 _record_id_map.json 时这两个会读到空 dict / 写出 dict。
 def load_id_map() -> dict:
-    """读 _record_id_map.json，不存在返回空 dict."""
+    """读 _record_id_map.json，不存在返回空 dict.（pull-only 模式不调用）"""
     p = WIKI_DIR / "_record_id_map.json"
     if not p.exists():
         return {}
@@ -117,7 +132,7 @@ def load_id_map() -> dict:
 
 
 def save_id_map(m: dict) -> None:
-    """写回 _record_id_map.json."""
+    """写回 _record_id_map.json.（pull-only 模式不调用）"""
     (WIKI_DIR / "_record_id_map.json").write_text(
         json.dumps(m, ensure_ascii=False, indent=2),
         encoding="utf-8",

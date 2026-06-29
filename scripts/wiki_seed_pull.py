@@ -1,96 +1,116 @@
 #!/usr/bin/env python3
-"""wiki_seed_pull.py — 从飞书 base 拉所有记录，覆盖本地 JSON + 重写 _record_id_map.json。
+"""wiki_seed_pull.py — 从飞书 base 拉所有记录，merge 到本地 JSON。
 
 飞书 base 是 source of truth，本脚本把那边的状态镜像回 git 仓库。
+
+merge 语义（不是覆盖）：
+- 按业务主键（口径ID / 字段ID / ...）匹配本地与飞书记录
+- 飞书有的字段 → 用飞书值
+- 飞书没有但本地有的字段 → 保留（包括所有以 `_` 开头的本地辅助字段）
+- 飞书有但本地没有的记录 → 新增
+- 飞书没有但本地有的记录 → 保留（永不删本地数据）
 
 用法：
     python3 scripts/wiki_seed_pull.py                    # 拉全部 4 张表
     python3 scripts/wiki_seed_pull.py 04_definitions     # 只拉某表
-    python3 scripts/wiki_seed_pull.py 03_dim_values 04_definitions  # 拉多张
+    python3 scripts/wiki_seed_pull.py 03_dim_values 04_definitions
 
 注意：
-- 会全量覆盖本地 wiki_seed/*.json。跑之前请 git status 干净，否则会丢未提交改动。
-- 不动 wiki_seed/README.md。
-- 跑完后用 git diff 看变更、git add + commit 落入版本控制。
+- 跑完后用 git diff 看变更、git add + commit 落入版本控制
+- 首次跑可能 diff 巨大（schema 漂移），那是预期，仔细 review
+- 4 张表 limit=200 一次拉完；如果 has_more=True 会 assert 失败，
+  那时需要在脚本里加分页（用 --offset 或 --limit）
 """
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-# 让 import 找到 _wiki_seed_common
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _wiki_seed_common import (  # noqa: E402
     TABLES,
     TableMeta,
     lark_base,
-    load_id_map,
     load_json,
-    save_id_map,
     save_json,
 )
 
 
-def _extract_items(resp: dict) -> list[dict]:
-    """从 lark-cli record-list 返回里抽 items 列表。
+def reconstruct_rows(resp: dict) -> tuple[list[dict], list[str]]:
+    """把 lark-cli record-list 的列存响应拼回行存。
 
-    lark-cli 的返回形态可能是 {"items": [...]} 或 {"data": {"items": [...]}}，做兼容。
+    输入形态（lark-cli 1.0.59）::
+
+        {
+          "ok": true,
+          "data": {
+            "data": [[v00, v01, ...], [v10, v11, ...], ...],   # 每行一个 list，列序与 fields 对齐
+            "fields": ["维值ID", "责任人", ...],
+            "field_id_list": ["fld...", "fld...", ...],
+            "record_id_list": ["rec...", "rec...", ...],         # 行存的 record_id，与 data 行平行
+            "has_more": false,
+            ...
+          }
+        }
+
+    返回 (rows, record_ids)：
+        rows: [{"维值ID": "DIM001", ...}, ...]
+        record_ids: ["recvnPEDlDvA8J", ...]
+
+    如果 has_more=True 抛 RuntimeError —— 4 张表 ≤ 200 行（limit 上限），
+    超出需要分页支持（未实现）。
     """
-    if "items" in resp and isinstance(resp["items"], list):
-        return resp["items"]
-    if "data" in resp and isinstance(resp["data"], dict):
-        items = resp["data"].get("items")
-        if isinstance(items, list):
-            return items
-    return []
+    data = resp.get("data") or {}
+    rows_raw = data.get("data") or []
+    fields = data.get("fields") or []
+    record_ids = data.get("record_id_list") or []
 
-
-def _extract_record_id(item: dict) -> str | None:
-    """从一条 record dict 里取 record_id."""
-    return item.get("record_id") or item.get("id")
-
-
-def pull_one_table(meta: TableMeta) -> dict[str, str]:
-    """拉一张表的所有 records → 写 JSON → 返回 business_id → record_id 映射。
-
-    此阶段 link 字段保留飞书原始 record_id 形态，下一阶段统一翻译回业务 ID。
-    """
-    resp = lark_base("record-list", {"table-id": meta.table_id, "page-size": 500})
-    items = _extract_items(resp)
-    if not items:
-        print(
-            f"  ⚠ {meta.json_name}: record-list 返回空，原始响应前 500 字：{str(resp)[:500]}",
-            file=sys.stderr,
+    if data.get("has_more"):
+        raise RuntimeError(
+            f"飞书返回 has_more=True（行数 > limit=200），需要在 pull 脚本里加分页支持。"
+            f" 本次拿到 {len(rows_raw)} 行，fields={len(fields)} 列。"
         )
 
-    business_records: list[dict] = []
-    id_map: dict[str, str] = {}
+    if len(rows_raw) != len(record_ids):
+        raise RuntimeError(
+            f"data.data 行数 ({len(rows_raw)}) 与 record_id_list 长度 ({len(record_ids)}) 不一致"
+        )
 
-    for item in items:
-        rec_id = _extract_record_id(item)
-        fields = item.get("fields", {})
-
-        if not isinstance(fields, dict):
-            print(f"  ⚠ {meta.json_name}: record {rec_id} fields 不是 dict，跳过", file=sys.stderr)
-            continue
-
-        business_id = fields.get(meta.business_id_field)
-        if not business_id:
-            print(
-                f"  ⚠ {meta.json_name}: record {rec_id} 缺业务主键 {meta.business_id_field}，跳过",
-                file=sys.stderr,
+    rows: list[dict] = []
+    for row in rows_raw:
+        if len(row) != len(fields):
+            raise RuntimeError(
+                f"行宽 {len(row)} 与 fields 列数 {len(fields)} 不一致：{row[:3]}..."
             )
-            continue
+        rows.append(dict(zip(fields, row)))
 
-        business_records.append(fields)
-        id_map[business_id] = rec_id
+    return rows, record_ids
 
-    # 按业务主键排序，diff 友好
-    business_records.sort(key=lambda r: r.get(meta.business_id_field, ""))
-    save_json(meta.json_name, business_records)
-    print(f"  ✓ {meta.json_name}: 拉到 {len(business_records)} 条")
-    return id_map
+
+def extract_link_ids(cell_value) -> list[str]:
+    """从 link 字段单元格里抽 record_id 列表。
+
+    lark-cli 1.0.59 返回的 link 字段形态::
+
+        [{"id": "recxxx"}, {"id": "recyyy"}]        # 标准
+        [{"id": "rec...", "text": "..."}]            # 带显示文本
+        []                                           # 空
+        null                                         # 也是空
+
+    """
+    if not cell_value:
+        return []
+    if not isinstance(cell_value, list):
+        return []
+    out = []
+    for item in cell_value:
+        if isinstance(item, dict) and item.get("id"):
+            out.append(item["id"])
+        elif isinstance(item, str) and item.startswith("rec"):
+            # 兜底：直接是字符串列表
+            out.append(item)
+    return out
 
 
 def translate_links_in_records(
@@ -100,8 +120,10 @@ def translate_links_in_records(
 ) -> None:
     """把 records 里的 link 字段从 record_id 翻译回业务 ID（in-place）。
 
-    full_id_map: { "01_tables": {"TBL001": "recvxx..."}, "02_fields": {...}, ... }
+    full_id_map: { "01_tables": {"TBL001": "recxxx"}, "02_fields": {...}, ... }
     需要反向索引：record_id → business_id。
+
+    未知 record_id → "<unknown:recxxx>" 标记，不抛异常。
     """
     if not meta.link_fields:
         return
@@ -118,22 +140,106 @@ def translate_links_in_records(
             if not v:
                 continue
             idx = reverse_idx[target]
+            rec_ids = extract_link_ids(v)
+            rec[link_field] = [idx.get(rid, f"<unknown:{rid}>") for rid in rec_ids]
 
-            # 飞书 link 字段的返回形态有多种：
-            # 1) [{"record_ids": ["recxxx", "recyyy"]}]   —— 老 API
-            # 2) ["recxxx", "recyyy"]                     —— 直接 record_id 列表
-            # 3) "recxxx"                                  —— 单条
-            # 4) [{"text": "...", "type": "...", "record_ids": [...]}]  —— 带文本的
-            if isinstance(v, list):
-                if v and isinstance(v[0], dict):
-                    rec_ids = v[0].get("record_ids") or v[0].get("ids") or []
-                else:
-                    rec_ids = v
-                rec[link_field] = [
-                    idx.get(rid, f"<unknown:{rid}>") for rid in rec_ids
-                ]
-            elif isinstance(v, str):
-                rec[link_field] = idx.get(v, f"<unknown:{v}>")
+
+def merge_into_local(
+    local: list[dict],
+    remote: list[dict],
+    business_id_field: str,
+) -> list[dict]:
+    """按业务主键 merge 飞书 records 进本地 records。
+
+    规则：
+    - remote 有的字段 → 用 remote 值（覆盖 local）
+    - local 有但 remote 没有的字段 → 保留（包括 `_` 前缀字段、其他 helper）
+    - remote 有但 local 没有的记录 → 新增（按业务主键判断）
+    - local 有但 remote 没有的记录 → 保留（永不删本地数据）
+
+    返回新列表，按业务主键排序，diff 友好。
+    """
+    by_biz_id: dict[str, dict] = {}
+    for rec in local:
+        biz_id = rec.get(business_id_field)
+        if biz_id:
+            by_biz_id[biz_id] = dict(rec)   # 浅拷贝，避免改原对象
+
+    for rec in remote:
+        biz_id = rec.get(business_id_field)
+        if not biz_id:
+            print(
+                f"  ⚠ skip remote record without {business_id_field}: {str(rec)[:120]}",
+                file=sys.stderr,
+            )
+            continue
+        existing = by_biz_id.get(biz_id, {})
+        # remote 的字段覆盖 local；local 独有字段（如 _*）保留
+        merged = {**existing, **rec}
+        by_biz_id[biz_id] = merged
+
+    out = list(by_biz_id.values())
+    out.sort(key=lambda r: r.get(business_id_field, ""))
+    return out
+
+
+def pull_one_table(meta: TableMeta) -> tuple[list[dict], dict[str, str]]:
+    """拉一张表：
+
+    返回 (merged_records, id_map)
+      merged_records: 已 merge 进本地（保留 `_*` helper 字段）
+      id_map: {business_id → record_id}，用于 link 字段反查
+    """
+    resp = lark_base("record-list", {"table-id": meta.table_id, "limit": 200})
+    rows, record_ids = reconstruct_rows(resp)
+
+    # 收 id_map（用 link 字段反查阶段）+ 准备 remote records
+    remote_records: list[dict] = []
+    id_map: dict[str, str] = {}
+    for row, rid in zip(rows, record_ids):
+        biz_id = row.get(meta.business_id_field)
+        if not biz_id:
+            print(
+                f"  ⚠ {meta.json_name}: record {rid} 缺业务主键 {meta.business_id_field}，跳过",
+                file=sys.stderr,
+            )
+            continue
+        remote_records.append(row)
+        id_map[biz_id] = rid
+
+    # merge 进本地
+    try:
+        local_records = load_json(meta.json_name)
+    except FileNotFoundError:
+        local_records = []
+    merged = merge_into_local(local_records, remote_records, meta.business_id_field)
+
+    print(
+        f"  ✓ {meta.json_name}: 飞书 {len(remote_records)} 条，本地 {len(local_records)} 条 → merged {len(merged)} 条"
+    )
+    return merged, id_map
+
+
+def fetch_id_map_only(meta: TableMeta) -> dict[str, str]:
+    """只拉一张表的业务 ID → record_id 映射，不 merge 不写盘。
+
+    用于"单表 pull 时为了翻译 link 字段，要顺手拿目标表的 id_map"。
+    """
+    resp = lark_base(
+        "record-list",
+        {
+            "table-id": meta.table_id,
+            "limit": 200,
+            "field-id": meta.business_id_field,  # 只投影业务主键，减少负载
+        },
+    )
+    rows, record_ids = reconstruct_rows(resp)
+    id_map: dict[str, str] = {}
+    for row, rid in zip(rows, record_ids):
+        biz_id = row.get(meta.business_id_field)
+        if biz_id:
+            id_map[biz_id] = rid
+    return id_map
 
 
 def main(argv: list[str]) -> int:
@@ -145,29 +251,40 @@ def main(argv: list[str]) -> int:
 
     print(f"将拉取 {len(targets)} 张表：{targets}\n")
 
-    # ── Phase 1：拉 records，收 id_map（link 字段保留 record_id 形态） ──
+    # ── Phase 1：拉所有目标表 + 收 id_map（link 字段保留 record_id 形态）──
     full_id_map: dict[str, dict[str, str]] = {}
+    merged_by_table: dict[str, list[dict]] = {}
     for name in targets:
         meta = TABLES[name]
-        full_id_map[name] = pull_one_table(meta)
+        merged, id_map = pull_one_table(meta)
+        merged_by_table[name] = merged
+        full_id_map[name] = id_map
 
-    # ── Phase 2：用收齐的 id_map 翻译 link 字段 ──
-    print("\n→ 翻译 link 字段（record_id → 业务 ID）...")
+    # ── Phase 1.5：单表 pull 时，link 字段指向的目标表如果没拉，补拉 id_map ──
+    # 目的：单表 pull (如只 pull 03_dim_values) 也能正确翻译 link 字段
+    needed_targets: set[str] = set()
+    for name in targets:
+        for target in TABLES[name].link_fields.values():
+            if target not in full_id_map:
+                needed_targets.add(target)
+    if needed_targets:
+        print(f"\n→ 补拉 link 目标表 id_map（仅投影业务主键）：{sorted(needed_targets)}")
+        for target in needed_targets:
+            full_id_map[target] = fetch_id_map_only(TABLES[target])
+            print(f"  ✓ {target}: 拿到 {len(full_id_map[target])} 个 id 映射")
+
+    # ── Phase 2：用收齐的 id_map 翻译 link 字段（record_id → 业务 ID）──
+    print("\n→ 翻译 link 字段...")
     for name in targets:
         meta = TABLES[name]
         if not meta.link_fields:
             continue
-        records = load_json(name)
-        translate_links_in_records(records, meta, full_id_map)
-        save_json(name, records)
+        translate_links_in_records(merged_by_table[name], meta, full_id_map)
         print(f"  ✓ {name}: link 翻译完成")
 
-    # ── Phase 3：写回 _record_id_map.json（保留没拉的表的 map） ──
-    out_map = load_id_map()
+    # ── Phase 3：写回本地 ──
     for name in targets:
-        out_map[TABLES[name].id_map_key] = full_id_map[name]
-    save_id_map(out_map)
-    print(f"\n  ✓ _record_id_map.json 已更新（{len(targets)} 张表）")
+        save_json(name, merged_by_table[name])
 
     print()
     print("=" * 60)
