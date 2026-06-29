@@ -1,8 +1,0 @@
-agent: claude
-branch: agent-claude/feat/router-skill-metadata
-files:
-  - router/
-  - CHANGELOG.md
-started: 2026-06-28T22:29:47+08:00
-expected_done: 2026-06-29T00:29:47+08:00
-reason: 新增 Router 层，独立 package，读 skill 元数据 + LLM 调用计划
