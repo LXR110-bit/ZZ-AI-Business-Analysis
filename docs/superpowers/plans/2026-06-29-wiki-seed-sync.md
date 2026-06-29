@@ -729,3 +729,73 @@ PR body 内容请覆盖：
 2. 不需要并行
 3. 当前是凌晨自主执行，subagent-driven 反而增加 ssh 验证不通时的中断风险
 4. 任务粒度已经细，直接顺序跑更省事
+
+---
+
+## Retrospective（2026-06-30 早上加）
+
+### 凌晨自主执行的盲区
+
+凌晨 ssh 通道断、lark-cli 不可达，**整个 PR 没有任何实跑验证就 push 上去了**。早上 ssh 恢复后第一次跑就连续暴露 7 个真问题：
+
+**lark-cli 1.0.59 接口（凭印象/搜索写的全错了）**：
+
+| 凭印象写的 | 真实接口 |
+|---|---|
+| `--json` flag | `--format json` 位置参数（带值） |
+| `--page-size 500` | `--limit 200`（max 200） |
+| `record-create` + `record-update` 两个 verb | 统一 `record-upsert`（`--record-id` 有 → update，无 → create） |
+| `--fields-json` | upsert 用 `--json`，含义不同 |
+| `record-list` 返回 `{items: [{fields:{}}]}` 行存 | 列存：`{data: {data: [[v,v]], fields: [name,name], record_id_list: [rid]}}` |
+| link 单元格 `[record_id, ...]` | `[{"id": "rec..."}]` |
+
+**schema 漂移**：JSON 是当年起草的草稿，飞书 base 当下又新增了 ~10 个字段（责任人/生效起/状态/版本/关联口径/...），04 表甚至重命名了核心字段（业务描述 → 业务定义）。push 完会**用旧 schema 覆盖当下 schema**。
+
+### Task 3（push）状态：**deferred**
+
+用户决策：飞书是 source of truth，push 留给"schema reconcile"完成后的下个 PR。本 PR 只做 pull-only。
+
+`scripts/wiki_seed_push.py` + 测试已 `git rm`，git 历史保留。`_wiki_seed_common.py` 里的 `load_id_map` / `save_id_map` helpers 保留 dormant 不删，给未来 push PR 复用。
+
+### Task 2（pull）状态：**完成但需关键修复**
+
+凌晨写的 pull.py 不能用（接口 6 个 + 行存假设错了）。早上 8 个修复都进 fix commit `a6c847a`：
+
+1. `lark_base()` 改 `--format json`
+2. record-list 用 `--limit 200`
+3. **新增 `reconstruct_rows()`**：列存 → 行存 zip + `has_more` 守卫
+4. **新增 `extract_link_ids()`**：解析 `[{"id":"rec..."}]`
+5. **新增 `merge_into_local()`** ← reviewer Critical #1，避免 `_*` helper 字段被静默吞掉
+6. **新增 `fetch_id_map_only()`** + Phase 1.5：单表 pull 时自动补 link 目标表 id_map
+7. TABLES meta link_fields 用飞书真实字段名，补 01.关联字段（双向 link）+ 02.关联口径 + 03.关联口径
+8. 测试从 11+7 改成 6 + 19 = 25 passed，重点测 merge 语义 + has_more guard
+
+### Code review 起的作用
+
+午前 superpowers:requesting-code-review dispatch 一个 reviewer subagent 看修复**计划**（不是看代码）。它独立用 ssh 探测了 lark-cli 真实接口，抓住 4 个 critical：
+
+- merge-on-pull 必须保 `_*` 字段（不抓住的话首跑会无声丢数据）
+- `record_id` 在 `data.record_id_list` 平行数组里，不在行里
+- `has_more=True` 必须 assert（避免未来增长时静默截断）
+- common 测试也得跟着改（不在原计划里）
+
+外加 important：保留 `save_id_map`/`load_id_map` dormant（不删，给未来 push 用）+ 删 `_record_id_map.json` + 重生成 baseline JSON 作单独 commit。
+
+**Lesson**：复杂修复前先 dispatch 一个 reviewer 看**计划文档**，比直接写代码再回过头来踩坑省一大圈。
+
+### 最终交付的 4 个 commit
+
+```
+6e60d41 chore(wiki_seed): regenerate JSON baseline from Lark base v1.1 + 删 _record_id_map.json
+a6c847a fix(scripts): wiki_seed sync 适配 lark-cli 1.0.59 真实接口 + pull merge 语义
+a7dcf24 docs(plans): wiki_seed 同步脚本实现计划（superpowers writing-plans 产出）  ← 凌晨
++ 待提交：docs(wiki_seed): README §9 改 pull-only + 加 schema-drift 说明 + plan retrospective
+```
+
+### 经验
+
+1. **无实跑能力的 PR 别 push**：凌晨估了 5 处接口都猜错。"调研得很细"≠"能跑"。
+2. **schema 漂移是首要风险**：从 JSON 草稿到飞书 base 之间的字段重命名/扩展会让 push/pull 都出大问题。下个 push PR 必须先做字段对齐审计。
+3. **merge 语义>覆盖语义**：脚本写双向 sync 时默认应该是 merge，不是 overwrite。本地 helper 字段（`_*`）丢了用户都不会立刻发现。
+4. **reviewer subagent 应在写代码之前用**：让它评 plan 比评 PR 更省事，因为它不被既有代码绑架。
+
