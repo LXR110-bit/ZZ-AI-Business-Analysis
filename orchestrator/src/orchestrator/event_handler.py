@@ -58,6 +58,8 @@ MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "2"))
 # Review Gate 配置
 REVIEW_GATE_ENABLED = REVIEW_GATE_AVAILABLE and os.environ.get("REVIEW_GATE_ENABLED", "1") == "1"
 MAX_REVIEW_RETRIES = int(os.environ.get("MAX_REVIEW_RETRIES", "2"))  # 0=不重试只审
+REVIEW_TIMEOUT = int(os.environ.get("REVIEW_TIMEOUT", "120"))                # 单次 critic 调用超时
+FEISHU_REPLY_MAX = int(os.environ.get("FEISHU_REPLY_MAX", "4800"))            # 飞书消息字符上限保险
 
 # 预读 principles（一次性，省 IO）
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -127,7 +129,7 @@ def _review_with_retry(
     question: str,
     initial_output: str,
     max_retries: int = MAX_REVIEW_RETRIES,
-    review_timeout: int = 120,
+    review_timeout: int = REVIEW_TIMEOUT,
 ):
     """对 expert 输出过 review_gate；FAIL 则 retry expert（带 issues feedback）。
 
@@ -233,13 +235,19 @@ def handle_message(evt: dict) -> None:
                     f"\n\n⚠ review 未过 ({attempts} 次尝试):\n{issue_list}"
                 )
 
-        if len(body) > 4500:
-            body = body[:4400] + "\n\n…(已截断)"
+        # 先拼整个 reply，再对总长度做飞书 5000 上限截断
         reply = f"【{router.explain(expert_id)}】({elapsed:.0f}s){review_suffix}\n\n{body}"
+        if len(reply) > FEISHU_REPLY_MAX:
+            # 优先保 header + suffix（review verdict 是关键信息），从 body 中段截
+            keep = FEISHU_REPLY_MAX - 100
+            reply = reply[:keep] + "\n\n…(已截断)"
     else:
         err = (result.get("stderr") or result.get("error") or "未知错误")[:1000]
         reply = f"【{router.explain(expert_id)}】执行失败 ({elapsed:.0f}s)\n\n{err}"
 
+    # 总长度兜底（无论 ok / fail 路径）
+    if len(reply) > FEISHU_REPLY_MAX:
+        reply = reply[:FEISHU_REPLY_MAX - 100] + "\n\n…(已截断)"
     reply_text(message_id, reply)
     log.info("回复完成 message_id=%s elapsed=%.1fs", message_id, elapsed)
 
