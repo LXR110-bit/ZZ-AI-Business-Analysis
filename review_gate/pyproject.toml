@@ -1,0 +1,27 @@
+[project]
+name = "review-gate"
+version = "0.1.0"
+description = "Review Gate: 业务输出对抗审查层 — 强制执行 principles/core.md §6 自检"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/review_gate"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"prompts" = "review_gate/prompts"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
