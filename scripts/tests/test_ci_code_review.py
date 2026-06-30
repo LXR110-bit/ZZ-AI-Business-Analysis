@@ -189,6 +189,34 @@ def test_call_llm_missing_base_url_raises():
     raise AssertionError("expected RuntimeError")
 
 
+@patch("ci_code_review.requests.post")
+def test_call_llm_raises_when_message_lacks_content(post):
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {"choices": [{"message": {"role": "assistant"}, "finish_reason": "content_filter"}]}
+    post.return_value = resp
+    try:
+        call_llm([{"role": "user", "content": "x"}], api_key="k", base_url="https://v2.qixuw.com")
+    except RuntimeError as e:
+        assert "content" in str(e)
+        return
+    raise AssertionError("expected RuntimeError")
+
+
+@patch("ci_code_review.requests.post")
+def test_call_llm_raises_when_choices_empty(post):
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {"choices": []}
+    post.return_value = resp
+    try:
+        call_llm([{"role": "user", "content": "x"}], api_key="k", base_url="https://v2.qixuw.com")
+    except RuntimeError as e:
+        assert "choices" in str(e) or "message" in str(e)
+        return
+    raise AssertionError("expected RuntimeError")
+
+
 # ─── format_comment ──────────────────────────────────────────────────────
 
 from ci_code_review import format_comment  # noqa: E402

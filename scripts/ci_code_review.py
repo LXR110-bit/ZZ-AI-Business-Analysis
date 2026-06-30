@@ -155,7 +155,18 @@ def call_llm(
         timeout=timeout,
     )
     resp.raise_for_status()
-    content = resp.json()["choices"][0]["message"]["content"]
+    body = resp.json()
+    try:
+        message = body["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"LLM 响应缺 choices[0].message: {body!r}") from exc
+    content = message.get("content")
+    if not content:
+        # 中转站偶尔会回不带 content 的 message（finish_reason=content_filter 等场景）
+        raise RuntimeError(
+            f"LLM 响应 message 缺 content (finish_reason="
+            f"{body['choices'][0].get('finish_reason')!r})"
+        )
     return extract_json(content)
 
 
