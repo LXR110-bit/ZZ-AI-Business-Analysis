@@ -1,0 +1,9 @@
+agent: claude
+branch: agent-claude/feat/review-gate
+files:
+  - review_gate/
+  - docs/superpowers/plans/
+  - CHANGELOG.md
+started: 2026-06-30T14:18:30+08:00
+expected_done: 2026-06-30T17:18:30+08:00
+reason: 新增 Review Gate 层（业务输出对抗审查 + §6 自检清单强制执行）
