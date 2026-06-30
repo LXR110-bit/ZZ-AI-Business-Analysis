@@ -23,6 +23,38 @@ def test_main_function_exists():
     assert callable(ci_code_review.main)
 
 
+# ─── extract_json ────────────────────────────────────────────────────────
+
+import json  # noqa: E402
+
+from ci_code_review import extract_json  # noqa: E402
+
+
+def test_extract_json_plain():
+    assert extract_json('{"a": 1}') == {"a": 1}
+
+
+def test_extract_json_strips_markdown_fence_with_lang():
+    assert extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_extract_json_strips_markdown_fence_without_lang():
+    assert extract_json('```\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_extract_json_empty_returns_empty_dict():
+    assert extract_json("") == {}
+    assert extract_json("   ") == {}
+
+
+def test_extract_json_invalid_raises():
+    try:
+        extract_json("not json")
+    except json.JSONDecodeError:
+        return
+    raise AssertionError("expected json.JSONDecodeError")
+
+
 # ─── Standalone runner (不依赖 pytest) ───
 def _run_all_tests() -> int:
     import inspect

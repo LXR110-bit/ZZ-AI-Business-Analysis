@@ -16,6 +16,28 @@ env 入口：
 """
 from __future__ import annotations
 
+import json
+
+
+def extract_json(text: str) -> dict:
+    """去 markdown 围栏并 parse JSON。空串返回 {}。
+
+    中转站偶尔会把 JSON 包在 ```json ... ``` 里，即使 response_format=json_object。
+    """
+    text = (text or "").strip()
+    if not text:
+        return {}
+    if text.startswith("```"):
+        lines = text.split("\n")
+        if lines and lines[-1].strip() == "```":
+            lines = lines[1:-1]
+        else:
+            lines = lines[1:]
+        text = "\n".join(lines).strip()
+        if not text:
+            return {}
+    return json.loads(text)
+
 
 def main() -> int:
     raise NotImplementedError
