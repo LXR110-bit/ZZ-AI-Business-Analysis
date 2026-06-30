@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 
+import requests
+
 
 def extract_json(text: str) -> dict:
     """去 markdown 围栏并 parse JSON。空串返回 {}。
@@ -111,6 +113,49 @@ def build_messages(pr_title: str, pr_body: str, diff_text: str) -> list[dict]:
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user},
     ]
+
+
+def call_llm(
+    messages: list[dict],
+    api_key: str,
+    base_url: str,
+    model: str = "gpt-5.5",
+    timeout: int = 180,
+) -> dict:
+    """POST chat-completions 到中转站，返回解析过的 JSON dict。
+
+    - 不走 openai SDK（SDK 加的 x-stainless-* 头会被中转站拒为 502）
+    - base_url 自动补 /v1（idempotent）
+    - response_format=json_object，temperature=0.0
+    """
+    if not api_key:
+        raise RuntimeError("缺 OPENAI_API_KEY env var")
+    if not base_url:
+        raise RuntimeError("缺 OPENAI_BASE_URL env var")
+
+    endpoint = base_url.rstrip("/")
+    if not endpoint.endswith("/v1"):
+        endpoint += "/v1"
+    endpoint += "/chat/completions"
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "response_format": {"type": "json_object"},
+        "temperature": 0.0,
+    }
+    resp = requests.post(
+        endpoint,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    content = resp.json()["choices"][0]["message"]["content"]
+    return extract_json(content)
 
 
 def main() -> int:

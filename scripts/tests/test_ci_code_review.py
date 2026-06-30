@@ -120,6 +120,75 @@ def test_system_prompt_demands_json_with_findings_and_severity():
     assert "severity" in low
 
 
+# ─── call_llm (requests mocked) ──────────────────────────────────────────
+
+from unittest.mock import MagicMock, patch  # noqa: E402
+
+from ci_code_review import call_llm  # noqa: E402
+
+
+def _mock_response(content_json: str):
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {"choices": [{"message": {"content": content_json}}]}
+    return resp
+
+
+@patch("ci_code_review.requests.post")
+def test_call_llm_appends_v1_when_missing(post):
+    post.return_value = _mock_response('{"summary":"ok","findings":[]}')
+    call_llm([{"role": "user", "content": "x"}], api_key="k", base_url="https://v2.qixuw.com")
+    args, _ = post.call_args
+    assert args[0] == "https://v2.qixuw.com/v1/chat/completions"
+
+
+@patch("ci_code_review.requests.post")
+def test_call_llm_does_not_double_append_v1(post):
+    post.return_value = _mock_response('{"summary":"ok","findings":[]}')
+    call_llm([{"role": "user", "content": "x"}], api_key="k", base_url="https://v2.qixuw.com/v1")
+    args, _ = post.call_args
+    assert args[0] == "https://v2.qixuw.com/v1/chat/completions"
+
+
+@patch("ci_code_review.requests.post")
+def test_call_llm_payload_uses_json_object_and_temp_zero(post):
+    post.return_value = _mock_response('{"summary":"ok","findings":[]}')
+    call_llm([{"role": "user", "content": "x"}], api_key="k", base_url="https://v2.qixuw.com")
+    _, kwargs = post.call_args
+    payload = kwargs["json"]
+    assert payload["model"] == "gpt-5.5"
+    assert payload["response_format"] == {"type": "json_object"}
+    assert payload["temperature"] == 0.0
+    assert kwargs["headers"]["Authorization"] == "Bearer k"
+
+
+@patch("ci_code_review.requests.post")
+def test_call_llm_parses_content_json(post):
+    post.return_value = _mock_response('{"summary":"ok","findings":[{"severity":"MAJOR"}]}')
+    out = call_llm([{"role": "user", "content": "x"}], api_key="k", base_url="https://v2.qixuw.com")
+    assert out["summary"] == "ok"
+    assert out["findings"][0]["severity"] == "MAJOR"
+
+
+def test_call_llm_missing_api_key_raises():
+    try:
+        call_llm([], api_key="", base_url="https://v2.qixuw.com")
+    except RuntimeError as e:
+        assert "OPENAI_API_KEY" in str(e)
+        return
+    raise AssertionError("expected RuntimeError")
+
+
+def test_call_llm_missing_base_url_raises():
+    try:
+        call_llm([], api_key="k", base_url="")
+    except RuntimeError as e:
+        assert "OPENAI_BASE_URL" in str(e)
+        return
+    raise AssertionError("expected RuntimeError")
+
+
 # ─── Standalone runner (不依赖 pytest) ───
 def _run_all_tests() -> int:
     import inspect
