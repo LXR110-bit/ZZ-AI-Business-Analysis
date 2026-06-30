@@ -43,7 +43,7 @@ def test_lark_search_non_json():
 def test_query_metric_wraps():
     fake = _fake_proc('{"ok": true, "data": []}')
     with patch.object(server.subprocess, "run", return_value=fake):
-        r = server.query_metric.fn("GMV")
+        r = server.query_metric("GMV")
     assert r["metric"] == "GMV"
     assert r["source"] == "飞书 base 04 口径表"
 
@@ -51,24 +51,24 @@ def test_query_metric_wraps():
 def test_query_field_wraps():
     fake = _fake_proc('{"ok": true, "data": []}')
     with patch.object(server.subprocess, "run", return_value=fake):
-        r = server.query_field.fn("uid")
+        r = server.query_field("uid")
     assert r["field"] == "uid"
 
 
 def test_query_dim_value_wraps():
     fake = _fake_proc('{"ok": true, "data": []}')
     with patch.object(server.subprocess, "run", return_value=fake):
-        r = server.query_dim_value.fn("已成交")
+        r = server.query_dim_value("已成交")
     assert r["query"] == "已成交"
 
 
 def test_query_table_wraps():
     fake = _fake_proc('{"ok": true, "data": []}')
     with patch.object(server.subprocess, "run", return_value=fake):
-        r = server.query_table.fn("回收订单")
+        r = server.query_table("回收订单")
     assert r["table"] == "回收订单"
 
 
 def test_get_baseline_stub():
-    r = server.get_baseline.fn("iPhone", "GMV")
+    r = server.get_baseline("iPhone", "GMV")
     assert r["baseline"] is None
