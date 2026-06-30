@@ -1,0 +1,9 @@
+agent: claude
+branch: agent-claude/feat/ci-code-reviewer
+files:
+  - .github/workflows/ai-code-review.yml
+  - scripts/ci_code_review.py
+  - scripts/tests/test_ci_code_review.py
+  - docs/superpowers/plans/2026-06-29-ci-code-reviewer.md
+started: 2026-06-30T10:57:23Z
+expected_done: 2026-06-30T14:57:23Z
