@@ -51,8 +51,8 @@ TABLES: dict[str, TableMeta] = {
         table_id="tblJ6CSz02t6NIaI",
         business_id_field="维值ID",
         id_map_key="table_03_dim_record_id_map",
-        # 飞书 schema 有 "关联口径" link 列 → 04_definitions
-        link_fields={"关联口径": "04_definitions"},
+        # 飞书 schema：关联口径 → 04_definitions、关联字段 → 02_fields（v1.1 后加，反向 link）
+        link_fields={"关联口径": "04_definitions", "关联字段": "02_fields"},
     ),
     "04_definitions": TableMeta(
         json_name="04_definitions",
