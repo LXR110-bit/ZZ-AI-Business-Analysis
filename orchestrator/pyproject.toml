@@ -9,7 +9,18 @@ dependencies = [
     "openai>=2.0.0",
     "python-dotenv>=1.0.0",
     "httpx>=0.27.0",
+    "review-gate",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.uv.sources]
+review-gate = { path = "../review_gate", editable = true }
 
 [build-system]
 requires = ["hatchling"]

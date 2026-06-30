@@ -1,0 +1,7 @@
+agent: claude
+branch: agent-claude/feat/wire-review-gate
+files:
+  - orchestrator/
+started: 2026-06-30T17:53:09+08:00
+expected_done: 2026-06-30T19:23:09+08:00
+reason: event_handler 在 agent 输出前过 review_gate, FAIL 自动 retry

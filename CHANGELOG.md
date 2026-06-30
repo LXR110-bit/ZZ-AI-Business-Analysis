@@ -6,6 +6,10 @@
 ## [Unreleased]
 
 ### Added
+- **event_handler 接入 Review Gate**：agent 输出前过 critic 审查；FAIL 自动让 expert 带 issues 重写（默认最多 2 次重试，env `MAX_REVIEW_RETRIES`）。飞书回复尾部附 `— review✓` 或 `⚠ review 未过` + issue 列表。Review Gate 未装时 graceful degrade（跳过审查不阻塞）。
+
+
+### Added
 - **Review Gate 层**：独立 `review_gate/` package，对抗审查 agent 输出。强制走 §6 自检 6 项（§1/§2/§3/§4/§5/§7）。模型 gpt-5.5。CLI: `python -m review_gate --task ... --output @file --principles principles/core.md`。退出码 0=PASS / 1=FAIL。
 
 
