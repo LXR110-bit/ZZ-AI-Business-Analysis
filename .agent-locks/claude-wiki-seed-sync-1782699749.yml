@@ -1,0 +1,10 @@
+agent: claude
+branch: agent-claude/feat/wiki-seed-sync
+files:
+  - scripts/wiki_seed_push.sh
+  - scripts/wiki_seed_pull.sh
+  - wiki_seed/README.md
+  - docs/superpowers/plans/
+started: 2026-06-29T10:22:29+08:00
+expected_done: 2026-06-29T13:22:29+08:00
+reason: 新增 wiki_seed JSON ↔ 飞书 base 双向同步脚本（push + pull）
