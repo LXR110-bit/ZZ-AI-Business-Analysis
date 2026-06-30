@@ -72,3 +72,22 @@ def test_query_table_wraps():
 def test_get_baseline_stub():
     r = server.get_baseline("iPhone", "GMV")
     assert r["baseline"] is None
+
+
+def test_lark_search_timeout():
+    """TimeoutExpired 不应该崩，返回结构化错误."""
+    import subprocess
+    def boom(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="lark-cli", timeout=30)
+    with patch.object(server.subprocess, "run", side_effect=boom):
+        result = server._lark_search("tblX", "GMV", "口径名")
+    assert result["ok"] is False
+    assert "超时" in result["error"]
+
+
+def test_lark_search_lark_cli_missing():
+    """lark-cli 找不到也不应崩."""
+    with patch.object(server.subprocess, "run", side_effect=FileNotFoundError("lark-cli")):
+        result = server._lark_search("tblX", "GMV", "口径名")
+    assert result["ok"] is False
+    assert "lark-cli 未安装" in result["error"]
