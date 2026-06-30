@@ -189,6 +189,46 @@ def test_call_llm_missing_base_url_raises():
     raise AssertionError("expected RuntimeError")
 
 
+# ─── format_comment ──────────────────────────────────────────────────────
+
+from ci_code_review import format_comment  # noqa: E402
+
+
+def test_format_comment_empty_findings_renders_clean():
+    body = format_comment({"summary": "Looks good.", "findings": []})
+    assert "🤖 AI Code Review" in body
+    assert "Looks good." in body
+    assert "No blocking issues" in body
+
+
+def test_format_comment_groups_by_severity_order():
+    verdict = {
+        "summary": "Mixed",
+        "findings": [
+            {"severity": "MINOR", "file": "a.py", "line": "10", "category": "style", "why": "w1", "suggestion": "s1"},
+            {"severity": "BLOCKER", "file": "b.py", "line": "20", "category": "security", "why": "w2", "suggestion": "s2"},
+            {"severity": "MAJOR", "file": "c.py", "line": "30", "category": "correctness", "why": "w3", "suggestion": "s3"},
+        ],
+    }
+    body = format_comment(verdict)
+    b_idx = body.index("BLOCKER")
+    m_idx = body.index("MAJOR")
+    n_idx = body.index("MINOR")
+    assert b_idx < m_idx < n_idx
+    assert "a.py:10" in body and "b.py:20" in body and "c.py:30" in body
+
+
+def test_format_comment_tolerates_missing_keys():
+    body = format_comment({})
+    assert "🤖 AI Code Review" in body
+
+
+def test_format_comment_unknown_severity_falls_through():
+    verdict = {"summary": "x", "findings": [{"severity": "WAT", "file": "a.py", "line": "1", "why": "w", "suggestion": "s"}]}
+    body = format_comment(verdict)
+    assert "WAT" in body
+
+
 # ─── Standalone runner (不依赖 pytest) ───
 def _run_all_tests() -> int:
     import inspect

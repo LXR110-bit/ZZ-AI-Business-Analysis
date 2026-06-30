@@ -158,5 +158,51 @@ def call_llm(
     return extract_json(content)
 
 
+SEVERITY_ORDER = ["BLOCKER", "MAJOR", "MINOR", "NIT"]
+SEVERITY_EMOJI = {"BLOCKER": "🛑", "MAJOR": "⚠️", "MINOR": "💡", "NIT": "🔧"}
+
+
+def format_comment(verdict: dict) -> str:
+    """渲染 verdict 为 markdown 评论体。
+
+    - 无 findings → 写 "✅ No blocking issues found."
+    - 有 findings → 按 BLOCKER→MAJOR→MINOR→NIT 分组，未知 severity 落最后
+    - 容错：传入 {} 也能渲染出框架
+    """
+    summary = (verdict.get("summary") or "").strip() or "(无 summary)"
+    findings = verdict.get("findings") or []
+
+    lines = ["## 🤖 AI Code Review", "", f"**Summary:** {summary}", ""]
+
+    if not findings:
+        lines.append("✅ No blocking issues found.")
+        return "\n".join(lines)
+
+    grouped: dict[str, list[dict]] = {}
+    for f in findings:
+        sev = (f.get("severity") or "OTHER").upper()
+        grouped.setdefault(sev, []).append(f)
+
+    ordered_keys = [k for k in SEVERITY_ORDER if k in grouped] + [
+        k for k in grouped if k not in SEVERITY_ORDER
+    ]
+
+    for sev in ordered_keys:
+        emoji = SEVERITY_EMOJI.get(sev, "•")
+        lines.append(f"### {emoji} {sev} ({len(grouped[sev])})")
+        for f in grouped[sev]:
+            file = f.get("file", "?")
+            line = f.get("line", "?")
+            cat = f.get("category", "")
+            why = (f.get("why") or "").strip()
+            sugg = (f.get("suggestion") or "").strip()
+            lines.append(f"- **`{file}:{line}`** _{cat}_ — {why}")
+            if sugg:
+                lines.append(f"  - 建议：{sugg}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def main() -> int:
     raise NotImplementedError
