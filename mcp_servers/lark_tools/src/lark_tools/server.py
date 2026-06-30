@@ -126,9 +126,23 @@ def write_doc_and_transfer(
     create_result = write_doc(title, content_markdown, parent_token)
     if not create_result.get("ok"):
         return create_result
-    doc_token = create_result.get("data", {}).get("document", {}).get("document_id")
+    # 防御性提取：lark-cli docs +create 实测返回 data.document.document_id，
+    # 但偶有 token / objToken 变体，逐个 fallback 不抛
+    data = create_result.get("data", {}) or {}
+    doc = data.get("document") or {}
+    doc_token = (
+        doc.get("document_id")
+        or doc.get("objToken")
+        or doc.get("token")
+        or data.get("document_id")
+        or data.get("token")
+    )
     if not doc_token:
-        return {"ok": False, "error": "创建成功但拿不到 doc_token", "create_result": create_result}
+        return {
+            "ok": False,
+            "error": "创建成功但拿不到 doc_token（lark-cli 返回结构与预期不符）",
+            "create_result": create_result,
+        }
 
     open_id = target_open_id or os.environ.get("MY_OPEN_ID")
     if not open_id:
