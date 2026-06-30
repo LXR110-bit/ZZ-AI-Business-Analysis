@@ -17,6 +17,7 @@ env 入口：
 from __future__ import annotations
 
 import json
+import os
 
 import requests
 
@@ -204,5 +205,116 @@ def format_comment(verdict: dict) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def main() -> int:
-    raise NotImplementedError
+SETUP_HINT_BODY = (
+    "## 🤖 AI Code Review\n\n"
+    "AI Code Reviewer 未运行：仓库 secrets 未配置 (`OPENAI_API_KEY` / `OPENAI_BASE_URL`)。"
+    "请仓库管理员到 Settings → Secrets and variables → Actions 添加后重跑此 workflow。\n"
+)
+
+
+def fetch_pr_files(repo: str, pr: str, token: str) -> list[dict]:
+    """gh api --paginate 拉 PR 改动文件列表。"""
+    import subprocess
+
+    env = {**os.environ, "GH_TOKEN": token}
+    out = subprocess.run(
+        ["gh", "api", f"repos/{repo}/pulls/{pr}/files", "--paginate"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    # `--paginate` 把多页 JSON 数组用 `][` 拼起来，归一化成一个数组。
+    out = out.replace("][", ",")
+    return json.loads(out)
+
+
+def fetch_pr_metadata(repo: str, pr: str, token: str) -> tuple[str, str]:
+    """拉 PR 标题和描述."""
+    import subprocess
+
+    env = {**os.environ, "GH_TOKEN": token}
+    out = subprocess.run(
+        ["gh", "api", f"repos/{repo}/pulls/{pr}"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    d = json.loads(out)
+    return d.get("title", ""), d.get("body") or ""
+
+
+def post_review(repo: str, pr: str, body: str, token: str) -> None:
+    """通过 gh pr review --comment 留评论，正文从 stdin 喂以避开 arg 长度限制."""
+    import subprocess
+
+    env = {**os.environ, "GH_TOKEN": token}
+    subprocess.run(
+        ["gh", "pr", "review", pr, "--repo", repo, "--comment", "--body-file", "-"],
+        input=body,
+        env=env,
+        text=True,
+        check=True,
+    )
+
+
+def _build_unavailable_body(error: BaseException) -> str:
+    return (
+        "## 🤖 AI Code Review\n\n"
+        f"AI reviewer unavailable (error class: `{type(error).__name__}`)。"
+        "本次未生成 review，请手动检查或重跑 workflow。\n"
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """主入口。返回 0 表示成功 / 优雅 no-op；非 0 仅在 unexpected 编程错误时."""
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="CI AI Code Reviewer")
+    parser.add_argument("--dry-run", action="store_true", help="打印评论但不真 post")
+    args = parser.parse_args(argv)
+
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    pr = os.environ.get("PR_NUMBER", "")
+    token = os.environ.get("GITHUB_TOKEN", "")
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    base_url = os.environ.get("OPENAI_BASE_URL", "")
+
+    if not repo or not pr or not token:
+        print("Missing GITHUB_REPOSITORY / PR_NUMBER / GITHUB_TOKEN — abort", file=sys.stderr)
+        return 0
+
+    if not api_key or not base_url:
+        if args.dry_run:
+            print(SETUP_HINT_BODY)
+        else:
+            post_review(repo, pr, SETUP_HINT_BODY, token)
+        return 0
+
+    files = fetch_pr_files(repo, pr, token)
+    title, body = fetch_pr_metadata(repo, pr, token)
+    diff_text = assemble_diff(files)
+    messages = build_messages(title, body, diff_text)
+
+    try:
+        verdict = call_llm(messages, api_key=api_key, base_url=base_url)
+    except Exception as exc:  # noqa: BLE001 — 任何 LLM/网络错误都不该让 workflow fail
+        unavailable = _build_unavailable_body(exc)
+        if args.dry_run:
+            print(unavailable)
+        else:
+            post_review(repo, pr, unavailable, token)
+        return 0
+
+    comment = format_comment(verdict)
+    if args.dry_run:
+        print(comment)
+    else:
+        post_review(repo, pr, comment, token)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

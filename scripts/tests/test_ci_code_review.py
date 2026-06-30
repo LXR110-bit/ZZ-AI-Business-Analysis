@@ -229,6 +229,111 @@ def test_format_comment_unknown_severity_falls_through():
     assert "WAT" in body
 
 
+# ─── main() orchestration ────────────────────────────────────────────────
+
+import io  # noqa: E402
+import os  # noqa: E402
+from contextlib import redirect_stdout  # noqa: E402
+
+import requests  # noqa: E402, F401  (used in test below)
+
+from ci_code_review import main  # noqa: E402
+
+
+def _isolate_env(**overrides):
+    """Build a clean env dict (mock os.environ) with only the keys we set."""
+    base = {
+        "GITHUB_TOKEN": "t",
+        "GITHUB_REPOSITORY": "o/r",
+        "PR_NUMBER": "5",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_main_missing_openai_secrets_dry_run_prints_setup_hint():
+    env = _isolate_env()  # no OPENAI_*
+    with patch.dict(os.environ, env, clear=True):
+        with patch("ci_code_review.post_review") as post:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = main(["--dry-run"])
+    assert code == 0
+    assert "未运行" in buf.getvalue()
+    assert "OPENAI_API_KEY" in buf.getvalue()
+    post.assert_not_called()
+
+
+def test_main_missing_openai_secrets_live_run_posts_setup_hint():
+    env = _isolate_env()
+    with patch.dict(os.environ, env, clear=True):
+        with patch("ci_code_review.post_review") as post:
+            code = main([])
+    assert code == 0
+    post.assert_called_once()
+    body = post.call_args.args[2]
+    assert "未运行" in body and "OPENAI_API_KEY" in body
+
+
+def test_main_missing_actions_env_returns_zero():
+    """没 GITHUB_REPOSITORY/PR_NUMBER/GITHUB_TOKEN 时不该崩。"""
+    with patch.dict(os.environ, {}, clear=True):
+        code = main([])
+    assert code == 0
+
+
+def test_main_happy_path_calls_post_review():
+    env = _isolate_env(OPENAI_API_KEY="k", OPENAI_BASE_URL="https://v2.qixuw.com")
+    with patch.dict(os.environ, env, clear=True):
+        with patch("ci_code_review.post_review") as post, \
+             patch("ci_code_review.call_llm") as llm, \
+             patch("ci_code_review.fetch_pr_metadata") as meta, \
+             patch("ci_code_review.fetch_pr_files") as files:
+            files.return_value = [_file("a.py")]
+            meta.return_value = ("Add foo", "Fixes #1")
+            llm.return_value = {"summary": "ok", "findings": []}
+            code = main([])
+    assert code == 0
+    post.assert_called_once()
+    body = post.call_args.args[2]
+    assert "AI Code Review" in body
+
+
+def test_main_dry_run_skips_post():
+    env = _isolate_env(OPENAI_API_KEY="k", OPENAI_BASE_URL="https://v2.qixuw.com")
+    with patch.dict(os.environ, env, clear=True):
+        with patch("ci_code_review.post_review") as post, \
+             patch("ci_code_review.call_llm") as llm, \
+             patch("ci_code_review.fetch_pr_metadata") as meta, \
+             patch("ci_code_review.fetch_pr_files") as files:
+            files.return_value = [_file("a.py")]
+            meta.return_value = ("t", "b")
+            llm.return_value = {"summary": "ok", "findings": []}
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = main(["--dry-run"])
+    assert code == 0
+    post.assert_not_called()
+    assert "AI Code Review" in buf.getvalue()
+
+
+def test_main_llm_error_posts_unavailable_comment():
+    env = _isolate_env(OPENAI_API_KEY="k", OPENAI_BASE_URL="https://v2.qixuw.com")
+    with patch.dict(os.environ, env, clear=True):
+        with patch("ci_code_review.post_review") as post, \
+             patch("ci_code_review.call_llm") as llm, \
+             patch("ci_code_review.fetch_pr_metadata") as meta, \
+             patch("ci_code_review.fetch_pr_files") as files:
+            files.return_value = [_file("a.py")]
+            meta.return_value = ("t", "b")
+            llm.side_effect = requests.HTTPError("502 upstream_error")
+            code = main([])
+    assert code == 0  # 永远不让 workflow fail
+    post.assert_called_once()
+    body = post.call_args.args[2]
+    assert "unavailable" in body.lower() or "未生成" in body
+
+
 # ─── Standalone runner (不依赖 pytest) ───
 def _run_all_tests() -> int:
     import inspect
