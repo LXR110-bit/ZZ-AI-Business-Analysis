@@ -6,6 +6,10 @@
 ## [Unreleased]
 
 ### Added
+- **Review Gate 层**：独立 `review_gate/` package，对抗审查 agent 输出。强制走 §6 自检 6 项（§1/§2/§3/§4/§5/§7）。模型 gpt-5.5。CLI: `python -m review_gate --task ... --output @file --principles principles/core.md`。退出码 0=PASS / 1=FAIL。
+
+
+### Added
 - ✅ GitHub main 分支保护规则上线（Require PR + 1 approval + linear history + dismiss stale approval + Code Owners + 不许 bypass）
 - ✅ Fine-grained PAT 接入，agent 可自动开 PR
 - 演示工作流：agent 在 agent-claude/* 分支提交 → 自动 gh pr create → 人工 review + squash merge
