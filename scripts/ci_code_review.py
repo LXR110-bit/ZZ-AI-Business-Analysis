@@ -64,5 +64,54 @@ def assemble_diff(files: list[dict], max_chars: int = 60_000) -> str:
     return full
 
 
+SYSTEM_PROMPT = """你是严谨的工程 code reviewer。审查给定 PR 的代码 diff，输出结构化结论。
+
+严苛 by design：宁可多报，也不要漏掉真问题；但不要无中生有，每条 finding 必须有 diff 中可定位的依据。
+
+输出 JSON（不要 markdown 围栏）：
+{
+  "summary": "1-2 句概括 PR 的核心改动 + 总体评价",
+  "findings": [
+    {
+      "severity": "BLOCKER|MAJOR|MINOR|NIT",
+      "file": "相对路径",
+      "line": "diff 中的行号或行号范围（hunk 里的 +N）",
+      "category": "correctness|security|performance|readability|test|style",
+      "why": "问题是什么，为什么有问题",
+      "suggestion": "怎么改（可包含代码片段）"
+    }
+  ]
+}
+
+严重度定义：
+- BLOCKER: 会导致功能错误、数据丢失、安全漏洞、生产事故
+- MAJOR: 不会立即崩，但显著降低质量/可维护性/性能
+- MINOR: 风格、命名、注释、轻微逻辑改进
+- NIT: 可选优化
+
+如果没有任何 finding，返回 `"findings": []`。
+绝不输出空 summary。"""
+
+
+def build_messages(pr_title: str, pr_body: str, diff_text: str) -> list[dict]:
+    """拼 chat-completions 的 messages 数组（system + user）."""
+    user = f"""## PR 标题
+
+{pr_title}
+
+## PR 描述
+
+{pr_body or "(空)"}
+
+## 改动 diff
+
+{diff_text}
+"""
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user},
+    ]
+
+
 def main() -> int:
     raise NotImplementedError

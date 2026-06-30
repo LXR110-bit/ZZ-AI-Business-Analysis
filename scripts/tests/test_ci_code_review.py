@@ -93,6 +93,33 @@ def test_assemble_diff_includes_status_marker():
     assert "added" in out
 
 
+# ─── build_messages + SYSTEM_PROMPT ──────────────────────────────────────
+
+from ci_code_review import build_messages, SYSTEM_PROMPT  # noqa: E402
+
+
+def test_build_messages_shape():
+    msgs = build_messages("title", "body", "diff")
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "system"
+    assert msgs[1]["role"] == "user"
+
+
+def test_build_messages_user_carries_pr_metadata_and_diff():
+    msgs = build_messages("Add foo", "Fixes #123", "### a.py\n```diff\n+x\n```")
+    user = msgs[1]["content"]
+    assert "Add foo" in user
+    assert "Fixes #123" in user
+    assert "### a.py" in user
+
+
+def test_system_prompt_demands_json_with_findings_and_severity():
+    low = SYSTEM_PROMPT.lower()
+    assert "json" in low
+    assert "findings" in low
+    assert "severity" in low
+
+
 # ─── Standalone runner (不依赖 pytest) ───
 def _run_all_tests() -> int:
     import inspect
