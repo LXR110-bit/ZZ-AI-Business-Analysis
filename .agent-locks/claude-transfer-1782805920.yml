@@ -1,0 +1,7 @@
+agent: claude
+branch: agent-claude/feat/transfer-doc-owner
+files:
+  - mcp_servers/lark_tools/
+started: 2026-06-30T15:52:00+08:00
+expected_done: 2026-06-30T16:52:00+08:00
+reason: lark_tools MCP 加 transfer_doc_owner，write_doc 后自动转 owner
