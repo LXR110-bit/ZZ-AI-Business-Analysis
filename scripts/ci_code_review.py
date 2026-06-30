@@ -39,5 +39,30 @@ def extract_json(text: str) -> dict:
     return json.loads(text)
 
 
+def assemble_diff(files: list[dict], max_chars: int = 60_000) -> str:
+    """渲染 PR 改动文件为单块 markdown，每个文件一个 fenced diff。
+
+    - 二进制文件（无 `patch` 键）标 `(binary, skipped)`，不出 diff 围栏
+    - 总长度超过 `max_chars` 时截断，并附 `[truncated, original was N chars]`
+    """
+    parts: list[str] = []
+    for f in files:
+        name = f.get("filename", "<unknown>")
+        status = f.get("status", "modified")
+        adds = f.get("additions", 0)
+        dels = f.get("deletions", 0)
+        header = f"### {name} ({status}, +{adds}/-{dels})"
+        patch = f.get("patch")
+        if patch is None:
+            parts.append(f"{header}\n\n(binary, skipped)\n")
+        else:
+            parts.append(f"{header}\n\n```diff\n{patch}\n```\n")
+    full = "\n".join(parts)
+    if len(full) > max_chars:
+        truncated = full[:max_chars]
+        return f"{truncated}\n...[truncated, original was {len(full)} chars]"
+    return full
+
+
 def main() -> int:
     raise NotImplementedError

@@ -55,6 +55,44 @@ def test_extract_json_invalid_raises():
     raise AssertionError("expected json.JSONDecodeError")
 
 
+# ─── assemble_diff ───────────────────────────────────────────────────────
+
+from ci_code_review import assemble_diff  # noqa: E402
+
+
+def _file(name, patch="@@ -1 +1 @@\n-old\n+new", additions=1, deletions=1, status="modified"):
+    d = {"filename": name, "status": status, "additions": additions, "deletions": deletions}
+    if patch is not None:
+        d["patch"] = patch
+    return d
+
+
+def test_assemble_diff_basic_includes_filenames_and_fence():
+    out = assemble_diff([_file("a.py"), _file("b.py")])
+    assert "### a.py" in out
+    assert "### b.py" in out
+    assert "```diff" in out
+
+
+def test_assemble_diff_skips_binary_no_fence():
+    out = assemble_diff([_file("logo.png", patch=None)])
+    assert "logo.png" in out
+    assert "(binary, skipped)" in out
+    assert "```diff" not in out
+
+
+def test_assemble_diff_truncates_when_over_budget():
+    big = _file("big.py", patch="x" * 100_000)
+    out = assemble_diff([big], max_chars=1000)
+    assert "[truncated" in out
+    assert len(out) <= 1500  # budget + truncation marker overhead
+
+
+def test_assemble_diff_includes_status_marker():
+    out = assemble_diff([_file("new.py", status="added")])
+    assert "added" in out
+
+
 # ─── Standalone runner (不依赖 pytest) ───
 def _run_all_tests() -> int:
     import inspect
