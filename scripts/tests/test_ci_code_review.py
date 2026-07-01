@@ -362,6 +362,40 @@ def test_main_llm_error_posts_unavailable_comment():
     assert "unavailable" in body.lower() or "未生成" in body
 
 
+def test_main_passes_model_from_env_to_call_llm():
+    env = _isolate_env(
+        OPENAI_API_KEY="k",
+        OPENAI_BASE_URL="https://api.openai.com",
+        OPENAI_MODEL="gpt-5",
+    )
+    with patch.dict(os.environ, env, clear=True):
+        with patch("ci_code_review.post_review"), \
+             patch("ci_code_review.call_llm") as llm, \
+             patch("ci_code_review.fetch_pr_metadata") as meta, \
+             patch("ci_code_review.fetch_pr_files") as files:
+            files.return_value = [_file("a.py")]
+            meta.return_value = ("t", "b")
+            llm.return_value = {"summary": "ok", "findings": []}
+            main([])
+    _, kwargs = llm.call_args
+    assert kwargs["model"] == "gpt-5"
+
+
+def test_main_defaults_model_when_env_absent():
+    env = _isolate_env(OPENAI_API_KEY="k", OPENAI_BASE_URL="https://v2.qixuw.com")
+    with patch.dict(os.environ, env, clear=True):
+        with patch("ci_code_review.post_review"), \
+             patch("ci_code_review.call_llm") as llm, \
+             patch("ci_code_review.fetch_pr_metadata") as meta, \
+             patch("ci_code_review.fetch_pr_files") as files:
+            files.return_value = [_file("a.py")]
+            meta.return_value = ("t", "b")
+            llm.return_value = {"summary": "ok", "findings": []}
+            main([])
+    _, kwargs = llm.call_args
+    assert kwargs["model"] == "gpt-5.5"  # 与 review_gate/router 保持一致的默认
+
+
 # ─── Standalone runner (不依赖 pytest) ───
 def _run_all_tests() -> int:
     import inspect

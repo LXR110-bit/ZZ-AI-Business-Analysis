@@ -11,6 +11,7 @@ env 入口：
   - PR_NUMBER          (PR 号)
   - OPENAI_API_KEY     (repo secret)
   - OPENAI_BASE_URL    (repo secret，不带 /v1，代码自动补)
+  - OPENAI_MODEL       (repo secret，可选，默认 gpt-5.5 与 review_gate 一致)
 
 仓库 secret 缺时 → 留 setup-hint 评论，exit 0；不阻断 workflow。
 """
@@ -304,13 +305,15 @@ def main(argv: list[str] | None = None) -> int:
             post_review(repo, pr, SETUP_HINT_BODY, token)
         return 0
 
+    model = os.environ.get("OPENAI_MODEL", "gpt-5.5")
+
     files = fetch_pr_files(repo, pr, token)
     title, body = fetch_pr_metadata(repo, pr, token)
     diff_text = assemble_diff(files)
     messages = build_messages(title, body, diff_text)
 
     try:
-        verdict = call_llm(messages, api_key=api_key, base_url=base_url)
+        verdict = call_llm(messages, api_key=api_key, base_url=base_url, model=model)
     except Exception as exc:  # noqa: BLE001 — 任何 LLM/网络错误都不该让 workflow fail
         unavailable = _build_unavailable_body(exc)
         if args.dry_run:
