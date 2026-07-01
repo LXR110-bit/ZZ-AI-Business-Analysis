@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Changed
+- **knowledge_base MCP 实接飞书 base**（不再读本地 stub）：`query_metric/query_field/query_dim_value/query_table` 4 个工具直查 4 张表（base_token N6OVb2qz5aKxf9sY9kRc7y6onYd）。bot 身份调用，已实测可读。git 里 `knowledge/metrics_dictionary.md` 弃用（飞书是 source of truth）。
+- `get_baseline` 仍是 stub（飞书 base 暂未建品类基线表）。
+
+
 ### Added
 - **Review Gate 层**：独立 `review_gate/` package，对抗审查 agent 输出。强制走 §6 自检 6 项（§1/§2/§3/§4/§5/§7）。模型 gpt-5.5。CLI: `python -m review_gate --task ... --output @file --principles principles/core.md`。退出码 0=PASS / 1=FAIL。
 

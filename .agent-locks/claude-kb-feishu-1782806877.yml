@@ -1,0 +1,7 @@
+agent: claude
+branch: agent-claude/feat/knowledge-base-feishu
+files:
+  - mcp_servers/knowledge_base/
+started: 2026-06-30T16:07:57+08:00
+expected_done: 2026-06-30T17:07:57+08:00
+reason: knowledge_base MCP 从读本地 stub 改成查飞书 base（4 张表）
