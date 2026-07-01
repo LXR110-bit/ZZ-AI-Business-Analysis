@@ -24,6 +24,13 @@ from pathlib import Path
 from . import router
 from .expert_runner import run_expert
 
+try:
+    from review_gate import review as review_output
+    REVIEW_GATE_AVAILABLE = True
+except ImportError:
+    REVIEW_GATE_AVAILABLE = False
+
+
 # ---- 日志 ----
 LOG_DIR = Path(os.environ.get("LOG_DIR", "/root/workspace/ZZ-AI-Business-Analysis/logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,6 +54,17 @@ SEEN_MAX = 10000
 BOT_OPEN_ID = os.environ.get("BOT_OPEN_ID", "")  # 用于群聊里识别"是不是 @ 我"
 WORKER_TIMEOUT = int(os.environ.get("EXPERT_TIMEOUT", "600"))
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "2"))
+
+# Review Gate 配置
+REVIEW_GATE_ENABLED = REVIEW_GATE_AVAILABLE and os.environ.get("REVIEW_GATE_ENABLED", "1") == "1"
+MAX_REVIEW_RETRIES = int(os.environ.get("MAX_REVIEW_RETRIES", "2"))  # 0=不重试只审
+REVIEW_TIMEOUT = int(os.environ.get("REVIEW_TIMEOUT", "120"))                # 单次 critic 调用超时
+FEISHU_REPLY_MAX = int(os.environ.get("FEISHU_REPLY_MAX", "4800"))            # 飞书消息字符上限保险
+
+# 预读 principles（一次性，省 IO）
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_PRINCIPLES_FILE = _REPO_ROOT / "principles" / "core.md"
+PRINCIPLES_TEXT = _PRINCIPLES_FILE.read_text(encoding="utf-8") if _PRINCIPLES_FILE.exists() else ""
 
 executor = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="expert")
 
@@ -104,6 +122,55 @@ def strip_mention(text: str) -> str:
     return re.sub(r"@[\w_]+\s*", "", text).strip()
 
 
+
+
+def _review_with_retry(
+    expert_id: str,
+    question: str,
+    initial_output: str,
+    max_retries: int = MAX_REVIEW_RETRIES,
+    review_timeout: int = REVIEW_TIMEOUT,
+):
+    """对 expert 输出过 review_gate；FAIL 则 retry expert（带 issues feedback）。
+
+    返回 (final_output, verdict, attempts)。
+    review_gate 未装或调用异常时，跳过审查直接返回原 output。
+    """
+    if not REVIEW_GATE_ENABLED or not PRINCIPLES_TEXT:
+        return initial_output, None, 0
+
+    output = initial_output
+    last_verdict = None
+    attempts = 0
+
+    for attempt in range(max_retries + 1):
+        attempts = attempt + 1
+        try:
+            verdict = review_output(question, output, PRINCIPLES_TEXT, timeout=review_timeout)
+        except Exception as e:
+            log.warning("review_gate 调用失败 attempt=%d err=%s，跳过审查", attempt, e)
+            return output, None, attempts
+        last_verdict = verdict
+        if verdict.passed:
+            return output, verdict, attempts
+        # FAIL —— 还有 retry 配额则让 expert 改
+        if attempt < max_retries:
+            issues_text = "; ".join(f"§{i.check}: {i.what}（修法：{i.fix}）" for i in verdict.issues[:6])
+            retry_task = (
+                f"以下是用户原始问题：\n{question}\n\n"
+                f"你上次的回答未通过 Review Gate，violator issues:\n{issues_text}\n\n"
+                f"请按这些问题点逐条修正后重新回答完整版。"
+            )
+            log.info("review FAIL，retry expert attempt=%d issues=%d", attempt + 1, len(verdict.issues))
+            result = run_expert(expert_id, retry_task, timeout=WORKER_TIMEOUT)
+            if result.get("ok"):
+                output = (result.get("stdout") or "").strip() or output
+            else:
+                log.warning("retry expert 也失败，用上一版输出")
+                break
+    return output, last_verdict, attempts
+
+
 def handle_message(evt: dict) -> None:
     """单条消息的完整处理。在 worker 线程里跑。"""
     event_id = evt.get("event_id", "")
@@ -155,14 +222,32 @@ def handle_message(evt: dict) -> None:
         body = (result.get("stdout") or "").strip()
         if not body:
             body = "(专家执行成功但无输出)"
-        # 飞书文本消息长度上限保险，截断
-        if len(body) > 5000:
-            body = body[:4900] + "\n\n…(已截断)"
-        reply = f"【{router.explain(expert_id)}】({elapsed:.0f}s)\n\n{body}"
+
+        # Review Gate：审查 + 自动 retry
+        body, verdict, attempts = _review_with_retry(expert_id, question, body)
+        review_suffix = ""
+        if verdict is not None:
+            if verdict.passed:
+                review_suffix = f"\n\n— review✓ ({attempts} 次过)"
+            else:
+                issue_list = "\n".join(f"  • §{i.check}: {i.what}" for i in verdict.issues[:6])
+                review_suffix = (
+                    f"\n\n⚠ review 未过 ({attempts} 次尝试):\n{issue_list}"
+                )
+
+        # 先拼整个 reply，再对总长度做飞书 5000 上限截断
+        reply = f"【{router.explain(expert_id)}】({elapsed:.0f}s){review_suffix}\n\n{body}"
+        if len(reply) > FEISHU_REPLY_MAX:
+            # 优先保 header + suffix（review verdict 是关键信息），从 body 中段截
+            keep = FEISHU_REPLY_MAX - 100
+            reply = reply[:keep] + "\n\n…(已截断)"
     else:
         err = (result.get("stderr") or result.get("error") or "未知错误")[:1000]
         reply = f"【{router.explain(expert_id)}】执行失败 ({elapsed:.0f}s)\n\n{err}"
 
+    # 总长度兜底（无论 ok / fail 路径）
+    if len(reply) > FEISHU_REPLY_MAX:
+        reply = reply[:FEISHU_REPLY_MAX - 100] + "\n\n…(已截断)"
     reply_text(message_id, reply)
     log.info("回复完成 message_id=%s elapsed=%.1fs", message_id, elapsed)
 
