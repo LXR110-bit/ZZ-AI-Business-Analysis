@@ -1,0 +1,7 @@
+agent: claude
+branch: agent-claude/docs/v04-architecture
+files:
+  - docs/architecture/
+started: 2026-07-03T11:57:28+08:00
+expected_done: 2026-07-03T12:27:28+08:00
+reason: v0.4 workflow-first + agent-on-judgment 架构文档
