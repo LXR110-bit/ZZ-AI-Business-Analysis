@@ -42,3 +42,11 @@ data/agent_notes/
 
 # feishu_push outbox 落盘目录(dry-run / 兜底,不入库)
 tools/feishu_push/outbox/
+
+# monitor_lib_shared 运行时产物
+data/monitor_output/
+data/outbox/
+
+# 等价性验证快照(生产敏感数据,可复现,不入库)
+# verify 脚本(scripts/verify_equivalence_real.py)本身入库,数据不入
+data/real_snapshot/

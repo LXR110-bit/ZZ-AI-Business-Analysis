@@ -1,0 +1,148 @@
+{
+  "weeks": ["2025-W23", "2025-W24", "2025-W25", "2025-W26", "2025-W27"],
+  "rows": [
+    {
+      "category": "手机",
+      "modelName": "iPhone 15 Pro Max 256G",
+      "week": "2025-W23",
+      "evaUv": 1000,
+      "evaRate": 0.20,
+      "orderRate": 0.10,
+      "shipRate": 0.90,
+      "dealRate": 0.85,
+      "returnRate": 0.03
+    },
+    {
+      "category": "手机",
+      "modelName": "iPhone 15 Pro Max 256G",
+      "week": "2025-W24",
+      "evaUv": 1050,
+      "evaRate": 0.21,
+      "orderRate": 0.11,
+      "shipRate": 0.91,
+      "dealRate": 0.86,
+      "returnRate": 0.03
+    },
+    {
+      "category": "手机",
+      "modelName": "iPhone 15 Pro Max 256G",
+      "week": "2025-W25",
+      "evaUv": 1100,
+      "evaRate": 0.22,
+      "orderRate": 0.12,
+      "shipRate": 0.92,
+      "dealRate": 0.87,
+      "returnRate": 0.03
+    },
+    {
+      "category": "手机",
+      "modelName": "iPhone 15 Pro Max 256G",
+      "week": "2025-W26",
+      "evaUv": 1150,
+      "evaRate": 0.23,
+      "orderRate": 0.184,
+      "shipRate": 0.93,
+      "dealRate": 0.88,
+      "returnRate": 0.03
+    },
+    {
+      "category": "手机",
+      "modelName": "iPhone 15 Pro Max 256G",
+      "week": "2025-W27",
+      "evaUv": 1200,
+      "evaRate": 0.235,
+      "orderRate": 0.121,
+      "shipRate": 0.94,
+      "dealRate": 0.89,
+      "returnRate": 0.03
+    },
+    {
+      "category": "手机",
+      "modelName": "Redmi K70 Pro",
+      "week": "2025-W26",
+      "evaUv": 800,
+      "evaRate": 0.15,
+      "orderRate": 0.082,
+      "shipRate": 0.88,
+      "dealRate": 0.83,
+      "returnRate": 0.05
+    },
+    {
+      "category": "手机",
+      "modelName": "Redmi K70 Pro",
+      "week": "2025-W27",
+      "evaUv": 850,
+      "evaRate": 0.16,
+      "orderRate": 0.126,
+      "shipRate": 0.89,
+      "dealRate": 0.84,
+      "returnRate": 0.05
+    },
+    {
+      "category": "手机",
+      "modelName": "华为 Mate 60 Pro",
+      "week": "2025-W26",
+      "evaUv": 900,
+      "evaRate": 0.18,
+      "orderRate": 0.198,
+      "shipRate": 0.90,
+      "dealRate": 0.85,
+      "returnRate": 0.04
+    },
+    {
+      "category": "手机",
+      "modelName": "华为 Mate 60 Pro",
+      "week": "2025-W27",
+      "evaUv": 950,
+      "evaRate": 0.19,
+      "orderRate": 0.153,
+      "shipRate": 0.91,
+      "dealRate": 0.86,
+      "returnRate": 0.04
+    },
+    {
+      "category": "手机",
+      "modelName": "小样本机型 · 只有 10 UV",
+      "week": "2025-W26",
+      "evaUv": 10,
+      "evaRate": 0.30,
+      "orderRate": 0.20,
+      "shipRate": 0.95,
+      "dealRate": 0.90,
+      "returnRate": 0.02
+    },
+    {
+      "category": "手机",
+      "modelName": "小样本机型 · 只有 10 UV",
+      "week": "2025-W27",
+      "evaUv": 12,
+      "evaRate": 0.50,
+      "orderRate": 0.40,
+      "shipRate": 0.99,
+      "dealRate": 0.95,
+      "returnRate": 0.01
+    },
+    {
+      "category": "电脑",
+      "modelName": "MacBook Pro 14 M3",
+      "week": "2025-W26",
+      "evaUv": 500,
+      "evaRate": 0.25,
+      "orderRate": 0.15,
+      "shipRate": 0.88,
+      "dealRate": 0.82,
+      "returnRate": 0.02
+    },
+    {
+      "category": "电脑",
+      "modelName": "MacBook Pro 14 M3",
+      "week": "2025-W27",
+      "evaUv": 520,
+      "evaRate": 0.24,
+      "orderRate": 0.148,
+      "shipRate": 0.87,
+      "dealRate": 0.81,
+      "returnRate": 0.02
+    }
+  ]
+}
