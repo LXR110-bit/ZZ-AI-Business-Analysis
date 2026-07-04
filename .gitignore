@@ -36,3 +36,9 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent 协作 pad(见 docs/superpowers/handoffs/master_agent_bootstrap.md §六)
+data/agent_notes/
+
+# feishu_push outbox 落盘目录(dry-run / 兜底,不入库)
+tools/feishu_push/outbox/

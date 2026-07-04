@@ -1,0 +1,43 @@
+{
+  "msg_type": "interactive",
+  "card": {
+    "config": {"wide_screen_mode": true},
+    "header": {
+      "title": {"tag": "plain_text", "content": "🔷 机型监测周报 · {{week}}"},
+      "template": "blue"
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**📊 本周概况**\n覆盖机型 **{{total}}** · 命中异常 **{{watch_count}}** · 环比 {{delta_symbol}}{{delta}}"
+        }
+      },
+      {"tag": "hr"},
+      {
+        "tag": "div",
+        "text": {"tag": "lark_md", "content": "**⚠️ Top 3 需关注**"}
+      },
+      {"__loop__": "top_anomalies", "item_template": "monitor_weekly_item"},
+      {"tag": "hr"},
+      {
+        "tag": "action",
+        "actions": [
+          {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "查看完整报告"},
+            "type": "primary",
+            "url": "{{report_url}}"
+          },
+          {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "进入监测详情"},
+            "type": "default",
+            "url": "{{dashboard_url}}"
+          }
+        ]
+      }
+    ]
+  }
+}
