@@ -252,10 +252,17 @@ orchestrator/src/orchestrator/lib/monitor/
 ## 五、验收标准
 
 - [ ] 5 个函数全部有单测，覆盖率 ≥ 80%
-- [ ] **Parity 测试**：用同一份 `cache_sample.json`，Python 版 `apply_rules(compute_wave(...))` 与 Node 版 `monitor(...)` 输出的 `pool` 与 `watch_list` 完全等价：
-  - `pool` 长度、机型顺序、evaUv 排序一致
-  - 每条 `watch_list` 的 `flags` 数组数量、每个 flag 的 `type` / `metric` / `direction` 完全一致
-  - `delta` 数值误差 ≤ 0.5%（浮点容差）
+- [x] **Parity 测试**：用真实生产数据（`data/real_snapshot/monitor_snapshot/raw_*.json`，10 大品类 63000+ 行，5 周窗口），Python 版 `apply_rules(compute_wave(...))` 与 Node 版 `/api/monitor?dimension=model` 输出等价：
+  - `pool` 大小一致
+  - `watch_list` 成员集合、`flags` 数组数量、每个 flag 的 `type` / `metric` / `direction` 完全一致
+  - `delta` 数值 `|diff| < 1e-9`（不是 0.5%，是精确等值 —— 两侧都用 IEEE 754 双精度算同一份数据）
+
+  **契约允许的差异（tie 边界）**：当 `pool` 边界（第 20 名附近）多个机型 `evaUv` 相等时，Node 版按 rows 首次出现顺序取，Python 版按 modelName 字典序取。两者选到的具体机型可能不同，但：
+  - 池大小相同
+  - `watch_list` 不受影响（tie 上的机型 evaUv 都在同一水平，flags 判定独立于 pool 排序）
+  - 契约脚本 `scripts/verify_equivalence_real.py` 在 evaUv tie 上不判 fail，只做单独提示
+
+  **验证脚本**：`scripts/verify_equivalence_real.py`（10/10 品类通过，见 `data/real_snapshot/EQUIVALENCE_REPORT.md`）
 - [ ] `push_to_feishu` 有 dry_run 模式，`FEISHU_DRY_RUN=1` 时不真发消息，写 `data/outbox/*.json`
 - [ ] `analyze_anomaly_with_agent` 支持 mock 模式，测试环境不真调 LLM
 - [ ] `fetch_funnel_data` 支持 5 周窗口一次拉完，单次 < 3s

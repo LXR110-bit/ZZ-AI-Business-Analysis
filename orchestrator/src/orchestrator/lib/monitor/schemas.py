@@ -53,7 +53,9 @@ class FunnelRow(BaseModel):
     category: str = Field(..., description="品类,例:手机")
     modelName: str = Field(..., description="机型名,例:iPhone 15 Pro Max 256G")
     week: str = Field(..., description="周次,ISO 周或自定义格式")
-    evaUv: int = Field(..., ge=0, description="估价 UV,分母指标")
+    # 注意:evaUv 是「周日均估价 UV」,可能是小数(如 0.1429)。
+    # Node 版 monitor.js 全程当浮点处理,Python 版必须一致。
+    evaUv: float = Field(..., ge=0.0, description="估价 UV(周日均),分母指标")
 
     evaRate: Optional[float] = Field(None, description="估价完成率")
     orderRate: Optional[float] = Field(None, description="估价下单率")
@@ -93,7 +95,7 @@ class MonitorRules(BaseModel):
         description="波动阈值,|delta| >= 此值即命中 wave flag",
     )
     trendWeeks: int = Field(3, ge=2, description="连续 N 周同向阈值")
-    minEvaUv: int = Field(15, ge=0, description="分母保护,evaUv 低于此值不参与判定")
+    minEvaUv: float = Field(15.0, ge=0.0, description="分母保护,evaUv 低于此值不参与判定")
 
     rates: List[RateMeta] = Field(
         default_factory=lambda: [
