@@ -1,0 +1,35 @@
+{
+  "week": "2025-W27",
+  "total": 12847,
+  "watch_count": 438,
+  "delta_symbol": "+",
+  "delta": 12,
+  "top_anomalies": [
+    {
+      "rank": 1,
+      "name": "iPhone 15 Pro Max 256G",
+      "metric_current": "orderRate 12.1%",
+      "metric_prev": "orderRate 18.4%",
+      "delta_label": "(-34.2%)",
+      "hypothesis": "疑似上周官方降价,GMV 相应下滑"
+    },
+    {
+      "rank": 2,
+      "name": "Redmi K70 Pro",
+      "metric_current": "orderRate 12.6%",
+      "metric_prev": "orderRate 8.2%",
+      "delta_label": "(+53.6%)",
+      "hypothesis": "疑似小米 618 尾款释放,可持续观察"
+    },
+    {
+      "rank": 3,
+      "name": "华为 Mate 60 Pro",
+      "metric_current": "orderRate 15.3%",
+      "metric_prev": "orderRate 19.8%",
+      "delta_label": "(-22.7%)",
+      "hypothesis": "无法在现有数据内解释,建议人工排查"
+    }
+  ],
+  "report_url": "http://47.84.94.234:8848/report?week=2025-W27",
+  "dashboard_url": "http://47.84.94.234:8848/?dimension=model&week=2025-W27&from=alert"
+}
