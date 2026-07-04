@@ -1,0 +1,37 @@
+name: monitor-lib-tests
+
+# 触发:任何 push 或 PR 都跑。
+# 目的:守住 orchestrator/src/orchestrator/lib/monitor/ 的 Python 版单测(35 项),
+#      防止未来 Python 版规则改动出现回归。
+# 范围:纯单测,不跑跨语言等价性(那需要 Node + 生产数据快照,是另开的 P2 spec)。
+#      详见 docs/superpowers/handoffs/data_agent_status_2025-07-04_pm.md §五。
+#
+# 工具:用 uv 而不是 pip。原因:orchestrator/pyproject.toml 用 [tool.uv.sources]
+#      声明 review-gate 为 sibling 本地包(../review_gate),pip 不认这段,
+#      会去 PyPI 找同名包然后挂掉。uv 认,且带 lockfile 复现。
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync orchestrator dependencies (含 sibling review_gate)
+        working-directory: orchestrator
+        run: uv sync --group dev
+
+      - name: Run monitor lib tests
+        working-directory: orchestrator
+        run: uv run pytest src/orchestrator/lib/monitor/tests/ -v
