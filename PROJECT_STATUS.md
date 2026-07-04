@@ -88,6 +88,8 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 6. **规则管理入口** = 服务器现役 dashboard (`http://47.84.94.234:8848/`) **已有"规则配置" tab + `GET/PUT /api/rules` 端点**；任务不是"新加 tab"，而是"确保 Python 侧 monitor_lib_shared 输出的规则 shape 跟现役 `/api/rules` 五字段（`poolTopN/poolMinWeek/waveThreshold/trendWeeks/minEvaUv` + `rates[]`）严格一致"（2026-07-04 主控从服务器现场核对）
 7. **数据契约 v1.0 固化** = 数据 Agent `docs/superpowers/handoffs/data_to_frontend_contract.md` 契约跟服务器 `/api/monitor` 现役 shape 100% 匹配（顶层 keys/pool item 24 字段/delta 5 转化率/trend up|down|null 语义，全 camelCase）→ 契约 v1.0 生效（2026-07-04 主控核对）
 8. **前端接入走影子模式（路径 A）** = Python 端先写 `cache.python.json`，Node 版继续写 `cache.json`；diff = 0 后切换到 Python 主写。前端 REST 端点零改动、字段命名零改动。B 路径（Python 直接 serve API + 前端改 fetch URL）作为中期目标，不本周做（2026-07-04 主控与用户讨论）
+9. **凭据管理铁律**（项目组共识）= App Secret / 私钥 / Token 等敏感凭据**禁止**出现在聊天消息、代码、环境变量、commit、日志里。仅存在于服务器 `/root/.lark-channel/` 加密 keystore；取用必须通过 `lark-channel-bridge secrets get` 的 stdin JSON 协议（`{protocolVersion:1, provider:"bridge", ids:[...]}`）。所有 sub-agent 一律遵守（2026-07-04 主控 + 用户确认，来源：数据 Agent phase1 handoff）
+10. **服务器接入通路** = SSH 私钥仅在用户 Mac 上（`~/.ssh/id_ed25519`，Port 443 / User admin），别 agent 不共享。**所有 sub-agent 通过 8848 HTTP API 消费真实数据**（`GET /api/data` / `GET /api/monitor` 等），不各自 SSH。这是分工也是安全设计（2026-07-04 主控 + 数据 Agent 共识）
 
 ---
 
