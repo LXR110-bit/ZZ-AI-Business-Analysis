@@ -52,6 +52,10 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | #17 · 飞书推送 MVP 补合 | ✅ 已合并 | `tools/feishu_push/` 真正到 main |
 | #18 · monitor_lib_parity_ci spec | ✅ 已合并 | P2 CI 防护 spec |
 | #19 · monitor_lib_shared Python 版 + CI | ✅ 已合并 | 数据 Agent 核心交付 |
+| #20 · PROJECT_STATUS · 数据 Agent 交付完成登记 | ✅ 已合并 | doc 同步 |
+| #22 · PROJECT_STATUS · 登记 Issue #21 待修 | ✅ 已合并 | doc 同步 |
+| #23 · PROJECT_STATUS · 数据血缘专门段落 | ✅ 已合并 | ai数据导入 Agent 从代码查证 |
+| #24 · category 接入 Playbook | ✅ 已合并 | 完整接入模板，未来 category sub-agent 一键启动 |
 
 ---
 
@@ -140,10 +144,26 @@ pipeline.py (skills/workflows/机型周数据/)
 
 ## 下一次会话建议聚焦
 
-择一：
+**机型维度已跑通到"Python 版算法库合入 main + 前端契约对齐 + 飞书推送 MVP + Node 版生产环境跑着"**。下一步任务分组：
 
-- **A. 开工 monitor_lib_shared**（进入实施，产出可跑代码）
-- **B. 先解阻塞**（找业务方确认 category rules；开飞书 webhook）
-- **C. 先做 project_status**（跳过 monitor 主线，先把主控看板搭起来）
+### A. category 维度接入（下一大战役，主控已准备好 playbook）
 
-推荐 B → A 的顺序。B 是低耗时的沟通工作，可以并行给别人推进；A 是主线代码，需要专注时段。
+参考：`docs/superpowers/handoffs/category_onboarding_playbook.md`（PR #24）
+
+- **Phase 1 阻塞**：飞书新建 2 张品类表（用户操作），提供 `app_token`
+- **Phase 2 阻塞**：`category_rules.json` 初始阈值需业务方 review
+- 未来拉一个"category 接入 sub-agent"专职做，主控引导词已在 playbook §七写好
+
+### B. 待修阻塞项收尾
+
+- **Issue #21**：zz-server model-tag-monitor wave.js calcTrend 显式 null 填充（5 行代码，等 SSH 机会）
+- **pipeline.py git 化 + 清 12 个 .bak**：等 ai数据导入 Agent 跑通 W27 后主控帮起 PR
+
+### C. 长期地基
+
+- `monitor_lib_parity_ci` 实施（PR #18 spec 定稿），本 PR #19 合入稳定 3-5 天后启动
+- `agent_hook.py` 真实版（依赖 spawn_agent 稳定用法）
+- `fetcher.py` HTTP 真实版（依赖飞书多维表格 app_token）
+- `project_status` skill 上线（P2，可并行）
+
+**推荐顺序**：先 B 收尾（低成本清理战场）→ A 开工 category 接入（下一大战役）→ C 长期地基（跟随进度）。
