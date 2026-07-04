@@ -60,10 +60,33 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 1. **category_rules 初始值** — 需要业务方 review 阈值，否则 `category_weekly_monitor` 无法上线
 2. ~~**飞书推送凭据** — 走 **App 模式**~~ **✅ 已解**：`tools/feishu_push/send_card.py` MVP 完成（PR #14），双通道 + 三级降级 + 30KB 保护 + LARK_CLI_CMD 环境变量桥接。zz-server → AI分析群真发验证通过（message_id `om_x100b6bbf17bc30a4c2d27b5c9f8a4bd`，一次成功没走降级）。截图证据在 `docs/screenshots/feishu-card-monitor-weekly-w27.png`。**遗留**：(a) `orchestrator/lib/monitor/pusher.py` 薄封装等 monitor spec 实施时接入；(b) 4 个业务群 webhook 到位后补自定义机器人通道真发验证（代码就绪）
 3. **zz-server model-tag-monitor wave.js calcTrend 显式 null 填充**（Issue #21）— 3.4% pool item trend 返回 `{}` 违反契约。前端 Agent 已加 `normalizeTrend` 归一化兜底，不阻塞前端；Python 版正确，不影响未来接管。**优先级 P1**，等有 SSH 的时机（用户 / ai数据导入 Agent HiNet 解阻塞后）修 5 行代码
-3. **spawn_agent 稳定用法** — 数据 Agent `agent_hook.py` 真实版阻塞项；主控代查 event_handler 那边（2026-07-04 主控接手）
-4. **飞书多维表格接入** — 数据 Agent `fetcher.py` 真实版阻塞项：需要 `app_token / table_id / 字段映射`；只能用户给（涉及具体飞书表 URL 和字段对应关系）
-5. **服务器 SSH 通路** — 台湾 HiNet 通不了 `47.84.94.234`；主控 `curl` 直接 HTTP 访问 `:8848` 端点可用，作为影子模式期间的备用回退路径
-6. **性能 tech debt**（不紧急）— 现役 `/api/data` 62MB、`/api/monitor` 2.8MB，前端全量下载；influenced dashboard 加载慢，v2 时分页/增量
+4. **spawn_agent 稳定用法** — 数据 Agent `agent_hook.py` 真实版阻塞项；主控代查 event_handler 那边（2026-07-04 主控接手）
+5. **飞书多维表格接入** — 数据 Agent `fetcher.py` 真实版阻塞项：需要 `app_token / table_id / 字段映射`；只能用户给（涉及具体飞书表 URL 和字段对应关系）
+6. **服务器 SSH 通路** — 台湾 HiNet 通不了 `47.84.94.234`；主控 `curl` 直接 HTTP 访问 `:8848` 端点可用，作为影子模式期间的备用回退路径
+7. **性能 tech debt**（不紧急）— 现役 `/api/data` 62MB、`/api/monitor` 2.8MB，前端全量下载；influenced dashboard 加载慢，v2 时分页/增量
+
+---
+
+## 数据血缘（2026-07-04 ai数据导入 Agent 从代码查证）
+
+> **权威来源**：`skills/workflows/机型周数据/pipeline.py` L51/55/808/816 直接调 `upsert_tab`
+>
+> **修正**：用户记忆里的"月汇总表 → pipeline → 中间表"是错的，没有中间月汇总表环节。
+
+```
+Zzhu 平台每日邮件 (zip ~50MB)
+  ↓ IMAP 抓取 → openpyxl 解 xlsx → pandas group by
+  ↓
+pipeline.py (skills/workflows/机型周数据/)
+  ↓ upsert_tab() 直接写飞书（两个终点表并行写）
+  ↓
+├─ SUMMARY_TOKENS[月]   → 飞书周汇总表  ← Dashboard 从这个读
+└─ DAILY_AVG_TOKENS[月] → 飞书周日均表  日均 = 汇总 ÷ 7，pipeline 内部现算，不从任何中间表读
+```
+
+- SUMMARY_TOKENS/DAILY_AVG_TOKENS 常量定义在 `constants.py`
+- 日均表 df_avg 由 `_to_daily_avg_df(df_sum, sid)` 从汇总当场算，**不是从中间月汇总表读**
+- Zzhu 邮件的 `zip` 每日到，pipeline 按 `--months 2026-06 --skip-notify` 参数增量处理
 
 ---
 
@@ -108,7 +131,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | 项目主控 agent（本文件维护者） | 全局协调、维护 PROJECT_STATUS、对齐 sub-agent、契约裁决 | `feature/monitor-specs` | 在岗 |
 | ai数据呈现（数据 Agent） | 已交付 `monitor_lib_shared` Python 版（wave/rules/schemas + fetcher/agent_hook/pusher/cli end-to-end mock）+ 真实生产数据 10 品类等价性验证 + CI workflow | ✅ PR #19 合入 main | **收工**；等 fetcher HTTP 真实版任务派发时激活 |
 | 页面交互UI优化agent（前端 Agent） | 实施 dashboard 代码（下钻链路 + 消费 Python 版 `cache.json`） | PR #12 / `feature/dashboard-drilldown`（stash 已还原，1802 行工作树完好） | 待命，等契约同步 |
-| ai数据导入 | 飞书 base pipeline（`_cells_clear_retry`/`auto-shrink`/`max_row` 补丁堆积中）；主控已发根治建议（append-only / upsert by week） | 上游数据管道 | 处理主控诊断中；台湾 HiNet 通不了 SSH 阻塞真实调试 |
+| ai数据导入 | 飞书 base pipeline（W27 交付：3 bug 全修 + 数据血缘澄清；正在按主控 B 策略跑 csv-put，快速 tolerate + 收尾 row count 硬校验） | 上游数据管道 | 处理中，跑通后主控帮起 PR git 化 pipeline + 清 .bak |
 | 飞书推送 Agent 引导 | ✅ 已完成 MVP：`tools/feishu_push/send_card.py` 双通道三级降级 + 3 卡片模板 + 17 单测 + AI分析群真发验证 | PR #14 → 补合 #17 到 main | **收工**；下次 monitor spec 实施 pusher.py 薄封装时激活 |
 
 主控对 sub-agent 的原则：不越权抢活，只做对齐/传话/记账；有决策变更时主动同步到相关 session。
