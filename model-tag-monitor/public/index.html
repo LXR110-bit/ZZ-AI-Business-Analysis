@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>机型标签监测面板</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+  />
+  <link rel="stylesheet" href="/style.css?v=20250124d" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="title">机型标签监测</span>
+      <span class="meta" id="meta"></span>
+    </div>
+    <div class="actions">
+      <label class="user-label">
+        我是
+        <input id="userName" placeholder="姓名" />
+      </label>
+      <button id="btnSync" class="primary">同步飞书数据</button>
+      <button id="btnExport">导出配置</button>
+      <label class="btn-file">
+        导入配置
+        <input id="fileImport" type="file" accept=".json" hidden />
+      </label>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="monitor">监测结果</button>
+    <button class="tab" data-tab="tags">标签管理</button>
+    <button class="tab" data-tab="rules">规则配置</button>
+    <button class="tab" data-tab="logs">操作日志</button>
+  </nav>
+
+  <main>
+    <!-- 监测结果 -->
+    <section class="page" id="page-monitor">
+      <div class="flow-hint">
+        <span class="step"><b>1</b> 选周次 / 品类 / 视图</span>
+        <span class="sep">→</span>
+        <span class="step"><b>2</b> 表格自动刷新</span>
+        <span class="sep">→</span>
+        <span class="step"><b>3</b> 关注 <span style="color:var(--c-down);font-weight:600;">红条</span> 与 <span style="color:var(--c-warn-ink);font-weight:600;">黄条</span> 行，点末列「打标签 →」标注</span>
+      </div>
+      <div class="page-header">
+        <div class="filters">
+          <label>目标周
+            <select id="monitorWeek"></select>
+          </label>
+          <label>品类
+            <select id="monitorCategory">
+              <option value="">全部品类</option>
+            </select>
+          </label>
+          <label>视图
+            <select id="monitorView">
+              <option value="watch">仅需关注</option>
+              <option value="pool">TOP N 全量</option>
+            </select>
+          </label>
+          <button id="btnMonitorRun" class="primary">确认</button>
+        </div>
+        <div class="summary" id="monitorSummary"></div>
+      </div>
+      <div class="table-wrap">
+        <table id="monitorTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 标签管理 -->
+    <section class="page hidden" id="page-tags">
+      <div class="flow-hint">
+        <span class="step"><b>1</b> 在「编辑标签字典」里配好本品类可选标签</span>
+        <span class="sep">→</span>
+        <span class="step"><b>2</b> 下面表格里找到目标机型</span>
+        <span class="sep">→</span>
+        <span class="step"><b>3</b> 点该行「编辑」，勾选标签即完成打标</span>
+      </div>
+      <div class="page-header">
+        <div class="filters">
+          <label>品类
+            <select id="tagsCategory"></select>
+          </label>
+          <label>搜索机型
+            <input id="tagsSearch" placeholder="机型关键词，回车应用" />
+          </label>
+          <button id="btnTagsRun" class="primary">确认</button>
+          <button id="btnEditVocab">编辑标签字典</button>
+        </div>
+        <div class="summary" id="tagsSummary"></div>
+      </div>
+      <div class="table-wrap">
+        <table id="tagsTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 规则配置 -->
+    <section class="page hidden" id="page-rules">
+      <div class="page-header">
+        <h2>全局监测规则</h2>
+        <p class="hint">规则改动会立刻影响"监测结果"页,所有人共享同一份规则。</p>
+      </div>
+      <form id="rulesForm" class="rules-form">
+        <label>
+          <span>入池:每个品类取估价 UV TOP N</span>
+          <input type="number" name="poolTopN" min="1" max="200" />
+        </label>
+        <label>
+          <span>波动阈值(转化率周环比)</span>
+          <input type="number" name="waveThreshold" min="0" max="1" step="0.01" />
+          <em class="unit">例如 0.10 = 10%</em>
+        </label>
+        <label>
+          <span>连续同向周数</span>
+          <input type="number" name="trendWeeks" min="2" max="10" />
+        </label>
+        <label>
+          <span>分母保护:估价 UV 日均下限</span>
+          <input type="number" name="minEvaUv" min="0" />
+          <em class="unit">日均估价 UV 低于该值的机型不参与波动/趋势判断</em>
+        </label>
+        <div class="rate-list">
+          <h3>观测的转化率(固定)</h3>
+          <ul>
+            <li>估价完成率 = 估价UV / 机况UV</li>
+            <li>估价下单率 = 下单UV / 估价UV</li>
+            <li>估价发货率 = 发货量 / 估价UV</li>
+            <li>估价成交率 = 成交量 / 估价UV</li>
+            <li>质检退回率 = 退回量 / 质检量</li>
+          </ul>
+        </div>
+        <div class="actions">
+          <button type="submit" class="primary">保存规则</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 操作日志 -->
+    <section class="page hidden" id="page-logs">
+      <div class="page-header">
+        <h2>操作日志(最近 200 条)</h2>
+      </div>
+      <div class="table-wrap">
+        <table id="logsTable">
+          <thead>
+            <tr><th>时间</th><th>用户</th><th>动作</th><th>详情</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- 标签编辑弹层 -->
+  <div class="modal hidden" id="modalTag">
+    <div class="modal-body">
+      <h3 id="modalTagTitle"></h3>
+      <div class="tag-groups" id="modalTagGroups"></div>
+      <label>备注
+        <textarea id="modalTagNote" rows="2"></textarea>
+      </label>
+      <div class="actions">
+        <button id="btnModalCancel">取消</button>
+        <button id="btnModalSave" class="primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 标签字典弹层 -->
+  <div class="modal hidden" id="modalVocab">
+    <div class="modal-body wide">
+      <h3>标签字典</h3>
+      <p class="hint">这里只<b>定义可选标签</b>。定义好之后，去「监测结果 / 标签管理」页点某个机型的「打标」按钮，就能勾选下面这些标签给它打上。</p>
+      <div class="vocab-groups">
+        <label>生命周期<span class="sub">全品类通用（如：新品/在售/EOL）</span><textarea data-key="lifecycle" rows="4"></textarea></label>
+        <label>价格段<span class="sub">全品类通用（如：高端/中端/入门）</span><textarea data-key="price" rows="4"></textarea></label>
+        <label>核心度<span class="sub">全品类通用（如：核心机/长尾）</span><textarea data-key="core" rows="4"></textarea></label>
+      </div>
+      <h4>品类自定义标签</h4>
+      <p class="hint">按品类各自的业务口径加。左边填品类名，右边每行一个标签。</p>
+      <div id="vocabCustom"></div>
+      <datalist id="modelListSuggest"></datalist>
+      <div class="actions">
+        <button id="btnVocabAddCat">+ 加一个品类</button>
+        <button id="btnVocabCancel">取消</button>
+        <button id="btnVocabSave" class="primary">保存字典</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js?v=20250124d"></script>
+</body>
+</html>

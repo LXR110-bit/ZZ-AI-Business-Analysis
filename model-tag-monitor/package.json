@@ -1,0 +1,17 @@
+{
+  "name": "model-tag-monitor",
+  "version": "0.1.0",
+  "description": "机型标签管理 + 转化率异常监测",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "compression": "^1.8.1",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
