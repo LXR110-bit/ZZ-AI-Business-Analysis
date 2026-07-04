@@ -1,0 +1,7 @@
+{
+  "tag": "div",
+  "text": {
+    "tag": "lark_md",
+    "content": "**{{rank}}. {{name}}**\n{{metric_current}} ← {{metric_prev}} {{delta_label}}\n_{{hypothesis}}_"
+  }
+}
