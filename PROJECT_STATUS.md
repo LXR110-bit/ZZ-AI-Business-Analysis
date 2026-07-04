@@ -30,11 +30,11 @@
 
 | Spec | 状态 | 优先级 | 阻塞 | 估工 | 建议时间窗 |
 |---|---|---|---|---|---|
-| monitor_lib_shared | 📝 定稿待启动 | P0 | 无 | 5.5 天 | W28 |
-| model_weekly_monitor | 📝 定稿待启动 | P1 | monitor_lib_shared | 4.5 天 | W28-W29 |
-| category_weekly_monitor | 📝 定稿待启动 | P1 | monitor_lib_shared + rules 业务确认 | 2 天 | W29-W30 |
+| monitor_lib_shared | ✅ **已实施到 main**（PR #19） | P0 | 无 | 已交付 | W27 完成 |
+| model_weekly_monitor | 📝 定稿待启动 | P1 | monitor_lib_shared ✅ / fetcher HTTP 真实版 | 4.5 天 | W28 |
+| category_weekly_monitor | 📝 定稿待启动 | P1 | monitor_lib_shared ✅ / rules 业务确认 / fetcher HTTP 真实版 | 2 天 | W29 |
 | project_status | 📝 定稿待启动 | P2 | 无 | 3.5 天 | 可并行 |
-| monitor_lib_parity_ci | 📝 定稿待启动 | P2 | monitor_lib_shared 稳定 3-5 天 | 0.5 天 | monitor_lib_shared 合并后 |
+| monitor_lib_parity_ci | 📝 定稿待启动 | P2 | monitor_lib_shared 稳定 3-5 天（本 PR 合入后计时） | 0.5 天 | W28 后期 |
 
 Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 
@@ -45,7 +45,13 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | PR | 状态 | 说明 |
 |---|---|---|
 | [#12 · dashboard 下钻链路](https://github.com/LXR110-bit/ZZ-AI-Business-Analysis/pull/12) | ⏸ 暂缓 | 前端下钻交互，等 monitor skill 落地后重新规划输出面板 |
-| `feature/monitor-specs` (本分支) | 🟢 待合并 | 本次 4 份 spec |
+| #13 · 主控 W27 第一批 | ✅ 已合并 | 4 份 spec + 3 份 handoff + PROJECT_STATUS |
+| #14 · 飞书推送 MVP（原始） | ⚠️ merge 但 base 走废弃分支 | 补合见 #17 |
+| #15 · 数据契约 v1.0 | ✅ 已合并 | `docs/superpowers/handoffs/data_to_frontend_contract.md` |
+| #16 · PROJECT_STATUS 飞书推送登记 | ✅ 已合并 | doc 同步 |
+| #17 · 飞书推送 MVP 补合 | ✅ 已合并 | `tools/feishu_push/` 真正到 main |
+| #18 · monitor_lib_parity_ci spec | ✅ 已合并 | P2 CI 防护 spec |
+| #19 · monitor_lib_shared Python 版 + CI | ✅ 已合并 | 数据 Agent 核心交付 |
 
 ---
 
@@ -99,10 +105,10 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | Session | 职责（2026-07-04 修正） | 关联产物 | 状态 |
 |---|---|---|---|
 | 项目主控 agent（本文件维护者） | 全局协调、维护 PROJECT_STATUS、对齐 sub-agent、契约裁决 | `feature/monitor-specs` | 在岗 |
-| ai数据呈现（数据 Agent） | 实施 `monitor_lib_shared` Python 版（wave/rules/schemas 已完成，跨语言等价性验证过 Node 版；mock 版 fetcher/agent_hook/pusher 已交付） | `feature/monitor-lib-shared`（origin 3 commits）+ 契约文档 v1.0 | 待命，等 3 个真实版阻塞解 |
+| ai数据呈现（数据 Agent） | 已交付 `monitor_lib_shared` Python 版（wave/rules/schemas + fetcher/agent_hook/pusher/cli end-to-end mock）+ 真实生产数据 10 品类等价性验证 + CI workflow | ✅ PR #19 合入 main | **收工**；等 fetcher HTTP 真实版任务派发时激活 |
 | 页面交互UI优化agent（前端 Agent） | 实施 dashboard 代码（下钻链路 + 消费 Python 版 `cache.json`） | PR #12 / `feature/dashboard-drilldown`（stash 已还原，1802 行工作树完好） | 待命，等契约同步 |
 | ai数据导入 | 飞书 base pipeline（`_cells_clear_retry`/`auto-shrink`/`max_row` 补丁堆积中）；主控已发根治建议（append-only / upsert by week） | 上游数据管道 | 处理主控诊断中；台湾 HiNet 通不了 SSH 阻塞真实调试 |
-| 飞书推送 Agent 引导 | ✅ 已完成 MVP（PR #14 待 merge）：`tools/feishu_push/send_card.py` 双通道三级降级 + 3 卡片模板 + 17 单测 + AI分析群真发验证 | tools/feishu_push/ | **收工**；下次 monitor spec 实施 pusher.py 薄封装时激活 |
+| 飞书推送 Agent 引导 | ✅ 已完成 MVP：`tools/feishu_push/send_card.py` 双通道三级降级 + 3 卡片模板 + 17 单测 + AI分析群真发验证 | PR #14 → 补合 #17 到 main | **收工**；下次 monitor spec 实施 pusher.py 薄封装时激活 |
 
 主控对 sub-agent 的原则：不越权抢活，只做对齐/传话/记账；有决策变更时主动同步到相关 session。
 
