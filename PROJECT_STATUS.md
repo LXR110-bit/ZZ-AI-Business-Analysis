@@ -51,7 +51,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 ## 已知阻塞
 
 1. **category_rules 初始值** — 需要业务方 review 阈值，否则 `category_weekly_monitor` 无法上线
-2. **飞书群 webhook** — 机型/品类/项目状态各需一个独立群或独立 bot；测试群用户 2026-07-04 提供了一个凭据（`oc_` 开头），疑似 `open_chat_id` 而非自定义机器人 webhook URL，待用户核对回传（飞书推送 agent 需要的是 `https://open.feishu.cn/open-apis/bot/v2/hook/<uuid>` 那种）
+2. **飞书推送凭据** — 走 **App 模式**（非 webhook）：App ID `cli_aab4e49b7bb95bd3`，App Secret 在 macOS keychain / 服务器环境变量；测试群 chat_id `oc_f84e79531cfbd11c42196c774094dafd`。飞书推送 agent 2026-07-04 已确认收到，实施中。剩余机型/品类/项目状态群仍需分别开通
 3. **spawn_agent 稳定性** — v0.4 实施中，`monitor_lib_shared` 联调时需确认接口冻结
 
 ---
@@ -94,7 +94,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | ai数据呈现 | dashboard 下钻 + 规则管理 tab | PR #12 / `feature/dashboard-drilldown` | 等用户 review 方案 |
 | ai数据导入 | 飞书 base W26/W27 数据补齐 | 上游数据 | 等用户在飞书 UI 清数据 |
 | 飞书推送 Agent 引导 | 飞书卡片 + dashboard URL 最小闭环，产出 `pusher.py` | monitor_lib_shared 的 pusher 部分 | 等 webhook URL |
-| 页面交互UI优化agent | 与 "ai数据呈现" 职责疑似重叠 | 未产出 | 待评估是否合并 |
+| 页面交互UI优化agent | Launch preview 视觉验收（"ai数据呈现" 的协作方，不重复） | 待 dashboard 代码到位后跑 preview | 等上游代码 |
 
 主控对 sub-agent 的原则：不越权抢活，只做对齐/传话/记账；有决策变更时主动同步到相关 session。
 
