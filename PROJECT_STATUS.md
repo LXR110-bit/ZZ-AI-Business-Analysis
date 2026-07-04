@@ -1,7 +1,7 @@
 # PROJECT_STATUS
 
 > 项目主控视图。初版由人工维护，`project_status` skill 上线后 AI 自动接管。
-> 最后更新：2025-07-04 · 手工
+> 最后更新：2026-07-04 · 主控 Agent（手工）
 
 ---
 
@@ -51,7 +51,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 ## 已知阻塞
 
 1. **category_rules 初始值** — 需要业务方 review 阈值，否则 `category_weekly_monitor` 无法上线
-2. **飞书群 webhook** — 机型/品类/项目状态各需一个独立群或独立 bot，尚未开通
+2. **飞书群 webhook** — 机型/品类/项目状态各需一个独立群或独立 bot；测试群用户 2026-07-04 提供了一个凭据（`oc_` 开头），疑似 `open_chat_id` 而非自定义机器人 webhook URL，待用户核对回传（飞书推送 agent 需要的是 `https://open.feishu.cn/open-apis/bot/v2/hook/<uuid>` 那种）
 3. **spawn_agent 稳定性** — v0.4 实施中，`monitor_lib_shared` 联调时需确认接口冻结
 
 ---
@@ -82,6 +82,21 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 3. **AI 归因位置** = 写在 workflow 里，spawn_agent 判断
 4. **触发方式** = cron 周自动（+ 手动 @）
 5. **项目仪表盘** = 新 skill `project_status` 自动生成
+6. **规则管理入口** = 直接进现有 dashboard 加 "规则管理" tab，不新起 spec、不新起页面；实施由 "ai数据呈现" session 负责（对应 PR #12 / `feature/dashboard-drilldown`），跟下钻交互合并推进（2026-07-04 主控确认）
+
+---
+
+## 活跃 sub-agent 分工（CCD sessions）
+
+| Session | 职责 | 关联产物 | 状态 |
+|---|---|---|---|
+| 项目主控 agent（本文件维护者） | 全局协调、维护 PROJECT_STATUS、对齐 sub-agent | `feature/monitor-specs` | 在岗 |
+| ai数据呈现 | dashboard 下钻 + 规则管理 tab | PR #12 / `feature/dashboard-drilldown` | 等用户 review 方案 |
+| ai数据导入 | 飞书 base W26/W27 数据补齐 | 上游数据 | 等用户在飞书 UI 清数据 |
+| 飞书推送 Agent 引导 | 飞书卡片 + dashboard URL 最小闭环，产出 `pusher.py` | monitor_lib_shared 的 pusher 部分 | 等 webhook URL |
+| 页面交互UI优化agent | 与 "ai数据呈现" 职责疑似重叠 | 未产出 | 待评估是否合并 |
+
+主控对 sub-agent 的原则：不越权抢活，只做对齐/传话/记账；有决策变更时主动同步到相关 session。
 
 ---
 
