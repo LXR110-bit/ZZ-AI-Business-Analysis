@@ -34,6 +34,7 @@
 | model_weekly_monitor | 📝 定稿待启动 | P1 | monitor_lib_shared | 4.5 天 | W28-W29 |
 | category_weekly_monitor | 📝 定稿待启动 | P1 | monitor_lib_shared + rules 业务确认 | 2 天 | W29-W30 |
 | project_status | 📝 定稿待启动 | P2 | 无 | 3.5 天 | 可并行 |
+| monitor_lib_parity_ci | 📝 定稿待启动 | P2 | monitor_lib_shared 稳定 3-5 天 | 0.5 天 | monitor_lib_shared 合并后 |
 
 Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 
