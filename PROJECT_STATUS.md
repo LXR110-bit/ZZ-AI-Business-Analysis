@@ -51,7 +51,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 ## 已知阻塞
 
 1. **category_rules 初始值** — 需要业务方 review 阈值，否则 `category_weekly_monitor` 无法上线
-2. **飞书推送凭据** — 走 **App 模式**：App ID `cli_aab4e49b7bb95bd3`，App Secret 在 macOS keychain / 服务器环境变量；测试群 chat_id `oc_f84e79531cfbd11c42196c774094dafd`。飞书推送 agent 实施 `tools/feishu_push/send_card.py` 中
+2. ~~**飞书推送凭据** — 走 **App 模式**~~ **✅ 已解**：`tools/feishu_push/send_card.py` MVP 完成（PR #14），双通道 + 三级降级 + 30KB 保护 + LARK_CLI_CMD 环境变量桥接。zz-server → AI分析群真发验证通过（message_id `om_x100b6bbf17bc30a4c2d27b5c9f8a4bd`，一次成功没走降级）。截图证据在 `docs/screenshots/feishu-card-monitor-weekly-w27.png`。**遗留**：(a) `orchestrator/lib/monitor/pusher.py` 薄封装等 monitor spec 实施时接入；(b) 4 个业务群 webhook 到位后补自定义机器人通道真发验证（代码就绪）
 3. **spawn_agent 稳定用法** — 数据 Agent `agent_hook.py` 真实版阻塞项；主控代查 event_handler 那边（2026-07-04 主控接手）
 4. **飞书多维表格接入** — 数据 Agent `fetcher.py` 真实版阻塞项：需要 `app_token / table_id / 字段映射`；只能用户给（涉及具体飞书表 URL 和字段对应关系）
 5. **服务器 SSH 通路** — 台湾 HiNet 通不了 `47.84.94.234`；主控 `curl` 直接 HTTP 访问 `:8848` 端点可用，作为影子模式期间的备用回退路径
@@ -101,7 +101,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | ai数据呈现（数据 Agent） | 实施 `monitor_lib_shared` Python 版（wave/rules/schemas 已完成，跨语言等价性验证过 Node 版；mock 版 fetcher/agent_hook/pusher 已交付） | `feature/monitor-lib-shared`（origin 3 commits）+ 契约文档 v1.0 | 待命，等 3 个真实版阻塞解 |
 | 页面交互UI优化agent（前端 Agent） | 实施 dashboard 代码（下钻链路 + 消费 Python 版 `cache.json`） | PR #12 / `feature/dashboard-drilldown`（stash 已还原，1802 行工作树完好） | 待命，等契约同步 |
 | ai数据导入 | 飞书 base pipeline（`_cells_clear_retry`/`auto-shrink`/`max_row` 补丁堆积中）；主控已发根治建议（append-only / upsert by week） | 上游数据管道 | 处理主控诊断中；台湾 HiNet 通不了 SSH 阻塞真实调试 |
-| 飞书推送 Agent 引导 | 走 App 模式（App ID `cli_aab4e49b7bb95bd3` + keychain secret），产出 `tools/feishu_push/send_card.py` | monitor_lib_shared 的 pusher 真实实现 | 实施中 |
+| 飞书推送 Agent 引导 | ✅ 已完成 MVP（PR #14 待 merge）：`tools/feishu_push/send_card.py` 双通道三级降级 + 3 卡片模板 + 17 单测 + AI分析群真发验证 | tools/feishu_push/ | **收工**；下次 monitor spec 实施 pusher.py 薄封装时激活 |
 
 主控对 sub-agent 的原则：不越权抢活，只做对齐/传话/记账；有决策变更时主动同步到相关 session。
 
