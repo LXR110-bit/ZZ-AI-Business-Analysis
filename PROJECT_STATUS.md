@@ -59,6 +59,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 
 1. **category_rules 初始值** — 需要业务方 review 阈值，否则 `category_weekly_monitor` 无法上线
 2. ~~**飞书推送凭据** — 走 **App 模式**~~ **✅ 已解**：`tools/feishu_push/send_card.py` MVP 完成（PR #14），双通道 + 三级降级 + 30KB 保护 + LARK_CLI_CMD 环境变量桥接。zz-server → AI分析群真发验证通过（message_id `om_x100b6bbf17bc30a4c2d27b5c9f8a4bd`，一次成功没走降级）。截图证据在 `docs/screenshots/feishu-card-monitor-weekly-w27.png`。**遗留**：(a) `orchestrator/lib/monitor/pusher.py` 薄封装等 monitor spec 实施时接入；(b) 4 个业务群 webhook 到位后补自定义机器人通道真发验证（代码就绪）
+3. **zz-server model-tag-monitor wave.js calcTrend 显式 null 填充**（Issue #21）— 3.4% pool item trend 返回 `{}` 违反契约。前端 Agent 已加 `normalizeTrend` 归一化兜底，不阻塞前端；Python 版正确，不影响未来接管。**优先级 P1**，等有 SSH 的时机（用户 / ai数据导入 Agent HiNet 解阻塞后）修 5 行代码
 3. **spawn_agent 稳定用法** — 数据 Agent `agent_hook.py` 真实版阻塞项；主控代查 event_handler 那边（2026-07-04 主控接手）
 4. **飞书多维表格接入** — 数据 Agent `fetcher.py` 真实版阻塞项：需要 `app_token / table_id / 字段映射`；只能用户给（涉及具体飞书表 URL 和字段对应关系）
 5. **服务器 SSH 通路** — 台湾 HiNet 通不了 `47.84.94.234`；主控 `curl` 直接 HTTP 访问 `:8848` 端点可用，作为影子模式期间的备用回退路径
