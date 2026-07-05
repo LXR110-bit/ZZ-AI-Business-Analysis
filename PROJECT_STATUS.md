@@ -59,7 +59,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | #25 · PROJECT_STATUS · 关联 PR 表补齐 | ✅ 已合并 | doc 同步 |
 | #26 · 前端归一化改造 · 部署 Playbook | ✅ 已合并 | 348 行部署 SOP，未来同类部署可复用 |
 | #27 · 主控 bootstrap 教训固化章节 | ✅ 已合并 | 6 条铁律（Edit+git 串行 / preflight 三值 / 策略变更同步 / 客观信号优先 / 分工边界） |
-| **前端归一化改造 · 已部署上线（2026-07-05 12:44）** | ✅ 生产验证通过 | zz-server `/root/model-tag-monitor/` src/dashboard.js + src/proxy.js + src/server.js 修改；主控独立 curl 4 次核实 `Cache-Control: no-store` ✅、ETag hash 变更、0 空对象/0 badKeys/0 invalidVal。备份 `/root/backups/model-tag-monitor-20260705_123908` |
+| **前端归一化改造 · 已部署上线（2026-07-05 12:44 第一轮 / 13:06 第二轮 A 级 A 完整）** | ✅ 生产验证 6/6 契约全过 | 第一轮：核心归一化生效（0 空对象/0 badKeys/0 invalidVal）；**第二轮补强**：Cache-Control 三连 `no-store, no-cache, must-revalidate` ✅ + **ETag 消失** ✅ + **Last-Modified 消失** ✅。集成测试逮到 express `res.json()` 内部会重生成 ETag 覆盖 `removeHeader` 的**真 bug**，修法用 `res.setHeader + res.end(JSON.stringify(...))` 绕过。tests 13/13（12 纯函数 + 1 HTTP 集成）。备份 `/root/backups/model-tag-monitor-20260705_123908` |
 
 ---
 
