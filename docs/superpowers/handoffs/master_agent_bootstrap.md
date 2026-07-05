@@ -147,13 +147,31 @@ gh pr view <N> --json state,baseRefName,mergeable --jq '{state, base: .baseRefNa
 - 主控超过 2 小时未收到 running sub-agent 消息时,先 `list_sessions` 看 `isRunning` + `lastActivityAt`,再决定是发轻问询还是强问询
 - 用户如果告诉主控"帮我催 X"或"确认 Y 进度",主控**先 curl / list / 客观验证**,再基于客观事实构造问询,不空口"催"
 
-### 教训 5:客观信号 > sub-agent 自陈
+### 教训 5:客观信号 > sub-agent 自陈(独立验证是核心杠杆)
 
-**背景**:主控问 sub-agent "你部署了吗",它可能说"还没"或"刚部署",但主控可以 curl 生产 header 直接看客观事实(`Cache-Control: no-store` 是否生效)。
+**背景**:主控问 sub-agent "你部署了吗",它可能说"还没"或"刚部署",但主控可以 curl 生产 header 直接看客观事实(`Cache-Control: no-store` 是否生效)。**2026-07-05 强化**:前端 Agent 第一次报"部署完成"后,主控 curl 立刻发现没生效(pm2 env 没 `PROXY_UPSTREAM` → proxy 层空转)。如果主控信自陈直接记账,PROJECT_STATUS 里就会有一条错误信息,后续 catch up 会误导下一轮工作。
 
-**铁律**:能远程验证的部署/合入/更新,主控**永远先自己验证一次**再判断,不完全信任 sub-agent 自陈。这是节省沟通往返的核心杠杆。
+**铁律**:
+- Sub-agent 交付**任何"上线"、"合入"、"部署"、"验证通过"**类自陈,主控**永远先 curl / gh api / list_sessions 独立核实一次**
+- 核实通过再记账,核实失败**立刻回声 sub-agent** + 提供客观证据(header/status/hash)
+- 这是**外部黑盒验证**,不需要理解具体实现,是节省沟通往返的核心杠杆
 
-### 教训 6:分工边界 —— 主控做什么、不做什么
+### 教训 6:本地绿 ≠ 生产绿,必须核对代码路径
+
+**背景**（2026-07-05 学到):前端 Agent 归一化改造第一次部署完成后,主控 curl 生产 header 发现 `Cache-Control: no-store` 没出现、ETag 没剥掉。前端 Agent 调查后发现:本地 preview 服务器起在**代理模式**(走 `PROXY_UPSTREAM=生产地址`),但服务器上 pm2 env **没有** `PROXY_UPSTREAM` → 生产是**数据源本尊模式**。前端 Agent 把 responseRewrite 钩子只挂在 proxy 层,生产根本不走那段代码。本地 curl "1887 items 全绿"是自测**本地代理模式**的路径,不能代表生产。
+
+**根因**:代码有条件分支(`if UPSTREAM` → 走 proxy;`else` → 走 handler),本地测试和生产走的是不同分支。开发者(sub-agent)只测了一个分支就自陈"绿了"。
+
+**铁律**:
+- 部署前必备三问:
+  1. 生产 pm2 env 关键变量(`PROXY_UPSTREAM` / `NODE_ENV` / 其他)是什么?
+  2. 生产代码路径跟本地测试路径**走同一条吗**?
+  3. 有没有 `if` 分支让本地测试的代码路径生产不走?
+- **归一化 / 兜底 / 安全过滤**这类横切逻辑,必须挂在**数据出口最后一站**(handler 或 middleware 一定会经过的地方),而不是可选路径(某种模式才生效)
+- Sub-agent 报告"本地测试通过"时,主控**追问**"本地和生产是同一条代码路径吗",不听到明确回答不放心
+- 复用双入口 + 单点函数模式:`normalizeMonitor` 只在一个地方定义,`server.js /api/monitor handler` 和 `proxy.js responseRewrite` 两个入口都 import 它。任意一个入口生效都能兜底
+
+### 教训 7:分工边界 —— 主控做什么、不做什么
 
 **主控做**:
 - 元层面 handoff(spec / playbook / contract / bootstrap)
