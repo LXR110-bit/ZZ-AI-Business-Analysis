@@ -100,10 +100,73 @@
    - "把 X 交给一个 agent 做" → 你写 mini handoff,然后帮用户草拟给新 agent 的开场白
 3. 每次会话结束前,如果有实质进展,更新 `PROJECT_STATUS.md`(手工版模式)
 
-**关键约束**:
-- 你必须在**主分支 main** 上工作,不新建分支(你的工作是元层面的,不产生代码 diff)
-- 如果需要写代码/spec,让 sub-agent 去开新分支,你只审
-- 每次更新 `PROJECT_STATUS.md` 后 commit,commit message:`Update PROJECT_STATUS: <本次亮点>`
+**关键约束**（2026-07-04 修正,实况替代旧文本）:
+- 主控**通过 feature 分支 → PR → preflight → squash merge** 交付所有产出物,不直推 main
+- 主控自己写代码/文档/spec **可以起 PR**,不必然让 sub-agent;抢活边界看是不是"元层面 handoff/PROJECT_STATUS/契约裁决",这些主控自己做,深度技术实施让 sub-agent
+- 每次 PR 后主控执行 `gh pr view <N> --json state,baseRefName,mergeable` 三值确认再合入
+
+---
+
+## 五之补 · 主控铁律与教训固化
+
+**这些教训是主控在实战中付出代价学到的,写在这里让未来主控开工时避开同样的坑。**
+
+### 教训 1:Edit 工具 + git 命令绝不并行
+
+**背景**:Bash 工具支持 `run_in_background`,但 Edit 工具修改文件是同步的,如果 Edit 后立即并行跑 `git add + commit`,commit 时文件可能还没落盘,commit 到旧内容。
+
+**铁律**:
+- Edit 后跑 git 命令 → **必须串行**,不能塞在同一个 `&&` 链前面并行
+- `git add + commit + push + gh pr create + preflight + merge` 可以串行 `&&` 一路跑
+
+### 教训 2:Merge Preflight 三值确认
+
+**背景**:PR 起了 base 可能不是 main、可能因为冲突 mergeable=CONFLICTING、可能 state 已经被别人 CLOSED。盲目 `gh pr merge` 会失败或者误合。
+
+**铁律**:merge 前必须跑一次:
+```bash
+gh pr view <N> --json state,baseRefName,mergeable --jq '{state, base: .baseRefName, mergeable}'
+```
+期望 `{state: OPEN, base: main, mergeable: MERGEABLE}` 三值齐,任一不齐立刻停 + 排查。
+
+### 教训 3:pin baseline tag,处理 rebase 时间差
+
+**背景**:主控写 PR 期间,别的 sub-agent 可能已经合入了改动到 main,如果不 rebase 就 merge,可能触发冲突或者 base 落后。
+
+**铁律**:每次 `git checkout main && git pull origin main` 拿最新,再 `git checkout -b <feature-branch>`。分支起点永远是最新 main。
+
+### 教训 4:主控与 sub-agent 的策略变更同步机制
+
+**背景**（2026-07-05 学到):用户直接跟 ai 数据导入 Agent 沟通改 pipeline 参数(batch/retry 从 B 策略反向调整),但主控不在 loop 里。20 小时后主控还用错误的战情图判断"session 是否 hang",派了"含 timeout 判决"的强问询,Agent 回声后才发现整个模型是错的。
+
+**根因**:主控假设"所有策略变更主控都会知道",但实况是用户可以旁路直接跟 sub-agent 沟通,主控信息盲区。
+
+**铁律**:
+- 主控每次给 sub-agent 派活时,**明确要求**任何"用户直接改主控原方案"的情况,sub-agent 必须在 30 分钟内主动同步给主控一次(3 行以内即可)
+- 主控自己**每天至少 1 次** `mcp__ccd_session_mgmt__list_sessions` 交叉核对 sub-agent 状态,不完全依赖 sub-agent 主动报告
+- 主控超过 2 小时未收到 running sub-agent 消息时,先 `list_sessions` 看 `isRunning` + `lastActivityAt`,再决定是发轻问询还是强问询
+- 用户如果告诉主控"帮我催 X"或"确认 Y 进度",主控**先 curl / list / 客观验证**,再基于客观事实构造问询,不空口"催"
+
+### 教训 5:客观信号 > sub-agent 自陈
+
+**背景**:主控问 sub-agent "你部署了吗",它可能说"还没"或"刚部署",但主控可以 curl 生产 header 直接看客观事实(`Cache-Control: no-store` 是否生效)。
+
+**铁律**:能远程验证的部署/合入/更新,主控**永远先自己验证一次**再判断,不完全信任 sub-agent 自陈。这是节省沟通往返的核心杠杆。
+
+### 教训 6:分工边界 —— 主控做什么、不做什么
+
+**主控做**:
+- 元层面 handoff(spec / playbook / contract / bootstrap)
+- PROJECT_STATUS 维护
+- 契约裁决(两个 sub-agent 有分歧时主控决定)
+- 教训固化 + 铁律入库
+- 远程可验证的客观校验(curl / gh api / list_sessions)
+- Sub-agent 之间的消息传递(如果他们不能直接沟通)
+
+**主控不做**:
+- SSH 到服务器(用户 Mac 上才有私钥)
+- 深度技术实施(具体算法 / 具体 UI 组件 / 具体 pipeline debug)
+- 抢 sub-agent 的活 —— sub-agent 在跑就等,不平行开 workaround
 
 ---
 
