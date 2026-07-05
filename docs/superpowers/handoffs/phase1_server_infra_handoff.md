@@ -138,7 +138,9 @@ Header: Authorization: Bearer <tenant_access_token>
 │   ├── store.js             # 本地 JSON 存储(cache/tags/rules/logs)
 │   ├── sync.js              # 主同步:sheets → 归一化 → cache.json
 │   ├── monitor.js           # 监测算法(TOP N + 波动 + 趋势)
-│   └── server.js            # Express 后端(API + 静态文件)
+│   ├── server.js            # Express 后端(API + 静态文件) · 2026-07-05 加归一化
+│   ├── dashboard.js         # composeDashboard 纯函数 + normalizeMonitor(2026-07-05 新增)
+│   └── proxy.js             # 本地 dev 代理模式 responseRewrite 钩子(2026-07-05 新增)
 ├── public/
 │   └── index.html           # 单页前端(三 Tab:监测结果/标签/规则)
 ├── data/

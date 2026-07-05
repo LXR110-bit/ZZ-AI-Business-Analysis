@@ -56,6 +56,10 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | #22 · PROJECT_STATUS · 登记 Issue #21 待修 | ✅ 已合并 | doc 同步 |
 | #23 · PROJECT_STATUS · 数据血缘专门段落 | ✅ 已合并 | ai数据导入 Agent 从代码查证 |
 | #24 · category 接入 Playbook | ✅ 已合并 | 完整接入模板，未来 category sub-agent 一键启动 |
+| #25 · PROJECT_STATUS · 关联 PR 表补齐 | ✅ 已合并 | doc 同步 |
+| #26 · 前端归一化改造 · 部署 Playbook | ✅ 已合并 | 348 行部署 SOP，未来同类部署可复用 |
+| #27 · 主控 bootstrap 教训固化章节 | ✅ 已合并 | 6 条铁律（Edit+git 串行 / preflight 三值 / 策略变更同步 / 客观信号优先 / 分工边界） |
+| **前端归一化改造 · 已部署上线（2026-07-05 12:44）** | ✅ 生产验证通过 | zz-server `/root/model-tag-monitor/` src/dashboard.js + src/proxy.js + src/server.js 修改；主控独立 curl 4 次核实 `Cache-Control: no-store` ✅、ETag hash 变更、0 空对象/0 badKeys/0 invalidVal。备份 `/root/backups/model-tag-monitor-20260705_123908` |
 
 ---
 
@@ -63,7 +67,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 
 1. **category_rules 初始值** — 需要业务方 review 阈值，否则 `category_weekly_monitor` 无法上线
 2. ~~**飞书推送凭据** — 走 **App 模式**~~ **✅ 已解**：`tools/feishu_push/send_card.py` MVP 完成（PR #14），双通道 + 三级降级 + 30KB 保护 + LARK_CLI_CMD 环境变量桥接。zz-server → AI分析群真发验证通过（message_id `om_x100b6bbf17bc30a4c2d27b5c9f8a4bd`，一次成功没走降级）。截图证据在 `docs/screenshots/feishu-card-monitor-weekly-w27.png`。**遗留**：(a) `orchestrator/lib/monitor/pusher.py` 薄封装等 monitor spec 实施时接入；(b) 4 个业务群 webhook 到位后补自定义机器人通道真发验证（代码就绪）
-3. **zz-server model-tag-monitor wave.js calcTrend 显式 null 填充**（Issue #21）— 3.4% pool item trend 返回 `{}` 违反契约。前端 Agent 已加 `normalizeTrend` 归一化兜底，不阻塞前端；Python 版正确，不影响未来接管。**优先级 P1**，等有 SSH 的时机（用户 / ai数据导入 Agent HiNet 解阻塞后）修 5 行代码
+3. ~~**zz-server model-tag-monitor wave.js calcTrend 显式 null 填充**（Issue #21）~~ **✅ 已被消费端双入口兜底（2026-07-05）**：前端 Agent 归一化改造已上线（PR #26 部署 playbook 走完，主控 curl 4 次核实生产 `Cache-Control: no-store` ✅ + 0 空对象）。`normalizeMonitor` 挂在两个入口：`src/server.js /api/monitor handler`（数据源模式，生产走）+ `src/proxy.js responseRewrite`（代理模式，本地 dev 走）。Node 版 wave.js 5 行原生修复**降级为 P2**，可延后不影响业务
 4. **spawn_agent 稳定用法** — 数据 Agent `agent_hook.py` 真实版阻塞项；主控代查 event_handler 那边（2026-07-04 主控接手）
 5. **飞书多维表格接入** — 数据 Agent `fetcher.py` 真实版阻塞项：需要 `app_token / table_id / 字段映射`；只能用户给（涉及具体飞书表 URL 和字段对应关系）
 6. **服务器 SSH 通路** — 台湾 HiNet 通不了 `47.84.94.234`；主控 `curl` 直接 HTTP 访问 `:8848` 端点可用，作为影子模式期间的备用回退路径
@@ -134,7 +138,7 @@ pipeline.py (skills/workflows/机型周数据/)
 |---|---|---|---|
 | 项目主控 agent（本文件维护者） | 全局协调、维护 PROJECT_STATUS、对齐 sub-agent、契约裁决 | `feature/monitor-specs` | 在岗 |
 | ai数据呈现（数据 Agent） | 已交付 `monitor_lib_shared` Python 版（wave/rules/schemas + fetcher/agent_hook/pusher/cli end-to-end mock）+ 真实生产数据 10 品类等价性验证 + CI workflow | ✅ PR #19 合入 main | **收工**；等 fetcher HTTP 真实版任务派发时激活 |
-| 页面交互UI优化agent（前端 Agent） | 实施 dashboard 代码（下钻链路 + 消费 Python 版 `cache.json`） | PR #12 / `feature/dashboard-drilldown`（stash 已还原，1802 行工作树完好） | 待命，等契约同步 |
+| 页面交互UI优化agent（前端 Agent） | 实施 dashboard 代码（下钻链路 + 消费 Python 版 `cache.json`） | PR #12 / `feature/dashboard-drilldown`（stash 已还原）+ **归一化改造已部署上线（2026-07-05）**：`src/dashboard.js` 拆 composeDashboard 纯函数 + 12 单测；`src/server.js /api/monitor handler` 挂 normalizeMonitor + no-store；`src/proxy.js` 双入口保留 | ✅ 归一化改造 A 级收工；下一步等指派机型下钻页 / Phase 7 品类维度 |
 | ai数据导入 | 飞书 base pipeline（W27 交付：3 bug 全修 + 数据血缘澄清；正在按主控 B 策略跑 csv-put，快速 tolerate + 收尾 row count 硬校验） | 上游数据管道 | 处理中，跑通后主控帮起 PR git 化 pipeline + 清 .bak |
 | 飞书推送 Agent 引导 | ✅ 已完成 MVP：`tools/feishu_push/send_card.py` 双通道三级降级 + 3 卡片模板 + 17 单测 + AI分析群真发验证 | PR #14 → 补合 #17 到 main | **收工**；下次 monitor spec 实施 pusher.py 薄封装时激活 |
 
