@@ -131,7 +131,9 @@ function build() {
   };
 
   // ---- Top 10 异常机型：按 orderRate delta 绝对值降序，稳定用 gmv 兜底 ----
-  const rankable = mr.pool
+  // 数据源改为 watchList（而非全量 pool），复用 monitor.js 里 minEvaUv=15 的门槛，
+  // 避免估价 UV 个位数的机型算出虚高倍数被误判为"异常火爆"。
+  const rankable = mr.watchList
     .filter((p) => p.delta && typeof p.delta.orderRate === 'number')
     .map((p) => {
       const d = p.delta.orderRate;
@@ -144,6 +146,7 @@ function build() {
         gmv: Math.round(Number(p.cur.gmv) || 0),
       };
     })
+    .filter((row) => row.gmv > 0) // 排除本周零成交机型，UV 倍数再高也没有业务意义
     .sort((a, b) => Math.abs(b.deltaRaw) - Math.abs(a.deltaRaw) || b.gmv - a.gmv);
 
   const topRows = rankable.slice(0, 10).map((row, i) => {
@@ -335,7 +338,9 @@ function composeDashboard({ meta, monitor, gmvCache }) {
   };
 
   // 5) Top10 异常机型（按 |delta.orderRate| 降序，同值按 gmv 降序）
-  const rankable = pool
+  // 数据源改为 watchList（而非全量 pool），复用 monitor.js 里 minEvaUv=15 的门槛，
+  // 避免估价 UV 个位数的机型算出虚高倍数被误判为"异常火爆"。
+  const rankable = watchList
     .filter((p) => p.delta && typeof p.delta.orderRate === 'number')
     .map((p) => ({
       modelId: (p.cur && p.cur.modelId) || '',
@@ -345,6 +350,7 @@ function composeDashboard({ meta, monitor, gmvCache }) {
       deltaRaw: p.delta.orderRate,
       gmv: Math.round(Number(p.cur && p.cur.gmv) || 0),
     }))
+    .filter((row) => row.gmv > 0) // 排除本周零成交机型，UV 倍数再高也没有业务意义
     .sort((a, b) => Math.abs(b.deltaRaw) - Math.abs(a.deltaRaw) || b.gmv - a.gmv);
   const topRows = rankable.slice(0, 10).map((row, i) => {
     const d = row.deltaRaw;
