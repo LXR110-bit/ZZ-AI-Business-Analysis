@@ -95,7 +95,27 @@ class MonitorRules(BaseModel):
         description="波动阈值,|delta| >= 此值即命中 wave flag",
     )
     trendWeeks: int = Field(3, ge=2, description="连续 N 周同向阈值")
-    minEvaUv: float = Field(15.0, ge=0.0, description="分母保护,evaUv 低于此值不参与判定")
+    minEvaUv: float = Field(15.0, ge=0.0, description="分母保护,evaUv 低于此值不参与判定(全局兜底,三级 fallback 优先级 3)")
+
+    # ============================================================
+    # 三级 fallback 分母保护(spec monitor_noise_reduction 引入)
+    # 优先级:perCategoryMinEvaUv[cat] > cat_total * minEvaUvPct > minEvaUv
+    # 新字段全 falsy 默认,零破坏性升级:老 rules.json 升级后行为等同当前
+    # ============================================================
+    perCategoryMinEvaUv: Dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "分品类绝对阈值,key=category_name(中文串);优先级最高(fallback 第 1 级)。"
+            "缺失/品类改名 → 降级到 minEvaUvPct → minEvaUv 兜底,不报错(松散校验)"
+        ),
+    )
+    minEvaUvPct: Optional[float] = Field(
+        None, ge=0.0, le=1.0,
+        description=(
+            "品类占比过滤(fallback 第 2 级):该机型 evaUv 至少要占品类当周总 evaUv 的此比例。"
+            "0.02 = 至少 2%;None = 不启用,走 minEvaUv 兜底"
+        ),
+    )
 
     rates: List[RateMeta] = Field(
         default_factory=lambda: [

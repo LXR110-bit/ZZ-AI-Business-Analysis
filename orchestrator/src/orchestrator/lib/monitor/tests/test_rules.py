@@ -213,3 +213,121 @@ def test_load_rules_missing_file_fallback():
 def test_load_rules_missing_file_strict_raises():
     with pytest.raises(FileNotFoundError):
         load_rules_from_file(Path("/nonexistent/path.json"), fallback_to_default=False)
+
+
+# ============================================================
+# 三级 fallback 分母保护(spec monitor_noise_reduction)
+# ============================================================
+
+
+from orchestrator.lib.monitor.rules import _effective_min_evauv
+
+
+def test_effective_min_evauv_per_category_wins():
+    """优先级 1:perCategoryMinEvaUv 命中时,忽略 minEvaUvPct 和全局 minEvaUv。"""
+    rules = MonitorRules(
+        minEvaUv=15,
+        minEvaUvPct=0.02,
+        perCategoryMinEvaUv={"手机": 500},
+    )
+    # 白名单命中:直接返回 500
+    assert _effective_min_evauv("手机", 10000, rules) == 500
+    # 未命中的品类降级到 pct
+    assert _effective_min_evauv("台球杆", 5000, rules) == 100  # 5000 * 0.02
+
+
+def test_effective_min_evauv_pct_fallback():
+    """优先级 2:白名单空 + minEvaUvPct 生效。"""
+    rules = MonitorRules(minEvaUv=15, minEvaUvPct=0.03, perCategoryMinEvaUv={})
+    assert _effective_min_evauv("台球杆", 5000, rules) == 150  # 5000 * 0.03
+    # cat_total=0 时 pct 仍生效,返回 0(不降级到全局兜底)
+    assert _effective_min_evauv("空品类", 0, rules) == 0.0
+
+
+def test_effective_min_evauv_global_fallback():
+    """优先级 3:白名单空 + minEvaUvPct=None → 走全局兜底。"""
+    rules = MonitorRules(minEvaUv=15, minEvaUvPct=None, perCategoryMinEvaUv={})
+    assert _effective_min_evauv("任何品类", 5000, rules) == 15
+    # 即使 cat_total 极大,也仍是全局值
+    assert _effective_min_evauv("大品类", 999999, rules) == 15
+
+
+def test_apply_rules_with_three_tier_fallback_integration():
+    """集成测试:apply_rules 端到端验证三级 fallback 生效。"""
+    # 造三个机型,delta_order=0.5 都能触发 wave flag
+    wave_small_phone = _make_wave("小机型手机", "手机", 50, delta_order=0.5)
+    wave_big_phone = _make_wave("大机型手机", "手机", 600, delta_order=0.5)
+    wave_stick = _make_wave("台球杆机型", "台球杆", 20, delta_order=0.5)
+
+    rules = MonitorRules(
+        minEvaUv=15,
+        perCategoryMinEvaUv={"手机": 500},  # 手机品类阈值 500
+    )
+    result = apply_rules(
+        [wave_small_phone, wave_big_phone, wave_stick],
+        all_weeks=["W1", "W2"],
+        target_week="W2",
+        prev_week="W1",
+        rules=rules,
+    )
+
+    watch_names = {w.modelName for w in result.watch_list}
+    # 小机型手机 evaUv=50 < 白名单阈值 500 → 被过滤
+    assert "小机型手机" not in watch_names
+    # 大机型手机 evaUv=600 >= 500 → 保留
+    assert "大机型手机" in watch_names
+    # 台球杆 evaUv=20 >= 全局 minEvaUv=15 → 保留(白名单没配)
+    assert "台球杆机型" in watch_names
+
+
+def test_apply_rules_backward_compat_no_new_fields():
+    """向后兼容:老 rules(无新字段)升级后行为完全等同 baseline。"""
+    wave_ok = _make_wave("大机型", "手机", 100, delta_order=0.5)
+    wave_small = _make_wave("小机型", "手机", 10, delta_order=0.5)  # < minEvaUv=15
+    # 老式配置(不填新字段)
+    rules_old = MonitorRules(minEvaUv=15)
+    result = apply_rules(
+        [wave_ok, wave_small],
+        all_weeks=["W1", "W2"],
+        target_week="W2",
+        prev_week="W1",
+        rules=rules_old,
+    )
+    watch_names = {w.modelName for w in result.watch_list}
+    assert "大机型" in watch_names
+    assert "小机型" not in watch_names  # 被全局 minEvaUv=15 挡住
+
+
+# ---------- categories.py ----------
+
+
+def test_known_category_names_covers_real_snapshot():
+    """categories.KNOWN_CATEGORY_NAMES 至少覆盖 real_snapshot 的 10 品类。"""
+    from orchestrator.lib.monitor.categories import KNOWN_CATEGORY_NAMES, is_known_category
+
+    real_snapshot_cats = {
+        "主板", "便携/无线音箱", "内存条", "台球杆", "手表/腕表",
+        "打印机/复印机", "数码相机", "显卡", "显示器", "盲盒收纳",
+    }
+    assert real_snapshot_cats.issubset(KNOWN_CATEGORY_NAMES)
+    assert is_known_category("手机") is True
+    assert is_known_category("陌生品类") is False
+
+
+def test_categories_softcheck_does_not_block_runtime():
+    """spec §四.3 决策核验:陌生品类名配了不报错,自然降级。"""
+    rules = MonitorRules(
+        perCategoryMinEvaUv={"陌生品类XXX": 999},  # 不在 KNOWN_CATEGORY_NAMES 里
+    )
+    wave_a = _make_wave("A", "陌生品类XXX", 500, delta_order=0.5)   # < 999 被过滤
+    wave_b = _make_wave("B", "陌生品类XXX", 1500, delta_order=0.5)  # >= 999 保留
+    result = apply_rules(
+        [wave_a, wave_b],
+        all_weeks=["W1", "W2"],
+        target_week="W2",
+        prev_week="W1",
+        rules=rules,
+    )
+    watch_names = {w.modelName for w in result.watch_list}
+    assert "A" not in watch_names
+    assert "B" in watch_names
