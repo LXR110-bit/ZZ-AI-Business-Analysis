@@ -312,7 +312,7 @@ function effectiveMinEvaUv(category, catTotalEvaUv, R) {
 
 ### 追踪任务
 
-- Node 同步 issue:**主控起 issue(P2 优先级)** —— 本 PR merge 后创建
+- Node 同步 issue:**[#36](https://github.com/LXR110-bit/ZZ-AI-Business-Analysis/issues/36)**(P2 优先级,主控已起)
 - 关联:parity_ci(PR #18 阶段 2 未实施) / monitor_lib_shared(未完全迁移)
 
 ---
