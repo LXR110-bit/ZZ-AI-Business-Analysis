@@ -35,6 +35,7 @@
 | category_weekly_monitor | 📝 定稿待启动 | P1 | monitor_lib_shared ✅ / rules 业务确认 / fetcher HTTP 真实版 | 2 天 | W29 |
 | project_status | 📝 定稿待启动 | P2 | 无 | 3.5 天 | 可并行 |
 | monitor_lib_parity_ci | 📝 定稿待启动 | P2 | monitor_lib_shared 稳定 3-5 天（本 PR 合入后计时） | 0.5 天 | W28 后期 |
+| monitor_noise_reduction | ✅ 阶段 1 spec 合入（PR #32） + 阶段 2 Python-only 待起 PR | P0 | Node 侧同步作为独立子任务追踪（生产 model-tag-monitor 项目不在本仓库） | 阶段 2 Python 侧 ~3h | W27 |
 
 Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 
@@ -65,6 +66,7 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | #31 · PROJECT_STATUS 关联 PR 补 #29/#30 + ai数据导入 分工状态 | ✅ 已合并 | 记账同步，ai数据导入 Agent 授"机型周数据 pipeline 方法论 owner"身份 |
 | #32 · monitor_noise_reduction spec + plan | ✅ 已合并 | ai数据呈现 Agent 交付 **12 章 475 行 spec + 8 章 180 行 plan**。核心：三级 fallback（`perCategoryMinEvaUv` 白名单 + `minEvaUvPct` 品类占比 + `minEvaUv` 全局兜底）。数据实锤 §一：**95% 异常机型 evaUv<100 + 品类量级 400x 差异**。零 breaking change，前端说明面板后置 |
 | **dashboard 环图改造 · 已部署上线（2026-07-05 14:50 前端 Agent A 级收工）** | ✅ 生产验证 5/5 全对齐 | Top6 品类（组装机/运动相机/无人机/名酒/VR眼镜/数码相机）+ watchCategoryStats（gmvGrandTotal 4624917 / totalCategories 121 / top6GmvSum 3999754 / top6GmvPct 86.5）。**三道关卡教科书级**：拼字精确到 U+FF08/U+FF09/U+00B7 + diff 行号定位 + 备份路径 `/root/backups/model-tag-monitor-donut-20260705_145051`。前端 Agent 双战役完美收工（归一化 A 级 A + 环图 A 级） |
+| #35 · monitor_noise_reduction 阶段 2 · Python-only 三级 fallback 实施 | 🔵 待起 PR → 待 merge | Python 侧完整交付(pytest 42 全绿,spec 承诺 38 超 4 case)。schemas + rules + categories + tests + docs。**Node 侧同步 issue #TBD 独立追踪**(生产 model-tag-monitor 项目不在本仓库,业务方启用新字段时才触发同步) |
 
 ---
 

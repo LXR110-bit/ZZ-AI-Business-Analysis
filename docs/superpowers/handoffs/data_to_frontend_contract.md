@@ -115,7 +115,9 @@
   "poolMinWeek": null,                 // null = 用最新周(前端不用管这个字段)
   "waveThreshold": 0.1,                // 波动阈值 ±10%
   "trendWeeks": 3,                     // 连续 N 周同向
-  "minEvaUv": 15,                      // 分母保护:小于此值不参与波动/趋势判定
+  "minEvaUv": 15,                      // 分母保护 · 全局兜底(三级 fallback 优先级 3)
+  "minEvaUvPct": null,                 // 分母保护 · 品类占比(优先级 2);null=不启用
+  "perCategoryMinEvaUv": {},           // 分母保护 · 分品类白名单(优先级 1);key=category_name
   "rates": [                           // 5 个转化率的元信息
     {"key": "evaRate", "name": "估价完成率"},
     {"key": "orderRate", "name": "估价下单率"},
@@ -127,6 +129,22 @@
 ```
 
 **用途**:页面顶部展示"当前监测规则 · 波动阈值 10% · 连续 3 周同向 · TOP 20"这样的说明,让运营看得懂"为什么这个机型入了 watchList"。
+
+### 5.1 三级 fallback 分母保护(spec monitor_noise_reduction 阶段 2 引入)
+
+**新加两字段** `minEvaUvPct` 和 `perCategoryMinEvaUv`,与原有 `minEvaUv` 组成**三级 fallback**:
+
+| 优先级 | 字段 | 语义 | 缺失时行为 |
+|---|---|---|---|
+| 1 | `perCategoryMinEvaUv[category]` | 该品类的绝对阈值(业务方白名单) | 降级到 2 |
+| 2 | `cat_total_evauv * minEvaUvPct` | 该品类当周总 evaUv × 占比阈值 | 降级到 3 |
+| 3 | `minEvaUv` | 全局兜底(与升级前行为完全等同) | — |
+
+**向后兼容承诺**:两字段全 falsy 默认(`{}` / `null`),老 `rules.json` 升级后行为 **完全等同当前** — 前端无需任何改动。
+
+**前端可选展示**(P2 优先级,不阻塞本 PR):
+- 若 `perCategoryMinEvaUv` 非空,可在"当前监测规则"横条加一行"品类白名单:手机(500) · 台球杆(200)"
+- 若 `minEvaUvPct` 非空,可展示"品类占比过滤:≥2%"
 
 ## 六、字段命名约定
 

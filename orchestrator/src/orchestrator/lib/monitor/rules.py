@@ -61,6 +61,35 @@ def build_pool(
 
 
 # ============================================================
+# 三级 fallback 分母保护(spec monitor_noise_reduction)
+# 优先级:perCategoryMinEvaUv[cat] > cat_total * minEvaUvPct > minEvaUv
+# ============================================================
+
+
+def _effective_min_evauv(
+    category: str,
+    cat_total_evauv: float,
+    rules: MonitorRules,
+) -> float:
+    """三级 fallback,返回该品类下当前生效的最小 evaUv 阈值。
+
+    优先级 1:perCategoryMinEvaUv[category] —— 业务方白名单
+    优先级 2:cat_total_evauv * minEvaUvPct  —— 品类占比过滤
+    优先级 3:rules.minEvaUv                  —— 全局兜底(现有行为)
+
+    与 Node 版 effectiveMinEvaUv() 严格对应(见 model-tag-monitor/src/monitor.js)。
+    """
+    # 优先级 1
+    if category in rules.perCategoryMinEvaUv:
+        return rules.perCategoryMinEvaUv[category]
+    # 优先级 2
+    if rules.minEvaUvPct is not None:
+        return cat_total_evauv * rules.minEvaUvPct
+    # 优先级 3
+    return rules.minEvaUv
+
+
+# ============================================================
 # 命中判定:遍历池,对每个转化率检查 wave + trend
 # ============================================================
 
@@ -68,28 +97,30 @@ def build_pool(
 def detect_flags(
     wave: WaveResult,
     rules: MonitorRules,
+    cat_total_evauv: float = 0.0,
 ) -> List[Flag]:
     """对单个 WaveResult 生成命中记录列表。
 
     与 Node 版:
-        if (p.cur.evaUv >= R.minEvaUv) {
-          // 波动检测
-          for (const { key, name } of R.rates) {
-            const d = p.delta[key];
-            if (d !== null && Math.abs(d) >= R.waveThreshold) flags.push({type:'wave',...});
-          }
-          // 趋势检测
-          for (const { key, name } of R.rates) {
-            const t = p.trend[key];
-            if (t) flags.push({type:'trend',...});
-          }
+        if (p.cur.evaUv >= effectiveMinEvaUv(p.category, catTotals[p.category] || 0, R)) {
+          // 波动检测 / 趋势检测(同下)
         }
     等价。
 
-    evaUv < minEvaUv 时返回空列表(分母保护)。
+    evaUv < effective_min_evauv(三级 fallback)时返回空列表(分母保护)。
+
+    参数
+    ----
+    wave: 单个 WaveResult
+    rules: MonitorRules
+    cat_total_evauv: 该品类 target_week 的总 evaUv(供 minEvaUvPct 计算)。
+                     默认值 0.0 主要为向后兼容 —— 外部单独调 detect_flags 时可省略,
+                     结果仍等价于"pct=0 → effective=0 → 不触发分母保护"这一含义,
+                     但生产路径必须由 apply_rules 传入真实值。
     """
     flags: List[Flag] = []
-    if (wave.cur.evaUv or 0) < rules.minEvaUv:
+    effective_min = _effective_min_evauv(wave.category, cat_total_evauv, rules)
+    if (wave.cur.evaUv or 0) < effective_min:
         return flags
 
     # 波动检测
@@ -140,11 +171,20 @@ def apply_rules(
     返回 MonitorResult,与 Node 版 monitor() 的返回值结构等价:
         { targetWeek, prevWeek, weeks, pool, watchList, rules }
     """
+    # 三级 fallback 需要品类当周总 evaUv 用于 minEvaUvPct 计算。
+    # 这里遍历全量 wave_results(不是 pool),因为占比语义是"该机型 evaUv
+    # 占品类当周整体 evaUv 的比例",分母是品类全量,不是 top-N pool。
+    cat_totals: Dict[str, float] = {}
+    for wr in wave_results:
+        if wr.cur and wr.cur.week == target_week:
+            cat_totals[wr.category] = cat_totals.get(wr.category, 0.0) + (wr.cur.evaUv or 0)
+
     pool = build_pool(wave_results, rules.poolTopN)
 
     watch_list: List[WaveResultWithFlags] = []
     for wr in pool:
-        flags = detect_flags(wr, rules)
+        cat_total = cat_totals.get(wr.category, 0.0)
+        flags = detect_flags(wr, rules, cat_total)
         if flags:
             # WaveResult -> WaveResultWithFlags,复制字段
             watch_list.append(

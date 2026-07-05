@@ -256,15 +256,35 @@ KNOWN_CATEGORY_NAMES = frozenset({
 
 ---
 
-## 五、Node 版同步策略(强制同 PR)
+## 五、Node 版同步策略
 
-### 为什么必须同 PR
+> **状态更新(阶段 2 实施时发现)**:Node 项目 `model-tag-monitor` **物理上不在本 monorepo**(在生产服务器 `/root/model-tag-monitor`)。本 spec 阶段 1 起草时按 monitor_lib_shared / parity_ci spec 承诺的未来路径写了"同 PR 两侧同改",但实际 Python-only 独立 ship,Node 侧作为**独立子任务追踪**。
+>
+> 阶段 2 实施时的证据(2026-07-04 15:20):
+> ```
+> $ find . -name "monitor.js" | grep -v node_modules   # 空
+> $ ls model-tag-monitor                                # No such file or directory
+> $ ls .github/workflows/                               # monitor-lib-tests.yml (Python-only)
+> ```
 
-**parity_ci(PR #18)会挡** —— 若只改 Python 版,Python 跟 Node 的 pool/watch 结果分叉,parity_ci 报错,PR 无法合入 main。
+### 当前状态
 
-### Node 侧改动清单(`model-tag-monitor/src/monitor.js`)
+- **本 monorepo 是 Python-only**(算法层 Python 侧独立完整)
+- **Node 项目在生产服务器**(不在本仓库,无法在本 PR 内修改)
+- **Parity CI 未 CI 化**(spec 阶段 1,不阻塞"只改 Python 一侧"的 PR)
+- **前端契约向后兼容**(WaveReport.rules 加 2 可选字段,前端零改动)
+- **老 rules.json 天然向后兼容**(新字段全 falsy 默认,无 migration)
 
-**改动 1**:`R` 对象(rules 默认值)新增两字段:
+### 触发 Node 侧同步的条件(未来)
+
+**任一条件成立即触发**:
+1. **业务方启用新字段**:业务方在 `rules.json` 里填了 `perCategoryMinEvaUv` 或 `minEvaUvPct` —— 只要不填,Node 侧完全等同当前行为,不需同步
+2. **monitor_lib_shared 迁移完成**:Node 侧 lib 化,`model-tag-monitor/src/monitor.js` 引入本 monorepo(或 Node 侧 lib 从 Python 导出)
+3. **parity_ci 实施到 CI**:跨语言校验启用,任何一侧改动都必须同步
+
+### Node 侧改动清单(未来同步时参考)
+
+**改动 1** · `R` 对象(rules 默认值)新增两字段:
 
 ```js
 const R = {
@@ -274,7 +294,7 @@ const R = {
 };
 ```
 
-**改动 2**:新增 helper:
+**改动 2** · 新增 helper `effectiveMinEvaUv()`(严格对应 Python 版 `_effective_min_evauv`):
 
 ```js
 function effectiveMinEvaUv(category, catTotalEvaUv, R) {
@@ -288,13 +308,12 @@ function effectiveMinEvaUv(category, catTotalEvaUv, R) {
 }
 ```
 
-**改动 3**:在 `monitor()` 函数里,`if (p.cur.evaUv >= R.minEvaUv)` 判定前算 catTotals,替换判定为 `if (p.cur.evaUv >= effectiveMinEvaUv(p.category, catTotals[p.category] || 0, R))`
+**改动 3** · 在 `monitor()` 函数里,先算品类当周总 evaUv 存到 `catTotals`,再把 `if (p.cur.evaUv >= R.minEvaUv)` 替换为 `if (p.cur.evaUv >= effectiveMinEvaUv(p.category, catTotals[p.category] || 0, R))`。
 
-### 一次 PR 两侧同改
+### 追踪任务
 
-- 数据 Agent(本 spec 作者)负责 Python + Node 两侧代码
-- **不派独立 Node agent**(跨 session 沟通成本高,数据 agent 最懂设计意图)
-- CI 通过顺序:`monitor-lib-tests` 绿 + `monitor-lib-parity` 绿(若已上线;未上线则 PR 里手跑 `verify_equivalence_real.py`)
+- Node 同步 issue:**主控起 issue(P2 优先级)** —— 本 PR merge 后创建
+- 关联:parity_ci(PR #18 阶段 2 未实施) / monitor_lib_shared(未完全迁移)
 
 ---
 
