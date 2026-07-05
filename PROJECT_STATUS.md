@@ -60,6 +60,8 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | #26 · 前端归一化改造 · 部署 Playbook | ✅ 已合并 | 348 行部署 SOP，未来同类部署可复用 |
 | #27 · 主控 bootstrap 教训固化章节 | ✅ 已合并 | 6 条铁律（Edit+git 串行 / preflight 三值 / 策略变更同步 / 客观信号优先 / 分工边界） |
 | **前端归一化改造 · 已部署上线（2026-07-05 12:44 第一轮 / 13:06 第二轮 A 级 A 完整）** | ✅ 生产验证 6/6 契约全过 | 第一轮：核心归一化生效（0 空对象/0 badKeys/0 invalidVal）；**第二轮补强**：Cache-Control 三连 `no-store, no-cache, must-revalidate` ✅ + **ETag 消失** ✅ + **Last-Modified 消失** ✅。集成测试逮到 express `res.json()` 内部会重生成 ETag 覆盖 `removeHeader` 的**真 bug**，修法用 `res.setHeader + res.end(JSON.stringify(...))` 绕过。tests 13/13（12 纯函数 + 1 HTTP 集成）。备份 `/root/backups/model-tag-monitor-20260705_123908` |
+| #29 · A 级 A 收工 + 教训 5-6 真 bug 证据强化 | ✅ 已合并 | 教训 5 子铁律 · 契约验证要查期望值 + 教训 6 · express res.json 重生成 ETag 真 bug + 推论铁律 · 响应头契约必须走 HTTP 层测试 |
+| #30 · ai_data_import_playbook v1.0 | ✅ 已合并 | **395 行完整方法论**，10 段结构。核心资产：**假报警 vs 真丢失判定标准**（等 30-60s 再验证）。ai数据导入 Agent 8 段深度知识 + 主控 §0/§9/§10 收敛 |
 
 ---
 
@@ -139,7 +141,7 @@ pipeline.py (skills/workflows/机型周数据/)
 | 项目主控 agent（本文件维护者） | 全局协调、维护 PROJECT_STATUS、对齐 sub-agent、契约裁决 | `feature/monitor-specs` | 在岗 |
 | ai数据呈现（数据 Agent） | 已交付 `monitor_lib_shared` Python 版（wave/rules/schemas + fetcher/agent_hook/pusher/cli end-to-end mock）+ 真实生产数据 10 品类等价性验证 + CI workflow | ✅ PR #19 合入 main | **收工**；等 fetcher HTTP 真实版任务派发时激活 |
 | 页面交互UI优化agent（前端 Agent） | 实施 dashboard 代码（下钻链路 + 消费 Python 版 `cache.json`） | PR #12 / `feature/dashboard-drilldown`（stash 已还原）+ **归一化改造已部署上线（2026-07-05）**：`src/dashboard.js` 拆 composeDashboard 纯函数 + 12 单测；`src/server.js /api/monitor handler` 挂 normalizeMonitor + no-store；`src/proxy.js` 双入口保留 | ✅ 归一化改造 A 级收工；下一步等指派机型下钻页 / Phase 7 品类维度 |
-| ai数据导入 | 飞书 base pipeline（W27 交付：3 bug 全修 + 数据血缘澄清；正在按主控 B 策略跑 csv-put，快速 tolerate + 收尾 row count 硬校验） | 上游数据管道 | 处理中，跑通后主控帮起 PR git 化 pipeline + 清 .bak |
+| ai数据导入 | **机型周数据 pipeline 方法论 owner**（2026-07-05 授予）：ai_data_import_playbook.md 395 行完整方法论上线（PR #30）。当前 daily pipeline 跑中（PID 384559，15min 进 clear-weeks seg 3/17）。核心资产："假报警 vs 真丢失判定标准"（等 30-60s async commit 落盘窗口） | 上游数据管道 + 本 playbook | 处理中：daily 收尾 + Phase 1 verify 修法（方案 B，15 行 sleep+retry） |
 | 飞书推送 Agent 引导 | ✅ 已完成 MVP：`tools/feishu_push/send_card.py` 双通道三级降级 + 3 卡片模板 + 17 单测 + AI分析群真发验证 | PR #14 → 补合 #17 到 main | **收工**；下次 monitor spec 实施 pusher.py 薄封装时激活 |
 
 主控对 sub-agent 的原则：不越权抢活，只做对齐/传话/记账；有决策变更时主动同步到相关 session。
