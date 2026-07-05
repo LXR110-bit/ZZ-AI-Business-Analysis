@@ -156,6 +156,19 @@ gh pr view <N> --json state,baseRefName,mergeable --jq '{state, base: .baseRefNa
 - 核实通过再记账,核实失败**立刻回声 sub-agent** + 提供客观证据(header/status/hash)
 - 这是**外部黑盒验证**,不需要理解具体实现,是节省沟通往返的核心杠杆
 
+**子铁律(2026-07-05 第二次强化)**:**契约验证要查"期望值",不只查"状态变化"**
+
+**背景**:12:44 第一轮部署主控 curl 看到 ETag 从 `2b9d52` 变到 `2bb234` 就判断"新代码上线",忘了契约要求**这个 header 不应该存在**。第二轮才发现 express `res.json()` 内部会重生成 ETag,第一轮实际只完成了归一化没剥净头。**主控当时的验证不完整**。
+
+**执行清单**(每次独立验证时逐项走):
+1. 列出**契约期望值清单**(参考对应 spec / playbook,不凭记忆):
+   - "什么 header 应该出现?"(如 `Cache-Control: no-store, no-cache, must-revalidate`)
+   - "什么 header 应该消失?"(如 `ETag` / `Last-Modified`)
+   - "什么 body shape 应该满足?"(如 `pool.length > 0` 且 `trend` 五键齐全)
+2. 用 `curl -sI` 或 curl body + Python 断言,**逐项打勾**
+3. 全部命中才算 A 级签字;命中 <100% 立刻回声,即使 sub-agent 说"通过了"
+4. 主控 curl 输出**贴 PR body** 作为客观证据(未来 catch up 有据)
+
 ### 教训 6:本地绿 ≠ 生产绿,必须核对代码路径
 
 **背景**（2026-07-05 学到):前端 Agent 归一化改造第一次部署完成后,主控 curl 生产 header 发现 `Cache-Control: no-store` 没出现、ETag 没剥掉。前端 Agent 调查后发现:本地 preview 服务器起在**代理模式**(走 `PROXY_UPSTREAM=生产地址`),但服务器上 pm2 env **没有** `PROXY_UPSTREAM` → 生产是**数据源本尊模式**。前端 Agent 把 responseRewrite 钩子只挂在 proxy 层,生产根本不走那段代码。本地 curl "1887 items 全绿"是自测**本地代理模式**的路径,不能代表生产。
@@ -170,6 +183,10 @@ gh pr view <N> --json state,baseRefName,mergeable --jq '{state, base: .baseRefNa
 - **归一化 / 兜底 / 安全过滤**这类横切逻辑,必须挂在**数据出口最后一站**(handler 或 middleware 一定会经过的地方),而不是可选路径(某种模式才生效)
 - Sub-agent 报告"本地测试通过"时,主控**追问**"本地和生产是同一条代码路径吗",不听到明确回答不放心
 - 复用双入口 + 单点函数模式:`normalizeMonitor` 只在一个地方定义,`server.js /api/monitor handler` 和 `proxy.js responseRewrite` 两个入口都 import 它。任意一个入口生效都能兜底
+
+**真 bug 证据(2026-07-05 集成测试逮到)**:第二轮补强时前端 Agent 加了 HTTP 层集成测试 `test/api-monitor-handler.test.js`(起真 server 子进程 → 断言 `ETag=undefined`),逮到 express `res.json()` 内部会调 `res.send()` → `generateETag()`,**覆盖之前的 `res.removeHeader('ETag')`**。这个 bug **纯函数测试永远逮不到**(`normalizeMonitor` 返回值本身干净),必须 HTTP 层集成测试。修法:不用 `res.json()`,改用 `res.setHeader('Content-Type', 'application/json')` + `res.end(JSON.stringify(...))`,完全绕过 express send 内建 ETag 生成。
+
+**推论铁律**:**响应头契约必须走 HTTP 层测试,不是单元测试**。任何 header 相关断言(Cache-Control / ETag / Content-Type / CORS)必须起真 server 或者 supertest 模拟,不能靠 mock 请求对象。
 
 ### 教训 7:分工边界 —— 主控做什么、不做什么
 
