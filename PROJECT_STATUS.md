@@ -62,6 +62,9 @@ Spec 全文见 [`docs/superpowers/specs/`](./docs/superpowers/specs/)。
 | **前端归一化改造 · 已部署上线（2026-07-05 12:44 第一轮 / 13:06 第二轮 A 级 A 完整）** | ✅ 生产验证 6/6 契约全过 | 第一轮：核心归一化生效（0 空对象/0 badKeys/0 invalidVal）；**第二轮补强**：Cache-Control 三连 `no-store, no-cache, must-revalidate` ✅ + **ETag 消失** ✅ + **Last-Modified 消失** ✅。集成测试逮到 express `res.json()` 内部会重生成 ETag 覆盖 `removeHeader` 的**真 bug**，修法用 `res.setHeader + res.end(JSON.stringify(...))` 绕过。tests 13/13（12 纯函数 + 1 HTTP 集成）。备份 `/root/backups/model-tag-monitor-20260705_123908` |
 | #29 · A 级 A 收工 + 教训 5-6 真 bug 证据强化 | ✅ 已合并 | 教训 5 子铁律 · 契约验证要查期望值 + 教训 6 · express res.json 重生成 ETag 真 bug + 推论铁律 · 响应头契约必须走 HTTP 层测试 |
 | #30 · ai_data_import_playbook v1.0 | ✅ 已合并 | **395 行完整方法论**，10 段结构。核心资产：**假报警 vs 真丢失判定标准**（等 30-60s 再验证）。ai数据导入 Agent 8 段深度知识 + 主控 §0/§9/§10 收敛 |
+| #31 · PROJECT_STATUS 关联 PR 补 #29/#30 + ai数据导入 分工状态 | ✅ 已合并 | 记账同步，ai数据导入 Agent 授"机型周数据 pipeline 方法论 owner"身份 |
+| #32 · monitor_noise_reduction spec + plan | ✅ 已合并 | ai数据呈现 Agent 交付 **12 章 475 行 spec + 8 章 180 行 plan**。核心：三级 fallback（`perCategoryMinEvaUv` 白名单 + `minEvaUvPct` 品类占比 + `minEvaUv` 全局兜底）。数据实锤 §一：**95% 异常机型 evaUv<100 + 品类量级 400x 差异**。零 breaking change，前端说明面板后置 |
+| **dashboard 环图改造 · 已部署上线（2026-07-05 14:50 前端 Agent A 级收工）** | ✅ 生产验证 5/5 全对齐 | Top6 品类（组装机/运动相机/无人机/名酒/VR眼镜/数码相机）+ watchCategoryStats（gmvGrandTotal 4624917 / totalCategories 121 / top6GmvSum 3999754 / top6GmvPct 86.5）。**三道关卡教科书级**：拼字精确到 U+FF08/U+FF09/U+00B7 + diff 行号定位 + 备份路径 `/root/backups/model-tag-monitor-donut-20260705_145051`。前端 Agent 双战役完美收工（归一化 A 级 A + 环图 A 级） |
 
 ---
 
