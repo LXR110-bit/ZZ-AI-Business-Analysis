@@ -11,6 +11,7 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
   />
   <link rel="stylesheet" href="/style.css?v=20250124d" />
+  <link rel="stylesheet" href="/dashboard.css?v=20260705d" />
 </head>
 <body>
   <header class="topbar">
@@ -33,15 +34,62 @@
   </header>
 
   <nav class="tabs">
-    <button class="tab active" data-tab="monitor">监测结果</button>
+    <button class="tab active" data-tab="dashboard">概览</button>
+    <button class="tab" data-tab="monitor">监测结果</button>
     <button class="tab" data-tab="tags">标签管理</button>
     <button class="tab" data-tab="rules">规则配置</button>
     <button class="tab" data-tab="logs">操作日志</button>
   </nav>
 
   <main>
+    <!-- 概览 -->
+    <section class="page dash-scope" id="page-dashboard">
+      <div class="dash-meta" id="dashMeta"></div>
+      <div class="dash-kpi-row" id="dashKpiRow"></div>
+      <div class="dash-chart-row">
+        <div class="dash-card">
+          <div class="dash-card-title">GMV 5 周趋势</div>
+          <div class="dash-card-sub">按最新 5 个周次累计成交 GMV，点圆点跳到该周监测结果</div>
+          <div class="dash-line-wrap" id="dashLineWrap"></div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-title">品类 GMV 分布（Top 6）</div>
+          <div class="dash-card-sub">按 Top 6 品类 GMV 份额展示，点扇区筛到该品类</div>
+          <div class="dash-donut-wrap" id="dashDonutWrap"></div>
+        </div>
+      </div>
+      <div class="dash-top">
+        <div class="dash-top-head">
+          <div>
+            <h3 class="dash-top-title">Top 10 异常机型</h3>
+            <div class="dash-top-sub">按 orderRate 周环比波动幅度倒序，点行下钻到该机型</div>
+          </div>
+          <div class="dash-top-hint">点行 → 进入监测详情</div>
+        </div>
+        <div class="dash-top-table-wrap">
+          <table class="dash-top-table" id="dashTopTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>机型</th>
+                <th style="text-align:right;">orderRate</th>
+                <th style="text-align:right;">周环比</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- 监测结果 -->
-    <section class="page" id="page-monitor">
+    <section class="page hidden" id="page-monitor">
+      <div class="crumb hidden" id="monitorCrumb">
+        <button class="crumb-back" id="crumbBack">← 返回概览</button>
+        <span class="crumb-desc" id="crumbDesc"></span>
+        <button class="crumb-clear" id="crumbClear">清除定位</button>
+      </div>
       <div class="flow-hint">
         <span class="step"><b>1</b> 选周次 / 品类 / 视图</span>
         <span class="sep">→</span>
@@ -63,6 +111,13 @@
             <select id="monitorView">
               <option value="watch">仅需关注</option>
               <option value="pool">TOP N 全量</option>
+            </select>
+          </label>
+          <label>趋势
+            <select id="monitorTrend">
+              <option value="">不筛</option>
+              <option value="up">仅上涨</option>
+              <option value="down">仅下降</option>
             </select>
           </label>
           <button id="btnMonitorRun" class="primary">确认</button>
@@ -204,6 +259,22 @@
   <!-- Toast -->
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/app.js?v=20250124d"></script>
+  <!-- 机型详情侧边抽屉 -->
+  <div id="modelDrawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+    <div class="drawer-backdrop" data-drawer-close></div>
+    <aside class="drawer-panel">
+      <header class="drawer-head">
+        <div class="drawer-head-main">
+          <div class="drawer-eyebrow" id="drawerEyebrow"></div>
+          <h2 class="drawer-title" id="drawerTitle"></h2>
+          <div class="drawer-tags" id="drawerTags"></div>
+        </div>
+        <button class="drawer-close" data-drawer-close aria-label="关闭详情">×</button>
+      </header>
+      <div class="drawer-body" id="drawerBody"></div>
+    </aside>
+  </div>
+
+  <script src="/app.js?v=20260705d"></script>
 </body>
 </html>

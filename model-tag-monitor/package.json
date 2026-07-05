@@ -5,7 +5,10 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "mock": "node scripts/gen-mock.js",
+    "mock:reset": "rm -f data/cache.json data/tags.json data/rules.json && node scripts/gen-mock.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "compression": "^1.8.1",

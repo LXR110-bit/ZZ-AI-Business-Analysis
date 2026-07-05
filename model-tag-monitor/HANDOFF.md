@@ -7,6 +7,23 @@
 
 ---
 
+## ⚠️ 现状更新（2025-07-05，补录）
+
+这份文档下方的"未做"清单已经**过时**：Phase 1~3 全部已实施完毕，并且**已经在生产环境（`http://47.84.94.234:8848`）上线运行**，不是"待实施"状态。
+
+补录背景：这份 HANDOFF 之后的开发工作全程直接在生产机 `/root/model-tag-monitor/` 上迭代（改代码 → pm2 restart → 生产验证），没有同步回本仓库的 git 历史。本次补录把生产机上已验证的实现（`src/dashboard.js`、`src/proxy.js`、`public/dashboard.css`、`test/` 等）整体拉回本分支，让仓库代码与生产代码对齐。
+
+现在的实际状态：
+- `/api/dashboard` 聚合接口：已实现（`src/dashboard.js` 的 `composeDashboard()` / `getDashboard()`），含 60s 内存缓存
+- 概览页 + 下钻链路 + 面包屑 + 行高亮 + trend 筛选：均已实现（`public/app.js` / `public/index.html` / `public/dashboard.css`）
+- 代理模式 `PROXY_UPSTREAM`（本地 UI 联调线上真数据）：`src/proxy.js`，这份 HANDOFF 写完之后才加的能力
+- 单测覆盖：`test/compose-dashboard.test.js`、`test/api-monitor-handler.test.js`（HTTP 层集成测试，覆盖响应头契约）
+- 两处线上 bugfix 已验证生效：Top10 数据源从 `pool` 改为 `watchList`（复用 `monitor.js` 的 `minEvaUv=15` 门槛，避免低 UV 机型算出虚高倍数）；Top10 排除 `gmv=0` 的机型
+
+下方"项目现状 / 未做 / 验收标准"章节内容保留作历史记录，**不代表当前实际状态**，接手前请先看 `README.md`（已同步生产最新版）核实当前行为。
+
+---
+
 ## 一句话说清楚
 
 给「机型标签监测」加一个 AI 金融风的**概览首页**（Dashboard），核心是**下钻交互链路**：用户从概览的 KPI 卡片 / 图表 / Top 表格点击后，跳到监测详情页并自动预填筛选、滚动定位、支持面包屑返回。
