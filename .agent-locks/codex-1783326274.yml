@@ -6,4 +6,4 @@ files:
   - docs/superpowers/plans/机型周数据-base-migration.md
   - tests/ or scripts/tests for migration validation
 started: 2026-07-06T16:24:34+08:00
-expected_done: 
+expected_done: 2026-07-06T22:25:30+08:00
