@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import importlib
+import json
+import sys
+from datetime import date
+from pathlib import Path
+
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+base_migration = importlib.import_module("skills.workflows.机型周数据.base_migration")
+constants = importlib.import_module("skills.workflows.机型周数据.constants")
+
+
+def _raw_df(sheet_id: str) -> pd.DataFrame:
+    tab = constants.INTERMEDIATE_TABS[sheet_id]
+    rows = []
+    for day in [date(2026, 7, 1), date(2026, 7, 2)]:
+        row = {
+            "日期": day,
+            "品类名称": "手机",
+            "机型ID": "1001",
+            "机型名称": "iPhone 15",
+        }
+        for dim in tab["extra_dims"]:
+            row[dim] = f"{dim}-A"
+        for i, metric in enumerate(tab["metrics"], start=1):
+            row[metric] = i
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def test_build_latest_week_exports_produces_ten_unique_tables():
+    raw = {sid: _raw_df(sid) for sid in constants.INTERMEDIATE_TABS}
+
+    week, exports = base_migration.build_latest_week_exports("2026-06", raw, "20260706_162530")
+
+    assert week == "2026-W27"
+    assert len(exports) == 10
+    names = [e.base_table_name for e in exports]
+    assert len(names) == len(set(names))
+    assert all(len(name) <= 31 for name in names)
+    assert {e.kind for e in exports} == {"summary", "daily_avg"}
+    assert all(e.row_count == 1 for e in exports)
+
+
+def test_write_base_package_manifest_contains_counts_and_metric_sums(tmp_path: Path):
+    raw = {sid: _raw_df(sid) for sid in constants.INTERMEDIATE_TABS}
+    week, exports = base_migration.build_latest_week_exports("2026-06", raw, "20260706_162530")
+
+    manifest = base_migration.write_base_package("2026-06", week, "20260706_162530", exports, output_root=tmp_path)
+
+    manifest_path = Path(manifest["manifest_path"])
+    xlsx_path = Path(manifest["xlsx_path"])
+    assert manifest_path.exists()
+    assert xlsx_path.exists()
+    loaded = json.loads(manifest_path.read_text())
+    assert loaded["table_count"] == 10
+    assert loaded["total_rows"] == 10
+    first_summary = next(t for t in loaded["tables"] if t["kind"] == "summary" and t["source_sheet_id"] == "6725f1")
+    assert first_summary["metric_sums"]["估价UV汇总"] == 4.0
+
+
+def test_matching_active_record_ids_only_matches_same_week_and_table():
+    records = [
+        {"record_id": "rec_old", "fields": {"统计周": "2026-W27", "Base表名": "W27_汇总_日期机型_202607061625", "active": True}},
+        {"record_id": "rec_inactive", "fields": {"统计周": "2026-W27", "Base表名": "W27_汇总_日期机型_202607061625", "active": False}},
+        {"record_id": "rec_other_week", "fields": {"统计周": "2026-W28", "Base表名": "W27_汇总_日期机型_202607061625", "active": True}},
+        {"record_id": "rec_other_table", "fields": {"统计周": "2026-W27", "Base表名": "W27_日均_日期机型_202607061625", "active": True}},
+    ]
+
+    ids = base_migration.matching_active_record_ids(records, "2026-W27", {"W27_汇总_日期机型_202607061625"})
+
+    assert ids == ["rec_old"]
+
+
+def test_build_index_rows_marks_new_version_active():
+    manifest = {
+        "week": "2026-W27",
+        "month": "2026-06",
+        "run_id": "20260706_162530",
+        "tables": [
+            {
+                "kind": "summary",
+                "source_sheet_id": "6725f1",
+                "business_name": "日期机型维度",
+                "base_table_name": "W27_汇总_日期机型_202607061625",
+                "rows": 123,
+                "cols": 17,
+            }
+        ],
+    }
+
+    fields, rows = base_migration.build_index_rows(manifest, {"W27_汇总_日期机型_202607061625": "tbl_x"})
+
+    row = dict(zip(fields, rows[0]))
+    assert row["记录键"] == "2026-W27|summary|6725f1|20260706_162530"
+    assert row["active"] is True
+    assert row["状态"] == "已发布"
+    assert row["Base表ID"] == "tbl_x"

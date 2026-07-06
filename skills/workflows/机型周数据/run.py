@@ -2,9 +2,11 @@
 from __future__ import annotations
 import argparse, fcntl, json, os, sys
 from datetime import datetime
+from pathlib import Path
 
 from .pipeline import run_pipeline
-from .notifier import notify
+from .base_migration import run_base_migration_pipeline
+from .notifier import notify, notify_base_migration
 
 
 LOCK_PATH = "/tmp/机型周数据.pipeline.lock"
@@ -30,7 +32,14 @@ def main() -> int:
     ap.add_argument("--lookback-days", type=int, default=14)
     ap.add_argument("--concurrency", type=int, default=4)
     ap.add_argument("--skip-notify", action="store_true")
-    ap.add_argument("--dry-run", action="store_true", help="skip 通知 (等同 --skip-notify)")
+    ap.add_argument("--dry-run", action="store_true", help="skip 通知 (等同 --skip-notify); Base migration 下不执行导入")
+    ap.add_argument("--base-migration", action="store_true", help="生成飞书多维表格迁移包; 默认仅导出, 不写 Base")
+    ap.add_argument("--base-import", action="store_true", help="与 --base-migration 搭配: 使用 drive +import --type bitable 导入并发布索引")
+    ap.add_argument("--base-token", type=str, default=None, help="目标月度 Base token; 不传则按环境变量/标题解析或创建")
+    ap.add_argument("--base-output-dir", type=str, default="/tmp/机型周数据_base_migration", help="Base 迁移包输出根目录")
+    ap.add_argument("--base-run-id", type=str, default=None, help="Base 迁移 run_id; 默认当前时间")
+    ap.add_argument("--base-as", type=str, default="user", choices=["user", "bot"], help="lark-cli 导入/索引写入身份")
+    ap.add_argument("--base-name-prefix", type=str, default="机型周数据", help="月度 Base 标题前缀")
     args = ap.parse_args()
 
     months_set = None
@@ -41,6 +50,23 @@ def main() -> int:
     if lock_fh is None:
         return 75
     try:
+        if args.base_migration:
+            result = run_base_migration_pipeline(
+                target_months=months_set,
+                lookback_days=args.lookback_days,
+                output_root=Path(args.base_output_dir),
+                run_id=args.base_run_id,
+                import_to_base=bool(args.base_import and not args.dry_run),
+                base_token=args.base_token,
+                as_identity=args.base_as,
+                base_name_prefix=args.base_name_prefix,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+            if result.get("status") in ("ok", "partial") and not (args.skip_notify or args.dry_run):
+                notify_base_migration(result)
+                print(f"base migration notify sent (status={result.get('status')})", file=sys.stderr)
+            return 0 if result.get("status") == "ok" else 1
+
         result = run_pipeline(
             target_months=months_set,
             lookback_days=args.lookback_days,
