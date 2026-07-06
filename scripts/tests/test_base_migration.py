@@ -109,6 +109,57 @@ def test_matching_active_record_ids_archives_prior_run_by_logical_key():
     assert ids == ["rec_old_run"]
 
 
+def test_records_from_record_list_data_normalizes_tabular_cli_payload():
+    payload = {
+        "fields": ["记录键", "统计周", "Base表名", "active"],
+        "data": [
+            ["2026-W27|summary|6725f1|old", "2026-W27", "old_table", True],
+            ["2026-W27|summary|7rBBpo|old", "2026-W27", "other_table", False],
+        ],
+        "record_id_list": ["rec_old", "rec_other"],
+    }
+
+    records = base_migration._records_from_record_list_data(payload)
+
+    assert records == [
+        {
+            "record_id": "rec_old",
+            "fields": {
+                "记录键": "2026-W27|summary|6725f1|old",
+                "统计周": "2026-W27",
+                "Base表名": "old_table",
+                "active": True,
+            },
+        },
+        {
+            "record_id": "rec_other",
+            "fields": {
+                "记录键": "2026-W27|summary|7rBBpo|old",
+                "统计周": "2026-W27",
+                "Base表名": "other_table",
+                "active": False,
+            },
+        },
+    ]
+
+
+def test_matching_active_record_ids_works_with_tabular_record_list_payload():
+    records = base_migration._records_from_record_list_data(
+        {
+            "fields": ["记录键", "统计周", "Base表名", "active"],
+            "data": [
+                ["2026-W27|summary|6725f1|old", "2026-W27", "old_table", True],
+                ["2026-W27|summary|6725f1|new", "2026-W27", "new_table", True],
+            ],
+            "record_id_list": ["rec_old", "rec_new"],
+        }
+    )
+
+    ids = base_migration.matching_active_record_ids(records, "2026-W27", {"2026-W27|summary|6725f1"})
+
+    assert ids == ["rec_old", "rec_new"]
+
+
 def test_build_index_rows_marks_new_version_active():
     manifest = {
         "week": "2026-W27",

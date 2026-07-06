@@ -369,6 +369,46 @@ def _items_from_data(data: dict[str, Any], candidate_keys: Iterable[str]) -> lis
     return []
 
 
+def _records_from_record_list_data(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize ``base +record-list`` responses to record dicts.
+
+    ``lark-cli base +record-list`` can return either API-shaped records
+    (``records`` / ``items``) or a compact table-shaped payload:
+
+    ``{"fields": [...], "data": [[...]], "record_id_list": [...]}``
+
+    The publish flow needs real ``record_id`` + field-name mapping in order to
+    archive previous active versions before inserting the new run.
+    """
+    items = _items_from_data(data, ["records", "items", "list"])
+    if items:
+        return items
+
+    rows = data.get("data")
+    fields = data.get("fields")
+    record_ids = data.get("record_id_list") or data.get("record_ids") or []
+    if not isinstance(rows, list) or not isinstance(fields, list):
+        return []
+
+    field_names = [str(field) for field in fields]
+    normalized: list[dict[str, Any]] = []
+    for idx, row in enumerate(rows):
+        if isinstance(row, dict):
+            fields_dict = row
+        elif isinstance(row, list):
+            fields_dict = {
+                field_name: row[pos] if pos < len(row) else None
+                for pos, field_name in enumerate(field_names)
+            }
+        else:
+            continue
+        record: dict[str, Any] = {"fields": fields_dict}
+        if isinstance(record_ids, list) and idx < len(record_ids) and record_ids[idx]:
+            record["record_id"] = str(record_ids[idx])
+        normalized.append(record)
+    return normalized
+
+
 def resolve_base_token_by_title(title: str, as_identity: str = "user") -> str | None:
     try:
         data = run_lark("base", "+title-resolve", "--title", title, as_identity=as_identity)
@@ -485,9 +525,10 @@ def list_index_records(base_token: str, index_table_id: str, as_identity: str = 
             "json",
             as_identity=as_identity,
         )
-        page = _items_from_data(data, ["records", "items", "list"])
+        page = _records_from_record_list_data(data)
         records.extend(page)
-        if len(page) < 200:
+        has_more = bool(data.get("has_more") or data.get("hasMore"))
+        if not has_more or len(page) < 200:
             break
         offset += len(page)
     return records
