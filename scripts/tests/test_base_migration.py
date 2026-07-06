@@ -111,19 +111,31 @@ def test_load_base_targets_resolves_model_june_targets():
 
     assert targets[("model", "summary", "2026-06")].base_token == "VK0HbNP5daIibss2ME9cTySfnlh"
     assert targets[("model", "daily_avg", "2026-06")].base_token == "M2ETbrDL7agQAzsQJw3cXgGxnWb"
-    assert ("model", "summary", "2026-07") not in targets
+    assert targets[("model", "summary", "2026-07")].base_token == "WDvlbaajfaAMzCs5uXrcLtpMnch"
+    assert targets[("model", "daily_avg", "2026-07")].base_token == "QMUZbewNaaCUO5sUsLJcUVM4nAe"
+
+
+def test_mapped_targets_for_exports_resolves_model_july_targets():
+    raw = {sid: _raw_df(sid) for sid in constants.INTERMEDIATE_TABS}
+    _, exports = base_migration.build_latest_week_exports("2026-07", raw, "20260706_162530")
+
+    targets = base_migration.mapped_targets_for_exports("2026-07", exports, family="model")
+
+    assert set(targets) == {"summary", "daily_avg"}
+    assert targets["summary"].base_token == "WDvlbaajfaAMzCs5uXrcLtpMnch"
 
 
 def test_mapped_targets_for_exports_fails_fast_when_missing_month_target():
     raw = {sid: _raw_df(sid) for sid in constants.INTERMEDIATE_TABS}
-    week, exports = base_migration.build_latest_week_exports("2026-07", raw, "20260706_162530")
+    _, exports = base_migration.build_latest_week_exports("2026-08", raw, "20260706_162530")
 
     try:
-        base_migration.mapped_targets_for_exports("2026-07", exports, family="model")
+        base_migration.mapped_targets_for_exports("2026-08", exports, family="model")
     except base_migration.LarkError as exc:
         assert "summary" in str(exc)
+        assert "daily_avg" in str(exc)
     else:
-        raise AssertionError("expected missing model summary target for 2026-07")
+        raise AssertionError("expected missing model targets for 2026-08")
 
 
 def test_write_base_package_can_split_target_package(tmp_path: Path):

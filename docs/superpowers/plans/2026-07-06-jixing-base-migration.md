@@ -14,7 +14,7 @@
 - 支持用户预先建好的 Base 目标映射：`skills/workflows/机型周数据/base_targets.json`。
   - 当前 workflow 使用 `family=model`，即机型维度。
   - `--base-import-mode auto` 在未显式传 `--base-token` 时会优先把汇总/日均拆成两个导入包，分别导入用户提供的 Base。
-  - 若目标映射缺失（例如未提供 2026-07 机型维度汇总 Base），导入会 fail fast，不会自动创建错误的新 Base。
+  - 若目标映射缺失，导入会 fail fast，不会自动创建错误的新 Base。
 
 ## 推荐命令
 
@@ -32,8 +32,8 @@ python3 -m skills.workflows.机型周数据 --base-migration --base-import --mon
 ## 用户已建 Base 映射检查
 
 - 2026-06 机型维度：汇总、日均目标均已登记，可用于 W27 首批迁移。
-- 2026-07 机型维度：目前只有日均目标；汇总目标未提供，未来 W28 起需要补齐后再导入。
-- 用户提供的「大盘维度日均5月」URL 中 `table=tblaByOmnpGBUVPo` 不属于该 Base；已按 Base 内真实可用表 `tblivmx4h0pTZGcK` 记录修正链接。
+- 2026-07 机型维度：汇总、日均目标均已登记，可用于 7 月增量/W28+ 迁移。
+- 用户已确认「大盘维度日均5月」修正链接；使用 Base 内真实可用表 `tblivmx4h0pTZGcK`。
 - 这些 Base 当前基本还是默认空表（一张 `数据表`，一个 `文本` 字段）。大批量初始化仍走 `drive +import --type bitable`，导入会在目标 Base 内新建本次 run 的数据表；不会用 record API 逐行灌入默认表。
 
 ## 防重复规则

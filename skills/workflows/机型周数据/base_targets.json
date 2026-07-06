@@ -28,6 +28,18 @@
     },
     {
       "family": "model",
+      "label": "机型维度汇总7月",
+      "kind": "summary",
+      "month": "2026-07",
+      "title": "多维机型维度漏斗数据汇总表（7月）",
+      "base_token": "WDvlbaajfaAMzCs5uXrcLtpMnch",
+      "wiki_node_token": "QnhAwLf75i5pyFkkIWIcIGvHnAd",
+      "table_id": "tblIRPYJqM5xorKh",
+      "view_id": "veweC3kBkk",
+      "url": "https://zhuanspirit.feishu.cn/wiki/QnhAwLf75i5pyFkkIWIcIGvHnAd?table=tblIRPYJqM5xorKh&view=veweC3kBkk"
+    },
+    {
+      "family": "model",
       "label": "机型维度日均5月",
       "kind": "daily_avg",
       "month": "2026-05",
@@ -181,7 +193,7 @@
       "table_id": "tblivmx4h0pTZGcK",
       "view_id": "veweC3kBkk",
       "url": "https://zhuanspirit.feishu.cn/wiki/N8Ijw3rY7iIXhhkVRT6cZ9xTnPe?table=tblivmx4h0pTZGcK&view=veweC3kBkk",
-      "provided_url_note": "User-provided URL used table=tblaByOmnpGBUVPo, which does not exist in this Base; lark-cli table-list showed tblivmx4h0pTZGcK as the available table."
+      "provided_url_note": "User confirmed the corrected URL with table=tblivmx4h0pTZGcK; earlier table=tblaByOmnpGBUVPo belonged to a different Base."
     },
     {
       "family": "market",
@@ -208,7 +220,5 @@
       "url": "https://zhuanspirit.feishu.cn/wiki/OdhJwIkyvi55wVkPVxocZ7RFnIQ?table=tblj4hmOhxDt9bk4&view=veweC3kBkk"
     }
   ],
-  "known_gaps": [
-    "机型维度汇总7月 was not provided; future model summary imports for 2026-07 should fail fast until the target Base is added."
-  ]
+  "known_gaps": []
 }
