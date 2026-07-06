@@ -98,6 +98,14 @@ def notify_base_migration(result: dict) -> None:
             lines.append(f"    package: {stat.get('xlsx_path')}")
         if stat.get("base_token"):
             lines.append(f"    Base: https://zhuanspirit.feishu.cn/base/{stat.get('base_token')}")
+        target_import = stat.get("target_import") or {}
+        targets = target_import.get("targets") or {}
+        for kind, target in sorted(targets.items()):
+            target_label = target.get("label") or kind
+            target_status = target.get("status")
+            target_rows = target.get("total_rows")
+            target_url = target.get("url") or (f"https://zhuanspirit.feishu.cn/base/{target.get('base_token')}" if target.get("base_token") else "")
+            lines.append(f"    {target_label}: {target_status} rows={target_rows} {target_url}")
         if stat.get("error"):
             lines.append(f"    error: {stat.get('error')}")
     lines.append("")

@@ -101,3 +101,47 @@ def test_build_index_rows_marks_new_version_active():
     assert row["active"] is True
     assert row["状态"] == "已发布"
     assert row["Base表ID"] == "tbl_x"
+
+
+def test_load_base_targets_resolves_model_june_targets():
+    targets = {
+        (target.family, target.kind, target.month): target
+        for target in base_migration.load_base_targets()
+    }
+
+    assert targets[("model", "summary", "2026-06")].base_token == "VK0HbNP5daIibss2ME9cTySfnlh"
+    assert targets[("model", "daily_avg", "2026-06")].base_token == "M2ETbrDL7agQAzsQJw3cXgGxnWb"
+    assert ("model", "summary", "2026-07") not in targets
+
+
+def test_mapped_targets_for_exports_fails_fast_when_missing_month_target():
+    raw = {sid: _raw_df(sid) for sid in constants.INTERMEDIATE_TABS}
+    week, exports = base_migration.build_latest_week_exports("2026-07", raw, "20260706_162530")
+
+    try:
+        base_migration.mapped_targets_for_exports("2026-07", exports, family="model")
+    except base_migration.LarkError as exc:
+        assert "summary" in str(exc)
+    else:
+        raise AssertionError("expected missing model summary target for 2026-07")
+
+
+def test_write_base_package_can_split_target_package(tmp_path: Path):
+    raw = {sid: _raw_df(sid) for sid in constants.INTERMEDIATE_TABS}
+    week, exports = base_migration.build_latest_week_exports("2026-06", raw, "20260706_162530")
+    summary_exports = [export for export in exports if export.kind == "summary"]
+
+    manifest = base_migration.write_base_package(
+        "2026-06",
+        week,
+        "20260706_162530",
+        summary_exports,
+        output_root=tmp_path,
+        package_subdir="model_summary_2026-06",
+        package_label="机型维度汇总6月",
+        extra_manifest={"target_mode": "mapped_targets"},
+    )
+
+    assert Path(manifest["manifest_path"]).parent.name == "model_summary_2026-06"
+    assert manifest["table_count"] == 5
+    assert manifest["target_mode"] == "mapped_targets"

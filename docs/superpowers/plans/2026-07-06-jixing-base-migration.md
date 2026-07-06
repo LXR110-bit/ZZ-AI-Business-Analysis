@@ -11,6 +11,10 @@
 - 只有显式传 `--base-import` 且非 `--dry-run` 时，才调用 `drive +import --type bitable` 并发布 `周索引`。
 - 迁移包路径：`/tmp/机型周数据_base_migration/<week>/<run_id>/`。
 - 每次导入都是新版本，`周索引.active=true` 的版本才是下游可用版本。
+- 支持用户预先建好的 Base 目标映射：`skills/workflows/机型周数据/base_targets.json`。
+  - 当前 workflow 使用 `family=model`，即机型维度。
+  - `--base-import-mode auto` 在未显式传 `--base-token` 时会优先把汇总/日均拆成两个导入包，分别导入用户提供的 Base。
+  - 若目标映射缺失（例如未提供 2026-07 机型维度汇总 Base），导入会 fail fast，不会自动创建错误的新 Base。
 
 ## 推荐命令
 
@@ -18,9 +22,19 @@
 # 只生成 W27 迁移包，不写飞书
 python3 -m skills.workflows.机型周数据 --base-migration --months 2026-06 --lookback-days 14 --dry-run
 
-# 生成并导入 Base（显式写操作）
-python3 -m skills.workflows.机型周数据 --base-migration --base-import --months 2026-06 --lookback-days 14 --base-as user
+# 生成并导入用户已建 Base（显式写操作；auto 会使用 base_targets.json）
+python3 -m skills.workflows.机型周数据 --base-migration --base-import --months 2026-06 --lookback-days 14 --base-as user --base-import-mode mapped --base-target-family model
+
+# 若要回到旧方案：一个月一个 Base（不使用用户已建目标映射）
+python3 -m skills.workflows.机型周数据 --base-migration --base-import --months 2026-06 --lookback-days 14 --base-as user --base-import-mode monthly --base-token <base_token>
 ```
+
+## 用户已建 Base 映射检查
+
+- 2026-06 机型维度：汇总、日均目标均已登记，可用于 W27 首批迁移。
+- 2026-07 机型维度：目前只有日均目标；汇总目标未提供，未来 W28 起需要补齐后再导入。
+- 用户提供的「大盘维度日均5月」URL 中 `table=tblaByOmnpGBUVPo` 不属于该 Base；已按 Base 内真实可用表 `tblivmx4h0pTZGcK` 记录修正链接。
+- 这些 Base 当前基本还是默认空表（一张 `数据表`，一个 `文本` 字段）。大批量初始化仍走 `drive +import --type bitable`，导入会在目标 Base 内新建本次 run 的数据表；不会用 record API 逐行灌入默认表。
 
 ## 防重复规则
 

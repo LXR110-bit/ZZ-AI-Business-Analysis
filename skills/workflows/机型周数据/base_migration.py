@@ -35,6 +35,7 @@ from .pipeline import (
 
 BASE_PACKAGE_ROOT = Path(os.environ.get("MODEL_WEEKLY_BASE_PACKAGE_ROOT", "/tmp/机型周数据_base_migration"))
 BASE_NAME_PREFIX = os.environ.get("MODEL_WEEKLY_BASE_NAME_PREFIX", "机型周数据")
+BASE_TARGETS_PATH = Path(os.environ.get("MODEL_WEEKLY_BASE_TARGET_MAP", str(Path(__file__).with_name("base_targets.json"))))
 INDEX_TABLE_NAME = "周索引"
 
 # Keep names <= Excel's 31-char sheet-name limit even with a 12-char run suffix.
@@ -85,6 +86,96 @@ class BaseTableExport:
     @property
     def col_count(self) -> int:
         return int(len(self.df.columns))
+
+
+@dataclass(frozen=True)
+class BaseTarget:
+    """One user-created Base document that receives one workbook import."""
+
+    family: str
+    kind: str
+    month: str
+    label: str
+    title: str
+    base_token: str
+    wiki_node_token: str | None = None
+    table_id: str | None = None
+    view_id: str | None = None
+    url: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "BaseTarget":
+        required = ("family", "kind", "month", "base_token")
+        missing = [k for k in required if not data.get(k)]
+        if missing:
+            raise ValueError(f"base target missing required fields {missing}: {data}")
+        return cls(
+            family=str(data["family"]),
+            kind=str(data["kind"]),
+            month=str(data["month"]),
+            label=str(data.get("label") or f"{data['family']} {data['kind']} {data['month']}"),
+            title=str(data.get("title") or data.get("label") or ""),
+            base_token=str(data["base_token"]),
+            wiki_node_token=str(data["wiki_node_token"]) if data.get("wiki_node_token") else None,
+            table_id=str(data["table_id"]) if data.get("table_id") else None,
+            view_id=str(data["view_id"]) if data.get("view_id") else None,
+            url=str(data["url"]) if data.get("url") else None,
+        )
+
+
+def load_base_targets(path: Path | str | None = BASE_TARGETS_PATH) -> list[BaseTarget]:
+    """Load user-created Base targets.
+
+    The file is optional for package-only runs.  Import runs can choose the
+    mapped-target flow when this file contains the requested month/kind.
+    """
+    if path is None:
+        return []
+    p = Path(path)
+    if not p.exists():
+        return []
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    raw_targets = payload.get("targets", [])
+    if not isinstance(raw_targets, list):
+        raise ValueError(f"base target map {p} must contain a targets list")
+    targets = [BaseTarget.from_dict(x) for x in raw_targets if isinstance(x, dict)]
+    seen: set[tuple[str, str, str]] = set()
+    duplicates: list[tuple[str, str, str]] = []
+    for target in targets:
+        key = (target.family, target.kind, target.month)
+        if key in seen:
+            duplicates.append(key)
+        seen.add(key)
+    if duplicates:
+        raise ValueError(f"duplicate base targets in {p}: {duplicates}")
+    return targets
+
+
+def find_base_target(month: str, kind: str, family: str = "model", path: Path | str | None = BASE_TARGETS_PATH) -> BaseTarget | None:
+    for target in load_base_targets(path):
+        if target.family == family and target.kind == kind and target.month == month:
+            return target
+    return None
+
+
+def mapped_targets_for_exports(
+    month: str,
+    exports: list[BaseTableExport],
+    family: str = "model",
+    path: Path | str | None = BASE_TARGETS_PATH,
+) -> dict[str, BaseTarget]:
+    kinds = sorted({export.kind for export in exports})
+    targets: dict[str, BaseTarget] = {}
+    missing: list[str] = []
+    for kind in kinds:
+        target = find_base_target(month, kind, family=family, path=path)
+        if target is None:
+            missing.append(kind)
+        else:
+            targets[kind] = target
+    if missing:
+        raise LarkError(f"missing Base targets for family={family!r} month={month}: kinds={missing}")
+    return targets
 
 
 def _safe_run_suffix(run_id: str) -> str:
@@ -175,11 +266,23 @@ def _metric_sums(df: pd.DataFrame) -> dict[str, float]:
     return sums
 
 
-def write_base_package(month: str, week: str, run_id: str, exports: list[BaseTableExport], output_root: Path = BASE_PACKAGE_ROOT) -> dict[str, Any]:
+def write_base_package(
+    month: str,
+    week: str,
+    run_id: str,
+    exports: list[BaseTableExport],
+    output_root: Path = BASE_PACKAGE_ROOT,
+    package_subdir: str | None = None,
+    package_label: str = "机型周数据",
+    extra_manifest: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Write the XLSX import package and manifest for one month/week/run."""
     package_dir = output_root / week / run_id
+    if package_subdir:
+        package_dir = package_dir / package_subdir
     package_dir.mkdir(parents=True, exist_ok=True)
-    xlsx_path = package_dir / f"机型周数据_{month}_{week}_{run_id}.xlsx"
+    safe_label = re.sub(r"[\\/:\*\?\"<>\|]+", "_", package_label).strip() or "机型周数据"
+    xlsx_path = package_dir / f"{safe_label}_{month}_{week}_{run_id}.xlsx"
     manifest_path = package_dir / "manifest.json"
 
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
@@ -216,6 +319,8 @@ def write_base_package(month: str, week: str, run_id: str, exports: list[BaseTab
         "total_rows": int(sum(t["rows"] for t in tables)),
         "tables": tables,
     }
+    if extra_manifest:
+        manifest.update(extra_manifest)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
 
@@ -500,6 +605,96 @@ def publish_manifest_to_index(base_token: str, index_table_id: str, manifest: di
     return {"archived_records": archived, "created_records": created, "base_tables": {name: table_map[name] for name in expected_names}}
 
 
+def import_manifest_to_base(
+    manifest: dict[str, Any],
+    base_token: str,
+    as_identity: str = "user",
+    target: BaseTarget | None = None,
+) -> dict[str, Any]:
+    """Import one manifest's workbook into a Base and publish its index."""
+    result: dict[str, Any] = {"base_token": base_token}
+    if target:
+        result.update(
+            {
+                "target_label": target.label,
+                "target_family": target.family,
+                "target_kind": target.kind,
+                "target_month": target.month,
+                "target_url": target.url,
+            }
+        )
+    import_data = import_package_to_base(Path(manifest["xlsx_path"]), base_token, as_identity=as_identity)
+    result["import"] = import_data
+    if import_data.get("ready") is False or import_data.get("timed_out") is True:
+        result["status"] = "import_pending"
+        return result
+
+    index_table_id = ensure_index_table(base_token, as_identity=as_identity)
+    publish = publish_manifest_to_index(base_token, index_table_id, manifest, as_identity=as_identity)
+    result["index_table_id"] = index_table_id
+    result["publish"] = publish
+    result["status"] = "published"
+    return result
+
+
+def write_and_import_mapped_target_packages(
+    month: str,
+    week: str,
+    run_id: str,
+    exports: list[BaseTableExport],
+    output_root: Path,
+    target_family: str = "model",
+    target_map_path: Path | str | None = BASE_TARGETS_PATH,
+    as_identity: str = "user",
+) -> dict[str, Any]:
+    """Split summary/daily exports and import each part to a user-created Base.
+
+    User-created targets are keyed by ``family + kind + month``.  For the
+    current workflow, family=model receives two Base docs per month:
+    one for summary sheets and one for daily-average sheets.
+    """
+    targets = mapped_targets_for_exports(month, exports, family=target_family, path=target_map_path)
+    result: dict[str, Any] = {"mode": "mapped_targets", "family": target_family, "targets": {}}
+    for kind, target in sorted(targets.items()):
+        kind_exports = [export for export in exports if export.kind == kind]
+        label = target.label or f"{target_family}_{kind}"
+        manifest = write_base_package(
+            month,
+            week,
+            run_id,
+            kind_exports,
+            output_root=output_root,
+            package_subdir=f"{target_family}_{kind}_{month}",
+            package_label=label,
+            extra_manifest={
+                "target_mode": "mapped_targets",
+                "target_family": target_family,
+                "target_kind": kind,
+                "target_label": target.label,
+                "target_title": target.title,
+                "target_base_token": target.base_token,
+                "target_url": target.url,
+            },
+        )
+        target_result = {
+            "status": "packaged",
+            "kind": kind,
+            "label": target.label,
+            "url": target.url,
+            "base_token": target.base_token,
+            "package_dir": str(Path(manifest["manifest_path"]).parent),
+            "xlsx_path": manifest["xlsx_path"],
+            "manifest_path": manifest["manifest_path"],
+            "table_count": manifest["table_count"],
+            "total_rows": manifest["total_rows"],
+        }
+        target_result.update(import_manifest_to_base(manifest, target.base_token, as_identity=as_identity, target=target))
+        result["targets"][kind] = target_result
+    statuses = {target_result.get("status") for target_result in result["targets"].values()}
+    result["status"] = "published" if statuses == {"published"} else "import_pending" if "import_pending" in statuses else "partial"
+    return result
+
+
 def run_base_migration_pipeline(
     target_months: set[str] | None = None,
     lookback_days: int = 14,
@@ -509,7 +704,12 @@ def run_base_migration_pipeline(
     base_token: str | None = None,
     as_identity: str = "user",
     base_name_prefix: str = BASE_NAME_PREFIX,
+    import_mode: str = "auto",
+    target_map_path: Path | str | None = BASE_TARGETS_PATH,
+    target_family: str = "model",
 ) -> dict[str, Any]:
+    if import_mode not in {"auto", "mapped", "monthly"}:
+        raise ValueError(f"invalid import_mode={import_mode!r}; expected auto, mapped, or monthly")
     run_id = run_id or default_run_id()
     print(f"[base-migration] fetch zips lookback_days={lookback_days}", flush=True)
     zips = fetch_recent_zips(lookback_days=lookback_days)
@@ -548,19 +748,35 @@ def run_base_migration_pipeline(
                 "tables": manifest["tables"],
             }
             if import_to_base:
-                token = resolve_or_create_month_base(month, explicit_token=base_token, as_identity=as_identity, base_name_prefix=base_name_prefix)
-                month_result["base_token"] = token
-                import_data = import_package_to_base(Path(manifest["xlsx_path"]), token, as_identity=as_identity)
-                month_result["import"] = import_data
-                if import_data.get("ready") is False or import_data.get("timed_out") is True:
-                    month_result["status"] = "import_pending"
-                    any_error = True
+                use_mapped_targets = (
+                    import_mode == "mapped"
+                    or (
+                        import_mode == "auto"
+                        and base_token is None
+                        and target_map_path is not None
+                        and Path(target_map_path).exists()
+                    )
+                )
+                if use_mapped_targets:
+                    target_import = write_and_import_mapped_target_packages(
+                        month,
+                        week,
+                        run_id,
+                        exports,
+                        output_root=output_root,
+                        target_family=target_family,
+                        target_map_path=target_map_path,
+                        as_identity=as_identity,
+                    )
+                    month_result["target_import"] = target_import
+                    month_result["status"] = target_import.get("status", "partial")
+                    if month_result["status"] != "published":
+                        any_error = True
                 else:
-                    index_table_id = ensure_index_table(token, as_identity=as_identity)
-                    publish = publish_manifest_to_index(token, index_table_id, manifest, as_identity=as_identity)
-                    month_result["index_table_id"] = index_table_id
-                    month_result["publish"] = publish
-                    month_result["status"] = "published"
+                    token = resolve_or_create_month_base(month, explicit_token=base_token, as_identity=as_identity, base_name_prefix=base_name_prefix)
+                    month_result.update(import_manifest_to_base(manifest, token, as_identity=as_identity))
+                    if month_result["status"] != "published":
+                        any_error = True
             by_month_result[month] = month_result
         except Exception as exc:  # keep other months inspectable
             any_error = True

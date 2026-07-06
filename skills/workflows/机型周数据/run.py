@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .pipeline import run_pipeline
-from .base_migration import run_base_migration_pipeline
+from .base_migration import BASE_TARGETS_PATH, run_base_migration_pipeline
 from .notifier import notify, notify_base_migration
 
 
@@ -40,6 +40,9 @@ def main() -> int:
     ap.add_argument("--base-run-id", type=str, default=None, help="Base 迁移 run_id; 默认当前时间")
     ap.add_argument("--base-as", type=str, default="user", choices=["user", "bot"], help="lark-cli 导入/索引写入身份")
     ap.add_argument("--base-name-prefix", type=str, default="机型周数据", help="月度 Base 标题前缀")
+    ap.add_argument("--base-import-mode", type=str, default="auto", choices=["auto", "mapped", "monthly"], help="Base 导入模式: auto 优先使用目标映射, mapped 使用用户已建 Base, monthly 使用单月 Base")
+    ap.add_argument("--base-target-map", type=str, default=str(BASE_TARGETS_PATH), help="用户已建 Base 目标映射 JSON; 默认读取 workflow 内置 base_targets.json 或 MODEL_WEEKLY_BASE_TARGET_MAP")
+    ap.add_argument("--base-target-family", type=str, default="model", help="目标映射 family; 当前机型周数据默认 model")
     args = ap.parse_args()
 
     months_set = None
@@ -60,6 +63,9 @@ def main() -> int:
                 base_token=args.base_token,
                 as_identity=args.base_as,
                 base_name_prefix=args.base_name_prefix,
+                import_mode=args.base_import_mode,
+                target_map_path=Path(args.base_target_map) if args.base_target_map else None,
+                target_family=args.base_target_family,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
             if result.get("status") in ("ok", "partial") and not (args.skip_notify or args.dry_run):
