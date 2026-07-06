@@ -4,6 +4,18 @@
   "targets": [
     {
       "family": "model",
+      "label": "机型维度汇总4月",
+      "kind": "summary",
+      "month": "2026-04",
+      "title": "多维机型维度漏斗数据汇总表（4月）",
+      "base_token": "VPnqbP4TYaoPl6soQSncd2lNn9e",
+      "wiki_node_token": "RgOvwUfdci9wRjk3S7bc6LfAnEb",
+      "table_id": "tblyl8s56i4lDrve",
+      "view_id": "veweC3kBkk",
+      "url": "https://zhuanspirit.feishu.cn/wiki/RgOvwUfdci9wRjk3S7bc6LfAnEb?table=tblyl8s56i4lDrve&view=veweC3kBkk"
+    },
+    {
+      "family": "model",
       "label": "机型维度汇总5月",
       "kind": "summary",
       "month": "2026-05",
@@ -37,6 +49,18 @@
       "table_id": "tblIRPYJqM5xorKh",
       "view_id": "veweC3kBkk",
       "url": "https://zhuanspirit.feishu.cn/wiki/QnhAwLf75i5pyFkkIWIcIGvHnAd?table=tblIRPYJqM5xorKh&view=veweC3kBkk"
+    },
+    {
+      "family": "model",
+      "label": "机型维度日均4月",
+      "kind": "daily_avg",
+      "month": "2026-04",
+      "title": "多维机型维度漏斗数据日均表（4月）",
+      "base_token": "Jv8bbncUUaTaNosCTsQcm6x3nYc",
+      "wiki_node_token": "AS1zwYgGSidtmtky3qQcuojknVd",
+      "table_id": "tblax9rqrDVwAuUz",
+      "view_id": "veweC3kBkk",
+      "url": "https://zhuanspirit.feishu.cn/wiki/AS1zwYgGSidtmtky3qQcuojknVd?table=tblax9rqrDVwAuUz&view=veweC3kBkk"
     },
     {
       "family": "model",
@@ -76,6 +100,18 @@
     },
     {
       "family": "category",
+      "label": "品类维度汇总4月",
+      "kind": "summary",
+      "month": "2026-04",
+      "title": "多维品类维度漏斗数据周汇总表（4月）",
+      "base_token": "HsJ3bmeazah0ggsxUsec2Wfpnsh",
+      "wiki_node_token": "VNXBw4sUiioL6nkldhdcF5uQn6f",
+      "table_id": "tblovaQ5Ckb8Mgbo",
+      "view_id": "veweC3kBkk",
+      "url": "https://zhuanspirit.feishu.cn/wiki/VNXBw4sUiioL6nkldhdcF5uQn6f?table=tblovaQ5Ckb8Mgbo&view=veweC3kBkk"
+    },
+    {
+      "family": "category",
       "label": "品类维度汇总5月",
       "kind": "summary",
       "month": "2026-05",
@@ -109,6 +145,18 @@
       "table_id": "tblHNRyPtI9H15Sm",
       "view_id": "veweC3kBkk",
       "url": "https://zhuanspirit.feishu.cn/wiki/Ur1owCrpEi1mlbkG89Kcys9xnie?table=tblHNRyPtI9H15Sm&view=veweC3kBkk"
+    },
+    {
+      "family": "category",
+      "label": "品类维度日均4月",
+      "kind": "daily_avg",
+      "month": "2026-04",
+      "title": "多维品类维度漏斗数据周日均表（4月）",
+      "base_token": "XZbvbmmyGaEhn2sHc8ucphR2ndc",
+      "wiki_node_token": "WapgwtEW2iRGGPkcItyclRRMnCc",
+      "table_id": "tblaWu89uXoXuNXQ",
+      "view_id": "veweC3kBkk",
+      "url": "https://zhuanspirit.feishu.cn/wiki/WapgwtEW2iRGGPkcItyclRRMnCc?table=tblaWu89uXoXuNXQ&view=veweC3kBkk"
     },
     {
       "family": "category",

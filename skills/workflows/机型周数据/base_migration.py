@@ -493,12 +493,37 @@ def list_index_records(base_token: str, index_table_id: str, as_identity: str = 
     return records
 
 
-def matching_active_record_ids(records: list[dict[str, Any]], week: str, table_names: set[str]) -> list[str]:
+def _index_logical_key(fields: dict[str, Any]) -> str | None:
+    """Return the stable publish key without run_id.
+
+    记录键 is written as ``统计周|表类型|source_sheet_id|run_id``.  Imported Base
+    table names include run_id, so deduping by Base表名 would leave old
+    versions active forever.  The first three parts are the logical table key.
+    """
+    key = fields.get("记录键")
+    if not key:
+        return None
+    parts = str(key).split("|")
+    if len(parts) < 3:
+        return None
+    return "|".join(parts[:3])
+
+
+def matching_active_record_ids(
+    records: list[dict[str, Any]],
+    week: str,
+    logical_keys: set[str],
+    table_names: set[str] | None = None,
+) -> list[str]:
     ids: list[str] = []
     for record in records:
         fields = _record_fields(record)
         active = fields.get("active")
-        if fields.get("统计周") == week and fields.get("Base表名") in table_names and active is True:
+        logical_key = _index_logical_key(fields)
+        table_name = fields.get("Base表名")
+        matches_logical_key = logical_key in logical_keys if logical_key else False
+        matches_table_name = table_names is not None and table_name in table_names
+        if fields.get("统计周") == week and active is True and (matches_logical_key or matches_table_name):
             rid = _record_id(record)
             if rid:
                 ids.append(rid)
@@ -579,12 +604,13 @@ def publish_manifest_to_index(base_token: str, index_table_id: str, manifest: di
     tables = base_table_list(base_token, as_identity=as_identity)
     table_map = {_table_name(t): _table_id(t) for t in tables if _table_name(t)}
     expected_names = {t["base_table_name"] for t in manifest["tables"]}
+    logical_keys = {f"{manifest['week']}|{t['kind']}|{t['source_sheet_id']}" for t in manifest["tables"]}
     missing = sorted(expected_names - set(table_map))
     if missing:
         raise LarkError(f"imported Base tables missing after import: {missing[:5]}")
 
     existing = list_index_records(base_token, index_table_id, as_identity=as_identity)
-    to_archive = matching_active_record_ids(existing, manifest["week"], expected_names)
+    to_archive = matching_active_record_ids(existing, manifest["week"], logical_keys, table_names=expected_names)
     archived = archive_index_records(base_token, index_table_id, to_archive, as_identity=as_identity) if to_archive else 0
 
     fields, rows = build_index_rows(manifest, table_map, status="已发布", active=True)

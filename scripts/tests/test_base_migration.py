@@ -72,9 +72,41 @@ def test_matching_active_record_ids_only_matches_same_week_and_table():
         {"record_id": "rec_other_table", "fields": {"统计周": "2026-W27", "Base表名": "W27_日均_日期机型_202607061625", "active": True}},
     ]
 
-    ids = base_migration.matching_active_record_ids(records, "2026-W27", {"W27_汇总_日期机型_202607061625"})
+    ids = base_migration.matching_active_record_ids(
+        records,
+        "2026-W27",
+        set(),
+        table_names={"W27_汇总_日期机型_202607061625"},
+    )
 
     assert ids == ["rec_old"]
+
+
+def test_matching_active_record_ids_archives_prior_run_by_logical_key():
+    records = [
+        {
+            "record_id": "rec_old_run",
+            "fields": {
+                "记录键": "2026-W27|summary|6725f1|20260706_100000",
+                "统计周": "2026-W27",
+                "Base表名": "W27_汇总_日期机型_202607061000",
+                "active": True,
+            },
+        },
+        {
+            "record_id": "rec_other_sheet",
+            "fields": {
+                "记录键": "2026-W27|summary|7rBBpo|20260706_100000",
+                "统计周": "2026-W27",
+                "Base表名": "W27_汇总_估价属性成色_202607061000",
+                "active": True,
+            },
+        },
+    ]
+
+    ids = base_migration.matching_active_record_ids(records, "2026-W27", {"2026-W27|summary|6725f1"})
+
+    assert ids == ["rec_old_run"]
 
 
 def test_build_index_rows_marks_new_version_active():
@@ -109,6 +141,10 @@ def test_load_base_targets_resolves_model_june_targets():
         for target in base_migration.load_base_targets()
     }
 
+    assert targets[("model", "summary", "2026-04")].base_token == "VPnqbP4TYaoPl6soQSncd2lNn9e"
+    assert targets[("model", "daily_avg", "2026-04")].base_token == "Jv8bbncUUaTaNosCTsQcm6x3nYc"
+    assert targets[("category", "summary", "2026-04")].base_token == "HsJ3bmeazah0ggsxUsec2Wfpnsh"
+    assert targets[("category", "daily_avg", "2026-04")].base_token == "XZbvbmmyGaEhn2sHc8ucphR2ndc"
     assert targets[("model", "summary", "2026-06")].base_token == "VK0HbNP5daIibss2ME9cTySfnlh"
     assert targets[("model", "daily_avg", "2026-06")].base_token == "M2ETbrDL7agQAzsQJw3cXgGxnWb"
     assert targets[("model", "summary", "2026-07")].base_token == "WDvlbaajfaAMzCs5uXrcLtpMnch"
