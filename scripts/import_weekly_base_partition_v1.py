@@ -468,9 +468,16 @@ def create_rows(base_token: str, table_id: str, fields: list[str], rows: list[li
 def publish(manifest: dict[str, Any], target: Any, state: dict[str, Any]) -> dict[str, Any]:
     base_token=target.base_token
     pkg=Path(manifest['manifest_path']).parent
-    tmap=table_map(base_token)
     expected={s['base_table_name'] for s in manifest['tables']}
-    missing=sorted(expected-set(tmap))
+    missing=[]
+    for attempt in range(1,13):
+        tmap=table_map(base_token)
+        missing=sorted(expected-set(tmap))
+        if not missing:
+            break
+        sleep_s=10
+        print('[publish-wait-tables]', manifest['family'], manifest['kind'], manifest['month'], 'attempt', attempt, 'missing_count', len(missing), 'sample', missing[:5], flush=True)
+        time.sleep(sleep_s)
     if missing:
         raise RuntimeError(f'missing imported tables {missing[:5]}')
     index_id=base_migration.ensure_index_table(base_token, as_identity='user')
