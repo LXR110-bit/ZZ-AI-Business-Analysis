@@ -55,6 +55,8 @@
 | `category_fulfill_daily_avg` | `AI小万_品类履约漏斗数据周日均` | `category_fulfill_daily_avg_{month}.csv` | primary |
 | `category_fulfill_summary` | `AI小万_品类履约漏斗数据周汇` | `category_fulfill_summary_{month}.csv` | backup |
 
+`role` 和 `required` 的关系必须写进代码注释：`role=primary/backup` 表示下游消费优先级，`required=True` 表示邮件输入完整性。本链路要求 6 封邮件全部产出，backup 文件虽然不一定被 model-tag-monitor 第一时间消费，但仍用于回滚、校验和后续扩展，所以 6 个 source 都是 required。
+
 ### 2.2 Local output contract
 
 For month `2026-07`, successful run writes:
@@ -116,6 +118,8 @@ import importlib
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
@@ -135,6 +139,8 @@ def test_required_mail_sources_are_exactly_six():
     ]
     assert all(source.required for source in sources)
     assert sources[0].subject_contains == "AI小万_品类漏斗数据周日均"
+    assert sources[1].role == "backup"
+    assert sources[1].required is True
     assert sources[3].output_filename("2026-07") == "model_daily_avg_2026-07.csv"
 
 
@@ -182,6 +188,8 @@ class MailSource:
     source_key: str
     subject_contains: str
     filename_prefix: str
+    # role controls downstream consumption priority; required controls mailbox completeness.
+    # backup files are still required because they support validation, rollback, and future consumers.
     role: str
     required: bool = True
 
@@ -296,6 +304,38 @@ def test_write_local_imports_outputs_csv_manifest_and_active(tmp_path: Path):
     assert active["run_id"] == "20260707_093000"
     assert active["outputs"]["model_daily_avg"].endswith("model_daily_avg_2026-07.csv")
     assert active["manifest"].endswith("manifests/20260707_093000.json")
+    for csv_path in active["outputs"].values():
+        assert Path(csv_path).exists()
+
+
+def test_write_local_imports_does_not_update_active_when_csv_write_fails(monkeypatch, tmp_path: Path):
+    old_active = {"schema_version": 1, "run_id": "old", "outputs": {}, "manifest": "old.json"}
+    (tmp_path / "active.json").write_text(json.dumps(old_active), encoding="utf-8")
+    outputs = {
+        "model_daily_avg": pd.DataFrame([{"统计周": "2026-W27", "成交量日均": 1.0}]),
+        "model_summary": pd.DataFrame([{"统计周": "2026-W27", "成交量汇总": 7.0}]),
+    }
+    real_atomic_write_csv = local_imports._atomic_write_csv
+    calls = {"count": 0}
+
+    def fail_on_second_csv(df, path, tmp_dir):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise RuntimeError("simulated csv failure")
+        return real_atomic_write_csv(df, path, tmp_dir)
+
+    monkeypatch.setattr(local_imports, "_atomic_write_csv", fail_on_second_csv)
+
+    with pytest.raises(RuntimeError, match="simulated csv failure"):
+        local_imports.write_local_imports(
+            outputs=outputs,
+            month="2026-07",
+            run_id="20260707_093000",
+            output_root=tmp_path,
+        )
+
+    active = json.loads((tmp_path / "active.json").read_text(encoding="utf-8"))
+    assert active == old_active
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -451,7 +491,7 @@ python3 -m pytest scripts/tests/test_local_imports.py -q
 Expected:
 
 ```text
-3 passed
+4 passed
 ```
 
 - [ ] **Step 5: Commit**
@@ -534,6 +574,8 @@ AttributeError: module 'skills.workflows.机型周数据.pipeline' has no attrib
 ```
 
 - [ ] **Step 3: Implement minimal local pipeline adapter**
+
+This step creates the orchestration seam only. It is not deployable until Task 3.5 wires `load_local_source_frames()` to the real IMAP+xlsx parser.
 
 Modify `skills/workflows/机型周数据/pipeline.py` by adding imports near existing imports:
 
@@ -643,6 +685,185 @@ Expected:
 ```bash
 git add skills/workflows/机型周数据/pipeline.py scripts/tests/test_online_local_pipeline.py
 git commit -m "feat(skills): add local imports pipeline mode"
+```
+
+---
+
+
+### Task 3.5: Wire six-mail loader to existing IMAP + xlsx parser
+
+**Files:**
+- Modify: `skills/workflows/机型周数据/pipeline.py`
+- Modify: `scripts/tests/test_online_local_pipeline.py`
+
+- [ ] **Step 1: Add failing test that real loader can read six source ZIPs**
+
+Append to `scripts/tests/test_online_local_pipeline.py`:
+
+```python
+import zipfile
+
+import pytest
+
+
+def _write_xlsx_zip(tmp_path: Path, source_key: str, rows: list[dict]) -> Path:
+    xlsx_path = tmp_path / f"{source_key}.xlsx"
+    zip_path = tmp_path / f"{source_key}.zip"
+    pd.DataFrame(rows).to_excel(xlsx_path, index=False)
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.write(xlsx_path, arcname=f"{source_key}.xlsx")
+    return zip_path
+
+
+def test_load_local_source_frames_reads_all_six_zips(monkeypatch, tmp_path: Path):
+    zip_map = {}
+    for source_key in [
+        "category_daily_avg",
+        "model_summary",
+        "category_summary",
+        "model_daily_avg",
+        "category_fulfill_daily_avg",
+        "category_fulfill_summary",
+    ]:
+        zip_map[source_key] = [
+            _write_xlsx_zip(
+                tmp_path,
+                source_key,
+                [{"日期": "2026-07-01", "统计周": "2026-W27", "成交量": 1}],
+            )
+        ]
+
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_recent_zips_by_subject",
+        lambda lookback_days: (zip_map, {"mail_count": 6}),
+    )
+
+    frames, metadata = pipeline.load_local_source_frames(lookback_days=14)
+
+    assert sorted(frames) == sorted(zip_map)
+    assert metadata["mail_count"] == 6
+    assert frames["model_daily_avg"].iloc[0]["统计周"] == "2026-W27"
+
+
+def test_load_local_source_frames_fails_when_source_has_no_xlsx(monkeypatch, tmp_path: Path):
+    empty_zip = tmp_path / "empty.zip"
+    with zipfile.ZipFile(empty_zip, "w"):
+        pass
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_recent_zips_by_subject",
+        lambda lookback_days: ({"model_daily_avg": [empty_zip]}, {"mail_count": 1}),
+    )
+
+    with pytest.raises(ValueError, match="no xlsx files"):
+        pipeline.load_local_source_frames(lookback_days=14)
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run:
+
+```bash
+python3 -m pytest scripts/tests/test_online_local_pipeline.py::test_load_local_source_frames_reads_all_six_zips scripts/tests/test_online_local_pipeline.py::test_load_local_source_frames_fails_when_source_has_no_xlsx -q
+```
+
+Expected:
+
+```text
+FAILED ... NotImplementedError: six-mail local source loader must be wired to the existing mailbox parser
+```
+
+- [ ] **Step 3: Implement subject-based fetch and xlsx loader**
+
+Modify `skills/workflows/机型周数据/pipeline.py` by replacing the temporary `load_local_source_frames()` body and adding helpers:
+
+```python
+def fetch_recent_zips_by_subject(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> tuple[dict[str, list[Path]], dict[str, Any]]:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    since = (date.today() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    zips_by_source: dict[str, list[Path]] = {}
+    mail_metadata: dict[str, Any] = {"since": since, "sources": {}, "mail_count": 0}
+
+    for source in required_sources():
+        emails = list_emails(subject_contains=source.subject_contains, since=since, max_results=20)
+        matched = [email for email in emails if source.subject_contains in email.subject and email.attachments]
+        if not matched:
+            continue
+        # Keep all matching zips in the lookback window; downstream parser concatenates them.
+        source_zips: list[Path] = []
+        source_meta: list[dict[str, Any]] = []
+        for email in matched:
+            zip_name = next((a for a in email.attachments if a.lower().endswith(".zip")), None)
+            if not zip_name:
+                continue
+            cache_key = CACHE_DIR / f"{source.source_key}_{email.uid}_{zip_name}"
+            if not cache_key.exists():
+                tmp = tempfile.mkdtemp(prefix=f"{source.source_key}_")
+                try:
+                    path_str = download_attachment(email.uid, zip_name, tmp)
+                    shutil.move(path_str, cache_key)
+                finally:
+                    shutil.rmtree(tmp, ignore_errors=True)
+            source_zips.append(cache_key)
+            source_meta.append({"uid": email.uid, "subject": email.subject, "date": email.date, "attachment": zip_name})
+        if source_zips:
+            zips_by_source[source.source_key] = sorted(set(source_zips))
+            mail_metadata["sources"][source.source_key] = source_meta
+            mail_metadata["mail_count"] += len(source_meta)
+
+    return zips_by_source, mail_metadata
+
+
+def _read_xlsx_frames_from_zip(zip_path: Path) -> list[pd.DataFrame]:
+    frames: list[pd.DataFrame] = []
+    workdir = Path(tempfile.mkdtemp(prefix="local_import_source_"))
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(workdir)
+        xlsx_files = sorted(workdir.rglob("*.xlsx"))
+        if not xlsx_files:
+            raise ValueError(f"no xlsx files in {zip_path}")
+        for xlsx in xlsx_files:
+            df = pd.read_excel(xlsx)
+            if not df.empty:
+                frames.append(df)
+        return frames
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def load_local_source_frames(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
+    zips_by_source, mail_metadata = fetch_recent_zips_by_subject(lookback_days=lookback_days)
+    frames_by_source: dict[str, pd.DataFrame] = {}
+    for source in required_sources():
+        source_frames: list[pd.DataFrame] = []
+        for zip_path in zips_by_source.get(source.source_key, []):
+            source_frames.extend(_read_xlsx_frames_from_zip(zip_path))
+        if source_frames:
+            frames_by_source[source.source_key] = pd.concat(source_frames, ignore_index=True)
+    return frames_by_source, mail_metadata
+```
+
+- [ ] **Step 4: Run local pipeline tests**
+
+Run:
+
+```bash
+python3 -m pytest scripts/tests/test_online_local_pipeline.py -q
+```
+
+Expected:
+
+```text
+4 passed
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add skills/workflows/机型周数据/pipeline.py scripts/tests/test_online_local_pipeline.py
+git commit -m "feat(skills): wire local imports mail loader"
 ```
 
 ---
@@ -1028,15 +1249,16 @@ python3 -m skills.workflows.机型周数据 \
 
 Do not include `--base-import` in cron default. Keep historical Base imports as a manual command only.
 
-- [ ] **Step 3: Verify cron script does not call Base import**
+- [ ] **Step 3: Verify cron script does not call Base import or old Sheets default path**
 
 Run:
 
 ```bash
-! grep -n -- '--base-import' scripts/机型周数据_cron.sh
+grep -n -- '--local-imports' scripts/机型周数据_cron.sh
+! grep -nE -- '--base-import|--base-migration|--sheets|run_pipeline' scripts/机型周数据_cron.sh
 ```
 
-Expected: exit code `0`.
+Expected: both commands exit `0`; cron contains `--local-imports` and does not contain Base import, Base migration, Sheets mode, or direct `run_pipeline` invocation.
 
 - [ ] **Step 4: Commit**
 
@@ -1098,14 +1320,14 @@ Pass criteria:
 
 | Requirement | Covered by |
 |---|---|
-| 6 封邮件固定契约 | Task 1 |
-| IMAP/解析/聚合保留，最终 sink 改本地 CSV | Task 3 |
+| 6 封邮件固定契约，且说明 role 与 required 关系 | Task 1 |
+| IMAP/解析/聚合保留，最终 sink 改本地 CSV | Task 3, Task 3.5 |
 | `data/imports/*.csv` 输出 | Task 2 |
-| manifest + active pointer | Task 2 |
+| manifest + active pointer，且 active 最后原子更新 | Task 2 |
 | Base 仅校验/发布索引 | Task 5 |
 | 大盘由品类求和，不做主链路飞书表 | Section 0, Section 5 |
 | 历史回溯和线上流程拆开 | Section 0, Section 5 |
-| Cron 不再默认 Base 明细导入 | Task 7 |
+| Cron 不再默认 Base 明细导入或旧 Sheets 写入 | Task 7 |
 | 旧 Sheets 保留回滚 | Task 6, Section 5 |
 
 ### 6.2 Placeholder scan
