@@ -373,8 +373,26 @@ def import_partitions(manifest: dict[str, Any], target: Any) -> dict[str, Any]:
             print('[import-skip-ready]', manifest['family'], manifest['kind'], manifest['month'], name, flush=True)
             continue
         xlsx=Path(spec['xlsx_path'])
-        print('[import-start]', manifest['family'], manifest['kind'], manifest['month'], name, 'rows', spec['rows'], 'MB', round(xlsx.stat().st_size/1024/1024,2), flush=True)
-        data=base_migration.import_package_to_base(xlsx, target.base_token, as_identity='user')
+        mb=round(xlsx.stat().st_size/1024/1024,2)
+        print('[import-start]', manifest['family'], manifest['kind'], manifest['month'], name, 'rows', spec['rows'], 'MB', mb, flush=True)
+        last_err=None
+        for attempt in range(1,4):
+            try:
+                data=base_migration.import_package_to_base(xlsx, target.base_token, as_identity='user')
+                break
+            except Exception as exc:
+                last_err=exc
+                msg=str(exc)
+                # Feishu occasionally reports 8006/content-size on small
+                # <=49k partition files; retry because reruns have succeeded.
+                retryable='bitable_import_xlsx_content_size_over_limit' in msg or 'status 8006' in msg
+                if not retryable or attempt >= 3:
+                    raise
+                sleep_s=20*attempt
+                print('[import-retry]', name, 'attempt', attempt, 'sleep', sleep_s, 'error', msg[:300], flush=True)
+                time.sleep(sleep_s)
+        else:
+            raise RuntimeError(f'import failed without data: {last_err}')
         entry={'status':'submitted','data':data,'xlsx':str(xlsx),'rows':spec['rows']}
         state['imports'][name]=entry; save_state(pkg,state)
         if data.get('ready') is False or data.get('timed_out') is True:
