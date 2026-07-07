@@ -62,4 +62,27 @@ function calcDelta(cur, prev) {
   return out;
 }
 
-module.exports = { COUNT_KEYS, RATE_KEYS, sumCounts, calcRates, calcDelta };
+/**
+ * 计算计数字段的绝对变化和百分比变化。
+ * 用于异动检测（anomaly detection）。
+ * @param {Record<string,number|null>|null} cur
+ * @param {Record<string,number|null>|null} prev
+ * @param {string[]} [keys=COUNT_KEYS]
+ * @returns {Record<string,{abs:number|null, pct:number|null}>}
+ */
+function calcCountDelta(cur, prev, keys) {
+  const ks = keys || COUNT_KEYS;
+  const out = {};
+  for (const k of ks) {
+    const c = cur && cur[k];
+    const p = prev && prev[k];
+    if (c == null || p == null) {
+      out[k] = { abs: null, pct: null };
+    } else {
+      out[k] = { abs: c - p, pct: p === 0 ? null : (c - p) / p };
+    }
+  }
+  return out;
+}
+
+module.exports = { COUNT_KEYS, RATE_KEYS, sumCounts, calcRates, calcDelta, calcCountDelta };

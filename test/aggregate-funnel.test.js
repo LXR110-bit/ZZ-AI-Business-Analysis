@@ -94,3 +94,52 @@ test('calcDelta：prev 某字段为 0 → 该字段 null（除零保护）', () 
   assert.equal(delta.evaRate, null);
   assert.equal(delta.orderRate, 0);
 });
+
+// --- calcCountDelta ---
+
+const { calcCountDelta } = require('../src/aggregate/funnel');
+
+test('calcCountDelta：正常计算 abs 和 pct', () => {
+  const cur = { jkuv: 1200, evaUv: 600, gmv: 500000 };
+  const prev = { jkuv: 1000, evaUv: 500, gmv: 400000 };
+  const delta = calcCountDelta(cur, prev, ['jkuv', 'evaUv', 'gmv']);
+  assert.equal(delta.jkuv.abs, 200);
+  assert.equal(delta.jkuv.pct, 0.2);
+  assert.equal(delta.evaUv.abs, 100);
+  assert.equal(delta.evaUv.pct, 0.2);
+  assert.equal(delta.gmv.abs, 100000);
+  assert.equal(delta.gmv.pct, 0.25);
+});
+
+test('calcCountDelta：cur 为 null → 全部 { abs: null, pct: null }', () => {
+  const prev = { jkuv: 1000, gmv: 400000 };
+  const delta = calcCountDelta(null, prev, ['jkuv', 'gmv']);
+  assert.deepEqual(delta.jkuv, { abs: null, pct: null });
+  assert.deepEqual(delta.gmv, { abs: null, pct: null });
+});
+
+test('calcCountDelta：prev 为 null → 全部 { abs: null, pct: null }', () => {
+  const cur = { jkuv: 1200, gmv: 500000 };
+  const delta = calcCountDelta(cur, null, ['jkuv', 'gmv']);
+  assert.deepEqual(delta.jkuv, { abs: null, pct: null });
+  assert.deepEqual(delta.gmv, { abs: null, pct: null });
+});
+
+test('calcCountDelta：prev 字段为 0 → pct 为 null，abs 正常', () => {
+  const cur = { jkuv: 100, gmv: 50000 };
+  const prev = { jkuv: 0, gmv: 50000 };
+  const delta = calcCountDelta(cur, prev, ['jkuv', 'gmv']);
+  assert.equal(delta.jkuv.abs, 100);
+  assert.equal(delta.jkuv.pct, null);
+  assert.equal(delta.gmv.abs, 0);
+  assert.equal(delta.gmv.pct, 0);
+});
+
+test('calcCountDelta：不传 keys 默认使用 COUNT_KEYS', () => {
+  const cur = { jkuv: 100, evaUv: 50, evaCnt: 60, orderUv: 20, orderCnt: 18, shipCnt: 15, signCnt: 14, qcCnt: 13, dealCnt: 12, returnCnt: 1, gmv: 80000 };
+  const prev = { jkuv: 80, evaUv: 40, evaCnt: 50, orderUv: 16, orderCnt: 14, shipCnt: 12, signCnt: 11, qcCnt: 10, dealCnt: 9, returnCnt: 1, gmv: 60000 };
+  const delta = calcCountDelta(cur, prev);
+  assert.equal(Object.keys(delta).length, 11);
+  assert.equal(delta.jkuv.abs, 20);
+  assert.equal(delta.gmv.abs, 20000);
+});
