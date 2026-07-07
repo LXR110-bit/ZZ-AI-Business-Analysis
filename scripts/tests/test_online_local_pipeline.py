@@ -169,3 +169,40 @@ def test_build_validation_index_rows_are_small_and_manifest_based(tmp_path: Path
     assert row["row_count"] == 2
     assert row["active"] is True
     assert "成交量日均" in row["metric_sums_json"]
+
+
+notifier = importlib.import_module("skills.workflows.机型周数据.notifier")
+
+
+def test_notify_local_imports_sends_post(monkeypatch):
+    sent = {}
+
+    def fake_im_send_post(chat_id, *, title, content_lines):
+        sent["chat_id"] = chat_id
+        sent["title"] = title
+        sent["lines"] = content_lines
+
+    monkeypatch.setattr(notifier, "im_send_post", fake_im_send_post)
+    monkeypatch.setenv("WEEKLY_REPORT_CHAT_ID", "oc_test123")
+
+    result = {
+        "status": "ok",
+        "run_id": "20260707_093000",
+        "months": ["2026-07"],
+        "by_month": {
+            "2026-07": {
+                "status": "ok",
+                "manifest_path": "/tmp/manifests/20260707_093000.json",
+                "outputs": {
+                    "model_daily_avg": {"row_count": 10},
+                    "model_summary": {"row_count": 5},
+                },
+            }
+        },
+    }
+
+    notifier.notify_local_imports(result)
+
+    assert sent["chat_id"] == "oc_test123"
+    assert "线上CSV导入" in sent["title"]
+    assert any("合计行数: 15" in line for line in sent["lines"])

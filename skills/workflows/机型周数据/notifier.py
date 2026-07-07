@@ -120,3 +120,37 @@ def notify_base_migration(result: dict) -> None:
 
     title = "【机型周数据 Base迁移 已发布】" if not failed else "【机型周数据 Base迁移 部分完成】"
     im_send_post(chat_id, title=title, content_lines=lines)
+
+
+def notify_local_imports(result: dict) -> None:
+    """Notify local CSV import pipeline completion."""
+    chat_id = os.environ.get("WEEKLY_REPORT_CHAT_ID")
+    if not chat_id:
+        raise RuntimeError("WEEKLY_REPORT_CHAT_ID not set")
+
+    months = sorted(result.get("months", []))
+    by_month = result.get("by_month", {}) or {}
+    run_id = result.get("run_id", "")
+    total_outputs = 0
+    total_rows = 0
+    for month in months:
+        stat = by_month.get(month, {}) or {}
+        outputs = stat.get("outputs", {}) or {}
+        total_outputs += len(outputs)
+        for o in outputs.values():
+            total_rows += int(o.get("row_count", 0)) if isinstance(o, dict) else 0
+
+    title = "【机型周数据 线上CSV导入 已完成】"
+    lines = [
+        f"run_id: {run_id}",
+        f"覆盖月份: {', '.join(months)}",
+        f"导出文件数: {total_outputs}",
+        f"合计行数: {total_rows}",
+    ]
+    for month in months:
+        stat = by_month.get(month, {}) or {}
+        status = stat.get("status", "")
+        manifest = stat.get("manifest_path", "")
+        lines.append(f"  {month}: {status} manifest={manifest}")
+
+    im_send_post(chat_id, title=title, content_lines=lines)
