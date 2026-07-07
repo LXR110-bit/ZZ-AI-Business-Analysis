@@ -385,7 +385,12 @@ def import_partitions(manifest: dict[str, Any], target: Any) -> dict[str, Any]:
                 msg=str(exc)
                 # Feishu occasionally reports 8006/content-size on small
                 # <=49k partition files; retry because reruns have succeeded.
-                retryable='bitable_import_xlsx_content_size_over_limit' in msg or 'status 8006' in msg
+                retryable=(
+                    'bitable_import_xlsx_content_size_over_limit' in msg
+                    or 'status 8006' in msg
+                    or 'rpc_failed' in msg
+                    or 'status 3' in msg
+                )
                 if not retryable or attempt >= 3:
                     raise
                 sleep_s=20*attempt
