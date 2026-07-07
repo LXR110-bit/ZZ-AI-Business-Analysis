@@ -100,3 +100,38 @@ def test_load_local_source_frames_fails_when_source_has_no_xlsx(monkeypatch, tmp
 
     with pytest.raises(ValueError, match="no xlsx files"):
         pipeline.load_local_source_frames(lookback_days=14)
+
+
+run_mod = importlib.import_module("skills.workflows.机型周数据.run")
+
+
+def test_run_main_local_imports_mode_calls_local_pipeline(monkeypatch, tmp_path: Path):
+    calls = {}
+
+    monkeypatch.setattr(run_mod, "_acquire_singleton_lock", lambda: open(__file__, "r", encoding="utf-8"))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "机型周数据",
+            "--local-imports",
+            "--months",
+            "2026-07",
+            "--local-output-dir",
+            str(tmp_path),
+            "--local-run-id",
+            "20260707_093000",
+            "--skip-notify",
+        ],
+    )
+
+    def fake_local_pipeline(**kwargs):
+        calls.update(kwargs)
+        return {"status": "ok", "months": ["2026-07"], "by_month": {}}
+
+    monkeypatch.setattr(run_mod, "run_local_imports_pipeline", fake_local_pipeline)
+
+    assert run_mod.main() == 0
+    assert calls["target_months"] == {"2026-07"}
+    assert calls["output_root"] == tmp_path
+    assert calls["run_id"] == "20260707_093000"

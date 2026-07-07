@@ -4,7 +4,7 @@ import argparse, fcntl, json, os, sys
 from datetime import datetime
 from pathlib import Path
 
-from .pipeline import run_pipeline
+from .pipeline import run_pipeline, run_local_imports_pipeline
 from .base_migration import BASE_TARGETS_PATH, run_base_migration_pipeline
 from .notifier import notify, notify_base_migration
 
@@ -33,6 +33,10 @@ def main() -> int:
     ap.add_argument("--concurrency", type=int, default=4)
     ap.add_argument("--skip-notify", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="skip 通知 (等同 --skip-notify); Base migration 下不执行导入")
+    ap.add_argument("--local-imports", action="store_true", help="线上主链路: 写 data/imports CSV + manifest, 不写飞书明细")
+    ap.add_argument("--local-output-dir", type=str, default="data/imports", help="local imports 输出目录")
+    ap.add_argument("--local-run-id", type=str, default=None, help="local imports run_id; 默认当前时间")
+    ap.add_argument("--publish-base-index", action="store_true", help="local imports 后仅发布 Base 校验/索引记录; 不导入明细")
     ap.add_argument("--base-migration", action="store_true", help="生成飞书多维表格迁移包; 默认仅导出, 不写 Base")
     ap.add_argument("--base-import", action="store_true", help="与 --base-migration 搭配: 使用 drive +import --type bitable 导入并发布索引")
     ap.add_argument("--base-token", type=str, default=None, help="目标月度 Base token; 不传则按环境变量/标题解析或创建")
@@ -53,6 +57,16 @@ def main() -> int:
     if lock_fh is None:
         return 75
     try:
+        if args.local_imports:
+            result = run_local_imports_pipeline(
+                target_months=months_set,
+                lookback_days=args.lookback_days,
+                output_root=Path(args.local_output_dir),
+                run_id=args.local_run_id,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+            return 0 if result.get("status") == "ok" else 1
+
         if args.base_migration:
             result = run_base_migration_pipeline(
                 target_months=months_set,
