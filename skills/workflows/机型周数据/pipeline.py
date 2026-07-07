@@ -46,6 +46,9 @@ _REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_REPO / "mcp_servers" / "data_tools" / "src"))
 from data_tools.email_reader import download_attachment, list_emails  # noqa: E402
 
+from .local_imports import write_local_imports
+from .mail_sources import missing_required_sources, required_sources
+
 from .constants import (
     COMMON_DIMS,
     DAILY_AVG_TOKENS,
@@ -977,4 +980,86 @@ def run_pipeline(
         "zips": [z.name for z in zips],
         "months": sorted(by_month.keys()),
         "by_month": results,
+    }
+
+
+# ============================================================
+# Online local CSV pipeline
+# ============================================================
+def _month_from_frame(df: pd.DataFrame) -> str | None:
+    if df.empty:
+        return None
+    if "日期" in df.columns:
+        d = pd.to_datetime(df["日期"], errors="coerce").dropna()
+        if not d.empty:
+            first = d.dt.date.iloc[0]
+            if hasattr(first, "isocalendar"):
+                iso = first.isocalendar()
+                monday = date.fromisocalendar(iso.year, iso.week, 1)
+                return month_key(monday)
+    if "统计周" in df.columns:
+        week = str(df["统计周"].dropna().astype(str).iloc[0])
+        y, w = week.split("-W")
+        monday = date.fromisocalendar(int(y), int(w), 1)
+        return month_key(monday)
+    return None
+
+
+def load_local_source_frames(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
+    """Load six online mail sources into prepared DataFrames.
+
+    This is the adapter seam: the existing IMAP/xlsx/pandas implementation stays
+    in place, but each source returns a prepared weekly DataFrame keyed by
+    `mail_sources.MailSource.source_key`.
+    """
+    raise NotImplementedError("six-mail local source loader must be wired to the existing mailbox parser")
+
+
+def run_local_imports_pipeline(
+    target_months: set[str] | None = None,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    output_root: Path | str = Path("data/imports"),
+    run_id: str | None = None,
+) -> dict:
+    run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+    frames_by_source, mail_metadata = load_local_source_frames(lookback_days=lookback_days)
+    missing = missing_required_sources(set(frames_by_source))
+    if missing:
+        return {
+            "status": "missing_mail_sources",
+            "missing": [
+                {"source_key": source.source_key, "subject_contains": source.subject_contains}
+                for source in missing
+            ],
+        }
+
+    by_month: dict[str, dict[str, pd.DataFrame]] = {}
+    for source in required_sources():
+        df = frames_by_source[source.source_key]
+        month = _month_from_frame(df)
+        if month is None:
+            return {"status": "empty_or_unmonthable_source", "source_key": source.source_key}
+        if target_months and month not in target_months:
+            continue
+        by_month.setdefault(month, {})[source.source_key] = df
+
+    if not by_month:
+        return {"status": "no_data_in_target_months"}
+
+    month_results = {}
+    for month, outputs in sorted(by_month.items()):
+        month_results[month] = write_local_imports(
+            outputs=outputs,
+            month=month,
+            run_id=run_id if len(by_month) == 1 else f"{run_id}_{month}",
+            output_root=output_root,
+            mail_metadata=mail_metadata,
+        )
+
+    return {
+        "status": "ok",
+        "run_id": run_id,
+        "months": sorted(month_results),
+        "by_month": month_results,
+        "mail_metadata": mail_metadata,
     }
