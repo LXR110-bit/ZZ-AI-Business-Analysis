@@ -41,3 +41,62 @@ def test_run_local_imports_pipeline_writes_files_without_sheets(monkeypatch, tmp
     assert result["months"] == ["2026-07"]
     assert (tmp_path / "model_daily_avg_2026-07.csv").exists()
     assert (tmp_path / "category_fulfill_summary_2026-07.csv").exists()
+
+
+import zipfile
+
+import pytest
+
+
+def _write_xlsx_zip(tmp_path: Path, source_key: str, rows: list[dict]) -> Path:
+    xlsx_path = tmp_path / f"{source_key}.xlsx"
+    zip_path = tmp_path / f"{source_key}.zip"
+    pd.DataFrame(rows).to_excel(xlsx_path, index=False)
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.write(xlsx_path, arcname=f"{source_key}.xlsx")
+    return zip_path
+
+
+def test_load_local_source_frames_reads_all_six_zips(monkeypatch, tmp_path: Path):
+    zip_map = {}
+    for source_key in [
+        "category_daily_avg",
+        "model_summary",
+        "category_summary",
+        "model_daily_avg",
+        "category_fulfill_daily_avg",
+        "category_fulfill_summary",
+    ]:
+        zip_map[source_key] = [
+            _write_xlsx_zip(
+                tmp_path,
+                source_key,
+                [{"日期": "2026-07-06", "统计周": "2026-W28", "成交量": 1}],
+            )
+        ]
+
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_recent_zips_by_subject",
+        lambda lookback_days: (zip_map, {"mail_count": 6}),
+    )
+
+    frames, metadata = pipeline.load_local_source_frames(lookback_days=14)
+
+    assert sorted(frames) == sorted(zip_map)
+    assert metadata["mail_count"] == 6
+    assert frames["model_daily_avg"].iloc[0]["统计周"] == "2026-W28"
+
+
+def test_load_local_source_frames_fails_when_source_has_no_xlsx(monkeypatch, tmp_path: Path):
+    empty_zip = tmp_path / "empty.zip"
+    with zipfile.ZipFile(empty_zip, "w"):
+        pass
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_recent_zips_by_subject",
+        lambda lookback_days: ({"model_daily_avg": [empty_zip]}, {"mail_count": 1}),
+    )
+
+    with pytest.raises(ValueError, match="no xlsx files"):
+        pipeline.load_local_source_frames(lookback_days=14)

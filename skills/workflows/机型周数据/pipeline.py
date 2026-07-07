@@ -1005,6 +1005,59 @@ def _month_from_frame(df: pd.DataFrame) -> str | None:
     return None
 
 
+def fetch_recent_zips_by_subject(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> tuple[dict[str, list[Path]], dict[str, Any]]:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    since = (date.today() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    zips_by_source: dict[str, list[Path]] = {}
+    mail_metadata: dict[str, Any] = {"since": since, "sources": {}, "mail_count": 0}
+
+    for source in required_sources():
+        emails = list_emails(subject_contains=source.subject_contains, since=since, max_results=20)
+        matched = [email for email in emails if source.subject_contains in email.subject and email.attachments]
+        if not matched:
+            continue
+        source_zips: list[Path] = []
+        source_meta: list[dict[str, Any]] = []
+        for email in matched:
+            zip_name = next((a for a in email.attachments if a.lower().endswith(".zip")), None)
+            if not zip_name:
+                continue
+            cache_key = CACHE_DIR / f"{source.source_key}_{email.uid}_{zip_name}"
+            if not cache_key.exists():
+                tmp = tempfile.mkdtemp(prefix=f"{source.source_key}_")
+                try:
+                    path_str = download_attachment(email.uid, zip_name, tmp)
+                    shutil.move(path_str, cache_key)
+                finally:
+                    shutil.rmtree(tmp, ignore_errors=True)
+            source_zips.append(cache_key)
+            source_meta.append({"uid": email.uid, "subject": email.subject, "date": email.date, "attachment": zip_name})
+        if source_zips:
+            zips_by_source[source.source_key] = sorted(set(source_zips))
+            mail_metadata["sources"][source.source_key] = source_meta
+            mail_metadata["mail_count"] += len(source_meta)
+
+    return zips_by_source, mail_metadata
+
+
+def _read_xlsx_frames_from_zip(zip_path: Path) -> list[pd.DataFrame]:
+    frames: list[pd.DataFrame] = []
+    workdir = Path(tempfile.mkdtemp(prefix="local_import_source_"))
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(workdir)
+        xlsx_files = sorted(workdir.rglob("*.xlsx"))
+        if not xlsx_files:
+            raise ValueError(f"no xlsx files in {zip_path}")
+        for xlsx in xlsx_files:
+            df = pd.read_excel(xlsx)
+            if not df.empty:
+                frames.append(df)
+        return frames
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def load_local_source_frames(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
     """Load six online mail sources into prepared DataFrames.
 
@@ -1012,7 +1065,15 @@ def load_local_source_frames(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> tupl
     in place, but each source returns a prepared weekly DataFrame keyed by
     `mail_sources.MailSource.source_key`.
     """
-    raise NotImplementedError("six-mail local source loader must be wired to the existing mailbox parser")
+    zips_by_source, mail_metadata = fetch_recent_zips_by_subject(lookback_days=lookback_days)
+    frames_by_source: dict[str, pd.DataFrame] = {}
+    for source in required_sources():
+        source_frames: list[pd.DataFrame] = []
+        for zip_path in zips_by_source.get(source.source_key, []):
+            source_frames.extend(_read_xlsx_frames_from_zip(zip_path))
+        if source_frames:
+            frames_by_source[source.source_key] = pd.concat(source_frames, ignore_index=True)
+    return frames_by_source, mail_metadata
 
 
 def run_local_imports_pipeline(
