@@ -135,3 +135,37 @@ def test_run_main_local_imports_mode_calls_local_pipeline(monkeypatch, tmp_path:
     assert calls["target_months"] == {"2026-07"}
     assert calls["output_root"] == tmp_path
     assert calls["run_id"] == "20260707_093000"
+
+
+base_validation_publish = importlib.import_module("skills.workflows.机型周数据.base_validation_publish")
+
+
+def test_build_validation_index_rows_are_small_and_manifest_based(tmp_path: Path):
+    manifest = {
+        "schema_version": 1,
+        "run_id": "20260707_093000",
+        "month": "2026-07",
+        "outputs": {
+            "model_daily_avg": {
+                "path": str(tmp_path / "model_daily_avg_2026-07.csv"),
+                "row_count": 2,
+                "column_count": 3,
+                "sha256": "a" * 64,
+                "metric_sums": {"成交量日均": 4.0},
+                "role": "primary",
+            }
+        },
+        "validation_status": "pass",
+    }
+
+    fields, rows = base_validation_publish.build_validation_index_rows(manifest)
+
+    assert "run_id" in fields
+    assert "source_key" in fields
+    assert "active" in fields
+    row = dict(zip(fields, rows[0]))
+    assert row["run_id"] == "20260707_093000"
+    assert row["source_key"] == "model_daily_avg"
+    assert row["row_count"] == 2
+    assert row["active"] is True
+    assert "成交量日均" in row["metric_sums_json"]
