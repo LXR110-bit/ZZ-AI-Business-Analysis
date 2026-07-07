@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "dev",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["src/server.js"],
-      "port": 8848
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["/private/tmp/v2-frontend-wt/model-tag-monitor/start-dev.sh"],
+      "port": 8848,
+      "autoPort": true
     }
   ]
 }

@@ -9,10 +9,17 @@ const { sync } = require('./sync');
 const { monitor, DEFAULT_RULES } = require('./monitor');
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
 const { createProxy } = require('./proxy');
+const { composeDashboard: composeDashboardV2 } = require('../../src/compose-dashboard');
 
 const app = express();
 const PORT = process.env.PORT || 8848;
-const UPSTREAM = (process.env.PROXY_UPSTREAM || '').trim();
+// v2-frontend 分支：强制本地模式，禁用代理（开发期间）
+const UPSTREAM = '';
+
+// v2 dashboard mock（提前加载，/api/meta 和 /api/dashboard 都依赖）
+const DASHBOARD_V2_MOCK = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '..', 'test', 'fixtures', 'dashboard-v2-mock.json'), 'utf8')
+);
 
 // gzip 压缩所有响应(monitor 结果约 2.8MB → 压缩后约 400KB)
 app.use(compression());
@@ -59,6 +66,18 @@ app.post('/api/sync', async (req, res) => {
 
 // ---- 元数据 ----
 app.get('/api/meta', (req, res) => {
+  // local 模式（无代理）：用 dashboard mock 数据构造 meta
+  if (!UPSTREAM) {
+    const d = DASHBOARD_V2_MOCK || {};
+    return res.json({
+      synced: true,
+      syncedAt: d.syncedAt || new Date().toISOString(),
+      categories: (d.categories || []).map(c => c.category),
+      weeks: d.weekRange || [],
+      rowCount: 0,
+      source: 'mock',
+    });
+  }
   const cache = store.readJSON('cache.json', null);
   if (!cache) return res.json({ synced: false });
   res.json({
@@ -198,16 +217,24 @@ app.get('/api/monitor', (req, res) => {
   res.end(body);
 });
 
-// ---- 概览 ----
-app.get('/api/dashboard', async (req, res) => {
+// ---- 概览 v2（真实聚合 → fallback mock） ----
+app.get('/api/dashboard', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   try {
-    const d = UPSTREAM ? await getDashboardFromUpstream(UPSTREAM) : getDashboard();
-    if (!d) return res.status(503).json({ error: '尚未同步数据' });
-    res.json(d);
+    const categoryCache = store.readJSON('category-cache.json', null);
+    const taxonomy = store.readJSON('category-taxonomy.json', null);
+    if (categoryCache && taxonomy && Array.isArray(categoryCache.rows) && categoryCache.rows.length) {
+      const weeks = [...new Set(categoryCache.rows.map(r => r.week))].filter(Boolean).sort();
+      const week = req.query.week || weeks[weeks.length - 1];
+      const prevWeek = weeks[weeks.indexOf(week) - 1] || null;
+      const result = composeDashboardV2({ categoryCache, taxonomy, week, prevWeek });
+      if (result) return res.json(result);
+    }
   } catch (e) {
-    console.error('[/api/dashboard] failed:', e);
-    res.status(502).json({ error: 'dashboard 组装失败', detail: e.message });
+    console.warn('[/api/dashboard] composeDashboardV2 failed, fallback to mock:', e.message);
   }
+  // fallback: mock 数据
+  res.json(DASHBOARD_V2_MOCK);
 });
 
 // ---- 操作日志 ----

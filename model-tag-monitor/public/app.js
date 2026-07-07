@@ -154,6 +154,26 @@ async function init() {
     applyStateToMonitorSelects(s);
     activateTab(s.tab || 'dashboard', { skipUrl: true });
   });
+
+  // v2: Tier Tab 点击
+  $$('#dashTierTabs .dash-tier-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tier = btn.dataset.tier;
+      writeUrlState({ tier });
+      refreshDashboard();
+    });
+  });
+  // v2: 精简/详细切换
+  const toggle = $('#dashViewToggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      const cur = toggle.dataset.mode;
+      const next = cur === 'compact' ? 'detail' : 'compact';
+      toggle.dataset.mode = next;
+      toggle.textContent = next === 'compact' ? '详细' : '精简';
+      refreshDashboard();
+    });
+  }
 }
 
 async function loadMeta() {
@@ -689,204 +709,36 @@ function markFilterApplied(scope) {
 // ============================================================================
 // 概览页 · dashboard
 // ============================================================================
-let dashState = null;
-
 async function refreshDashboard() {
-  const wrap = $('#dashKpiRow');
-  const line = $('#dashLineWrap');
-  const donut = $('#dashDonutWrap');
-  const topTb = $('#dashTopTable tbody');
   const meta = $('#dashMeta');
+  const boardKpi = $('#dashBoardKpi');
+  const tierSummary = $('#dashTierSummary');
+  const catThead = $('#dashCategoryTable thead');
+  const catTbody = $('#dashCategoryTable tbody');
   try {
     if (!state.meta || !state.meta.synced) {
       meta.innerHTML = '';
-      wrap.innerHTML = '';
-      line.innerHTML = '';
-      donut.innerHTML = '';
-      topTb.innerHTML = `<tr><td colspan="5" class="dash-empty">尚未同步数据 · 请先点顶部「同步飞书数据」</td></tr>`;
+      boardKpi.innerHTML = '';
+      tierSummary.innerHTML = '';
+      catThead.innerHTML = '';
+      catTbody.innerHTML = '<tr><td colspan="99" class="dash-empty">尚未同步数据 · 请先点顶部「同步飞书数据」</td></tr>';
       return;
     }
     const d = await api('/api/dashboard');
-    dashState = d;
-    renderDashboardMeta(d);
-    renderDashboardKpi(d);
-    renderDashboardLine(d);
-    renderDashboardDonut(d);
-    renderDashboardTop(d);
+    if (!d || !d.board) {
+      catTbody.innerHTML = '<tr><td colspan="99" class="dash-empty">数据组装中，请稍后刷新</td></tr>';
+      return;
+    }
+    renderDashboardMetaV2(d);
+    renderBoardKpi(d.board);
+    const curTier = readUrlState().tier || '发展';
+    setActiveTierTab(curTier);
+    renderTierSummary(d.tiers, curTier);
+    renderCategoryTable(d.categories, curTier);
   } catch (e) {
-    console.error('[dashboard] failed', e);
-    topTb.innerHTML = `<tr><td colspan="5" class="dash-empty">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+    console.error('[dashboard-v2] failed', e);
+    catTbody.innerHTML = '<tr><td colspan="99" class="dash-empty">加载失败: ' + escapeHtml(e.message) + '</td></tr>';
   }
-}
-
-function renderDashboardMeta(d) {
-  const t = d.meta.syncedAt ? new Date(d.meta.syncedAt).toLocaleString('zh-CN') : '-';
-  $('#dashMeta').innerHTML = `
-    <span class="dash-meta-week">${escapeHtml(d.meta.latestWeek || '-')}</span>
-    ${d.meta.weekRange ? `<span class="dash-meta-sep">·</span><span>${escapeHtml(d.meta.weekRange)}</span>` : ''}
-    <span class="dash-meta-sep">·</span>
-    <span>共 ${d.meta.totalWeeks} 周历史</span>
-    <span class="dash-meta-sep">·</span>
-    <span>同步于 ${escapeHtml(t)}</span>
-    <button class="dash-meta-cta" id="dashEnterMonitor">进入监测详情 →</button>
-  `;
-  $('#dashEnterMonitor').addEventListener('click', () => {
-    drillTo({ tab: 'monitor', week: d.meta.latestWeek, view: 'watch', from: 'dashboard' });
-  });
-}
-
-function renderDashboardDonut(d) {
-  const wrap = $('#dashDonutWrap');
-  const items = d.watchByCategory || [];
-  if (!items.length) { wrap.innerHTML = '<div class="dash-empty">暂无数据</div>'; return; }
-  // 所有汇总均由后端 watchCategoryStats 提供，前端只格式化与绘制
-  const stats = d.watchCategoryStats || {};
-  const gmvGrandTotal = Number(stats.gmvGrandTotal) || 0;
-  const top6GmvSum = Number(stats.top6GmvSum) || 0;
-  const top6Pct = Number(stats.top6GmvPct) || 0;
-  const totalCats = Number(stats.totalCategories) || items.length;
-  const grandTotal = (d.kpi && d.kpi.totalModels) || 0;
-  const fmtGmv = (v) => {
-    const n = Number(v) || 0;
-    if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
-    if (n >= 1e4) return (n / 1e4).toFixed(1) + '万';
-    return String(Math.round(n));
-  };
-  const palette = ['#3b82f6', '#22d3ee', '#8b5cf6', '#f59e0b', '#10b981', '#f472b6'];
-  const R = 60, C = 74, STROKE = 22;
-  const circ = 2 * Math.PI * R;
-  let offset = 0;
-  const arcs = items.map((it, i) => {
-    // 弧长按 Top 6 GMV 归一化（top6GmvSum 分母），6 段填满圆环、视觉平衡
-    const gmv = Number(it.gmv) || 0;
-    const len = top6GmvSum > 0 ? (gmv / top6GmvSum) * circ : circ / items.length;
-    const gap = 2; // 分段留缝
-    const dash = `${Math.max(0.1, len - gap)} ${circ - Math.max(0.1, len - gap)}`;
-    const seg = `<circle class="donut-arc" data-cat="${escapeAttr(it.name)}" cx="${C}" cy="${C}" r="${R}"
-      stroke="${palette[i % palette.length]}" stroke-dasharray="${dash}" stroke-dashoffset="${-offset}"
-      transform="rotate(-90 ${C} ${C})"><title>${escapeHtml(it.name)} · GMV ${fmtGmv(gmv)} · ${it.count} 机型</title></circle>`;
-    offset += len;
-    return seg;
-  }).join('');
-  const legend = items.map((it, i) => `
-    <div class="dash-legend-item" data-cat="${escapeAttr(it.name)}" title="${escapeAttr(it.name)} · GMV ${fmtGmv(it.gmv)} · ${it.count} 机型">
-      <span class="dash-legend-swatch" style="background:${palette[i % palette.length]}"></span>
-      <span class="dash-legend-name">${escapeHtml(it.name)}</span>
-      <span class="dash-legend-count">${fmtGmv(it.gmv)}</span>
-    </div>
-  `).join('');
-  wrap.innerHTML = `
-    <svg class="dash-donut-svg" viewBox="0 0 148 148">
-      ${arcs}
-      <text class="dash-donut-center-num" x="74" y="74" text-anchor="middle">${grandTotal}</text>
-      <text class="dash-donut-center-label" x="74" y="92" text-anchor="middle">覆盖机型（全池）</text>
-    </svg>
-    <div class="dash-donut-foot">Top 6 品类占全盘 GMV ${top6Pct.toFixed(1)}%（${fmtGmv(top6GmvSum)} / ${fmtGmv(gmvGrandTotal)}） · 共 ${totalCats} 品类</div>
-    <div class="dash-legend">${legend}</div>
-  `;
-  const go = (cat) => drillTo({ tab: 'monitor', week: d.meta.latestWeek, category: cat, view: 'pool', from: 'dashboard' });
-  $$('#dashDonutWrap .donut-arc').forEach((el) => el.addEventListener('click', () => go(el.dataset.cat)));
-  $$('#dashDonutWrap .dash-legend-item').forEach((el) => el.addEventListener('click', () => go(el.dataset.cat)));
-}
-
-function renderDashboardTop(d) {
-  const tb = $('#dashTopTable tbody');
-  const rows = d.topRows || [];
-  if (!rows.length) {
-    tb.innerHTML = `<tr><td colspan="5" class="dash-empty">当前周次没有异常机型</td></tr>`;
-    return;
-  }
-  tb.innerHTML = rows.map((r) => `
-    <tr data-model-id="${escapeAttr(r.modelId)}" data-category="${escapeAttr(r.category)}">
-      <td class="dash-rank">${r.rank}</td>
-      <td class="dash-model">${escapeHtml(r.modelName)}<span class="dash-cat">${escapeHtml(r.category)}</span></td>
-      <td class="dash-num">${fmtRate(r.orderRate)}</td>
-      <td class="dash-delta"><span class="dash-delta-pill ${r.deltaDir}">${escapeHtml(r.deltaLabel)}</span></td>
-      <td class="dash-arrow">→</td>
-    </tr>
-  `).join('');
-  $$('#dashTopTable tbody tr').forEach((tr) => {
-    tr.addEventListener('click', () => drillTo({
-      tab: 'monitor', week: d.meta.latestWeek, category: tr.dataset.category,
-      view: 'pool', highlight: tr.dataset.modelId, from: 'dashboard',
-    }));
-  });
-}
-
-function renderDashboardLine(d) {
-  const wrap = $('#dashLineWrap');
-  const data = d.gmvTrend || [];
-  if (!data.length) { wrap.innerHTML = '<div class="dash-empty">暂无数据</div>'; return; }
-  const W = 640, H = 190, pad = { l: 44, r: 16, t: 18, b: 26 };
-  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
-  const values = data.map((p) => p.gmv);
-  const vMax = Math.max(...values, 1);
-  const vMin = Math.min(...values);
-  const yRange = Math.max(vMax - vMin, vMax * 0.1, 1);
-  const yTop = vMax + yRange * 0.18;
-  const yBot = Math.max(0, vMin - yRange * 0.05);
-  const x = (i) => pad.l + (data.length === 1 ? iw / 2 : (iw * i) / (data.length - 1));
-  const y = (v) => pad.t + ih - ((v - yBot) / (yTop - yBot)) * ih;
-  const pts = data.map((p, i) => ({ ...p, x: x(i), y: y(p.gmv) }));
-  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area = `${path} L${pts[pts.length - 1].x.toFixed(1)},${pad.t + ih} L${pts[0].x.toFixed(1)},${pad.t + ih} Z`;
-  const ticks = 4;
-  const yTicks = Array.from({ length: ticks + 1 }, (_, i) => yBot + ((yTop - yBot) * i) / ticks);
-  const fmtY = (v) => v >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : v >= 1e4 ? (v / 1e4).toFixed(1) + '万' : String(Math.round(v));
-  const gridSvg = yTicks.map((v) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>`).join('');
-  const yAxis = yTicks.map((v) => `<text x="${pad.l - 8}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmtY(v)}</text>`).join('');
-  const xAxis = pts.map((p) => `<text x="${p.x.toFixed(1)}" y="${H - pad.b + 16}" text-anchor="middle">${escapeHtml(p.week.replace(/^\d{4}-/, ''))}</text>`).join('');
-  const dots = pts.map((p, i) => {
-    const isLast = i === pts.length - 1;
-    return `<circle class="dot ${isLast ? 'dot-latest' : ''}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${isLast ? 5 : 4}" data-week="${escapeAttr(p.week)}" data-gmv="${p.gmv}"><title>${escapeHtml(p.week)} · GMV ${fmtInt(p.gmv)}</title></circle>`;
-  }).join('');
-  const last = pts[pts.length - 1];
-  wrap.innerHTML = `
-    <svg class="dash-line-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      <defs><linearGradient id="dashLineGradient" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.28"/>
-        <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
-      </linearGradient></defs>
-      <g class="grid">${gridSvg}</g>
-      <path class="area-fill" d="${area}"/>
-      <path class="line-path" d="${path}"/>
-      <g class="axis">${yAxis}${xAxis}</g>
-      <text class="value-label" x="${(last.x + 6).toFixed(1)}" y="${(last.y - 8).toFixed(1)}">${fmtY(last.gmv)}</text>
-      ${dots}
-    </svg>
-  `;
-  $$('#dashLineWrap .dot').forEach((c) => {
-    c.addEventListener('click', () => drillTo({ tab: 'monitor', week: c.dataset.week, view: 'watch', from: 'dashboard' }));
-  });
-}
-
-function renderDashboardKpi(d) {
-  const k = d.kpi;
-  const watchDeltaStr = k.watchDelta === 0
-    ? '与上周持平'
-    : (k.watchDelta > 0
-      ? `<span class="dash-delta-up">+${k.watchDelta}</span> 较上周`
-      : `<span class="dash-delta-down">${k.watchDelta}</span> 较上周`);
-  const cards = [
-    { key: 'total',  label: '覆盖机型', value: k.totalModels, unit: '个', sub: `${k.totalCategories} 个品类`, act: { view: 'pool' } },
-    { key: 'watch',  label: '需关注机型', value: k.watchCount, unit: '个', sub: watchDeltaStr, act: { view: 'watch' } },
-    { key: 'up',     label: '周环比上涨', value: k.upCount, unit: '个', sub: 'orderRate ↑', act: { view: 'pool', trend: 'up' } },
-    { key: 'week',   label: '最新周次', value: d.meta.latestWeek || '-', unit: '', sub: d.meta.weekRange || `第 ${d.meta.totalWeeks} 周`, act: { view: 'watch' } },
-  ];
-  $('#dashKpiRow').innerHTML = cards.map((c) => `
-    <div class="dash-kpi" data-key="${c.key}" role="button" tabindex="0">
-      <div class="dash-kpi-label">${escapeHtml(c.label)}</div>
-      <div class="dash-kpi-value">${escapeHtml(String(c.value))}${c.unit ? `<span class="dash-unit">${c.unit}</span>` : ''}</div>
-      <div class="dash-kpi-sub">${c.sub}</div>
-    </div>
-  `).join('');
-  $$('#dashKpiRow .dash-kpi').forEach((el) => {
-    const key = el.dataset.key;
-    const conf = cards.find((c) => c.key === key);
-    const go = () => drillTo({ tab: 'monitor', week: d.meta.latestWeek, from: 'dashboard', ...conf.act });
-    el.addEventListener('click', go);
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
-  });
 }
 
 // ============================================================================
@@ -902,6 +754,7 @@ function readUrlState() {
     trend: p.get('trend') || '',
     highlight: p.get('highlight') || '',
     from: p.get('from') || '',
+    tier: p.get('tier') || '',
   };
 }
 function writeUrlState(patch) {

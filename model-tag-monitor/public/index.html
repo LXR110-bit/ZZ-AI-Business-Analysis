@@ -45,38 +45,25 @@
     <!-- 概览 -->
     <section class="page dash-scope" id="page-dashboard">
       <div class="dash-meta" id="dashMeta"></div>
-      <div class="dash-kpi-row" id="dashKpiRow"></div>
-      <div class="dash-chart-row">
-        <div class="dash-card">
-          <div class="dash-card-title">GMV 5 周趋势</div>
-          <div class="dash-card-sub">按最新 5 个周次累计成交 GMV，点圆点跳到该周监测结果</div>
-          <div class="dash-line-wrap" id="dashLineWrap"></div>
-        </div>
-        <div class="dash-card">
-          <div class="dash-card-title">品类 GMV 分布（Top 6）</div>
-          <div class="dash-card-sub">按 Top 6 品类 GMV 份额展示，点扇区筛到该品类</div>
-          <div class="dash-donut-wrap" id="dashDonutWrap"></div>
-        </div>
+      <!-- 大盘 KPI 卡 -->
+      <div class="dash-board-kpi" id="dashBoardKpi"></div>
+      <!-- 胶囊 Tab：发展/孵化/种子 -->
+      <div class="dash-tier-tabs" id="dashTierTabs">
+        <button class="dash-tier-tab active" data-tier="发展">发展</button>
+        <button class="dash-tier-tab" data-tier="孵化">孵化</button>
+        <button class="dash-tier-tab" data-tier="种子">种子</button>
       </div>
-      <div class="dash-top">
-        <div class="dash-top-head">
-          <div>
-            <h3 class="dash-top-title">Top 10 异常机型</h3>
-            <div class="dash-top-sub">按 orderRate 周环比波动幅度倒序，点行下钻到该机型</div>
-          </div>
-          <div class="dash-top-hint">点行 → 进入监测详情</div>
+      <!-- 该层汇总 KPI 条 -->
+      <div class="dash-tier-summary" id="dashTierSummary"></div>
+      <!-- 品类表格 -->
+      <div class="dash-category-section">
+        <div class="dash-category-head">
+          <h3 class="dash-category-title">品类明细</h3>
+          <button class="dash-view-toggle" id="dashViewToggle" data-mode="compact">详细</button>
         </div>
-        <div class="dash-top-table-wrap">
-          <table class="dash-top-table" id="dashTopTable">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>机型</th>
-                <th style="text-align:right;">orderRate</th>
-                <th style="text-align:right;">周环比</th>
-                <th></th>
-              </tr>
-            </thead>
+        <div class="dash-category-table-wrap">
+          <table class="dash-category-table" id="dashCategoryTable">
+            <thead></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -275,6 +262,7 @@
     </aside>
   </div>
 
+  <script src="/dashboard-v2.js?v=20260707"></script>
   <script src="/app.js?v=20260705d"></script>
 </body>
 </html>
