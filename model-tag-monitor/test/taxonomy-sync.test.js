@@ -17,7 +17,7 @@ test('normalizeTaxonomyRecord: 中文字段名映射到内部字段名', () => {
     二级板块: '摄影摄像',
     业务状态: '在售',
     归类置信度: '高',
-    '最新周GMV(元)': 586271,
+    '最新周GMV(元)': '586271',
     备注: '不应出现在输出里',
   };
   const row = normalizeTaxonomyRecord(fields);
@@ -31,14 +31,14 @@ test('normalizeTaxonomyRecord: 中文字段名映射到内部字段名', () => {
   });
 });
 
-test('normalizeTaxonomyRecord: 富文本数组字段能正确取字符串', () => {
+test('normalizeTaxonomyRecord: 空值和缺失字段兜底', () => {
   const fields = {
-    三级品类: [{ type: 'text', text: '无人机' }],
+    三级品类: '无人机',
     阶段: '孵化',
     二级板块: '影音娱乐',
     业务状态: '已下线',
     归类置信度: '低',
-    '最新周GMV(元)': null,
+    '最新周GMV(元)': '',
   };
   const row = normalizeTaxonomyRecord(fields);
   assert.equal(row.category, '无人机');

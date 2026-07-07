@@ -4,10 +4,8 @@ const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
-const feishu = require('./feishu');
 const { sync } = require('./sync');
 const categorySync = require('./category-sync');
-const boardSync = require('./board-sync');
 const taxonomySync = require('./taxonomy-sync');
 const { monitor, DEFAULT_RULES } = require('./monitor');
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
@@ -77,24 +75,6 @@ app.post('/api/sync/category', async (req, res) => {
     res.status(500).json({ error: e.message });
   } finally {
     syncingCategory = false;
-  }
-});
-
-// ---- 大盘漏斗数据同步 ----
-let syncingBoard = false;
-app.post('/api/sync/board', async (req, res) => {
-  if (syncingBoard) return res.status(409).json({ error: '大盘数据正在同步中,请稍候' });
-  syncingBoard = true;
-  const user = getUser(req);
-  try {
-    const result = await boardSync.sync();
-    store.appendLog({ action: 'sync-board-manual', user, ...result });
-    res.json({ ok: true, ...result });
-  } catch (e) {
-    console.error('[/api/sync/board] 失败:', e);
-    res.status(500).json({ error: e.message });
-  } finally {
-    syncingBoard = false;
   }
 });
 

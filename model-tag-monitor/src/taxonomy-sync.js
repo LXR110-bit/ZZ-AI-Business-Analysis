@@ -1,13 +1,14 @@
-// 品类分层映射表同步：飞书 Base(多维表格) → data/category-taxonomy.json
-// 数据源：品类映射表.xlsx 用户维护后上传到飞书 Base
-const store = require('./store');
-const bitable = require('./feishu-bitable');
+// 品类分层映射表同步：本地 CSV → data/category-taxonomy.json
+// 数据源：data pipeline 投递到 data/imports/category_taxonomy.csv
+'use strict';
 
-const WIKI_NODE_TOKEN = 'L7LowLNAbif0fgkzxIJcHCZynnb';
-const TABLE_ID = 'tblXJ78kOrgKgZlc';
+const { parseCSV, getImportsDir } = require('./csv-reader');
+const store = require('./store');
+
+const IMPORTS_DIR = getImportsDir();
+const CSV_FILE = 'category_taxonomy.csv';
 
 // 表头字段(中文列名) → 内部字段名
-// !! 待接入时用 scripts/inspect-bitable-fields.js 核验真实字段名，见本计划 Task 8
 const HEADER_MAP = {
   三级品类: 'category',
   阶段: 'tier',
@@ -20,15 +21,24 @@ const HEADER_MAP = {
 const VALID_TIERS = ['发展', '孵化', '种子', '自营(非聚合)'];
 const VALID_STATUSES = ['在售', '已下线'];
 
-// 把一条 Bitable record.fields(中文 key) 归一化成内部字段名的行对象
+// 数字转换
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim().replace(/,/g, '');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// 把一条 CSV 行对象(中文 key) 归一化成内部字段名
 function normalizeTaxonomyRecord(fields) {
   const row = {};
   for (const [cnKey, enKey] of Object.entries(HEADER_MAP)) {
     const raw = fields[cnKey];
     if (enKey === 'lastWeekGmv') {
-      row[enKey] = bitable.bitableFieldToNumber(raw, 0);
+      row[enKey] = toNum(raw);
     } else {
-      row[enKey] = bitable.bitableFieldToString(raw);
+      row[enKey] = raw != null ? String(raw).trim() : '';
     }
   }
   return row;
@@ -42,10 +52,11 @@ function filterSelfOperated(rows) {
   return rows.filter((r) => !isSelfOperated(r));
 }
 
-// 拉取 + 归一化，但不做自营过滤(给 category-sync 复用做交叉过滤判断)
-async function fetchRawRows() {
-  const { records } = await bitable.listBitableRecords(WIKI_NODE_TOKEN, TABLE_ID);
-  const rows = records.map((r) => normalizeTaxonomyRecord(r.fields));
+// 读取 CSV + 归一化，不做自营过滤(给 category-sync 复用做交叉过滤判断)
+function fetchRawRows() {
+  const filepath = path.join(IMPORTS_DIR, CSV_FILE);
+  const rawRows = parseCSV(filepath);
+  const rows = rawRows.map((r) => normalizeTaxonomyRecord(r));
   for (const row of rows) {
     if (row.tier && !VALID_TIERS.includes(row.tier)) {
       console.warn(`[taxonomy-sync] 警告: 未知 tier 值 "${row.tier}" (category=${row.category})`);
@@ -57,9 +68,9 @@ async function fetchRawRows() {
   return rows;
 }
 
-async function sync() {
+function sync() {
   console.log('[taxonomy-sync] 开始同步品类分层映射...');
-  const rawRows = await fetchRawRows();
+  const rawRows = fetchRawRows();
   const rows = filterSelfOperated(rawRows);
   console.log(`[taxonomy-sync] 原始 ${rawRows.length} 行, 过滤自营(非聚合)后 ${rows.length} 行`);
 
@@ -82,6 +93,4 @@ module.exports = {
   HEADER_MAP,
   VALID_TIERS,
   VALID_STATUSES,
-  WIKI_NODE_TOKEN,
-  TABLE_ID,
 };

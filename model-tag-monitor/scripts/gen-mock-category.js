@@ -1,10 +1,9 @@
-// 生成本地开发用 mock category-cache.json / category-taxonomy.json / board-cache.json
+// 生成本地开发用 mock category-cache.json / category-taxonomy.json
 // 用法：node scripts/gen-mock-category.js
 const path = require('path');
 const store = require(path.join(__dirname, '..', 'src', 'store'));
 const taxonomySync = require(path.join(__dirname, '..', 'src', 'taxonomy-sync'));
 const categorySync = require(path.join(__dirname, '..', 'src', 'category-sync'));
-const boardSync = require(path.join(__dirname, '..', 'src', 'board-sync'));
 
 const WEEKS = ['2026-W24', '2026-W25', '2026-W26', '2026-W27'];
 
@@ -44,23 +43,6 @@ function genCategoryRow(category, week, base) {
   return { ...row, ...categorySync.computeRates(row) };
 }
 
-function genBoardRow(week, base) {
-  const r = seed('board|' + week);
-  const jkuv = Math.round(base * (2.5 + r() * 0.5));
-  const evaUv = Math.round(jkuv * (0.32 + r() * 0.2));
-  const evaCnt = evaUv;
-  const orderUv = Math.round(evaUv * (0.2 + r() * 0.15));
-  const orderCnt = orderUv;
-  const shipCnt = Math.round(orderUv * (0.75 + r() * 0.15));
-  const signCnt = shipCnt;
-  const qcCnt = Math.round(shipCnt * (0.88 + r() * 0.08));
-  const dealCnt = Math.round(shipCnt * (0.65 + r() * 0.25));
-  const returnCnt = Math.round(qcCnt * (0.02 + r() * 0.05));
-  const gmv = Math.round(dealCnt * (600 + r() * 2500));
-  const row = { week, jkuv, evaUv, evaCnt, orderUv, orderCnt, shipCnt, signCnt, qcCnt, dealCnt, returnCnt, gmv };
-  return { ...row, ...boardSync.computeRates(row) };
-}
-
 // 1) taxonomy: 用真实过滤函数处理手造数据，保证 mock 和真实同步逻辑行为一致
 const taxonomyRows = taxonomySync.filterSelfOperated(RAW_TAXONOMY_ROWS);
 store.writeJSON('category-taxonomy.json', {
@@ -78,20 +60,11 @@ const excluded = categorySync.buildExcludedCategorySet(RAW_TAXONOMY_ROWS);
 categoryRows = categorySync.filterByExcludedCategories(categoryRows, excluded);
 store.writeJSON('category-cache.json', {
   syncedAt: new Date().toISOString(),
-  source: { wikiNodesByMonth: { '2026-mock': 'MOCK_NODE_TOKEN' } },
+  source: { dir: 'data/imports', prefix: 'category_daily_avg_' },
   rows: categoryRows,
-});
-
-// 3) board-cache: 大盘层，4 周
-const boardRows = WEEKS.map((week) => genBoardRow(week, 9800));
-store.writeJSON('board-cache.json', {
-  syncedAt: new Date().toISOString(),
-  source: { wikiNodesByMonth: { '2026-mock': 'MOCK_NODE_TOKEN' } },
-  rows: boardRows,
 });
 
 console.log(
   `[mock] category-taxonomy.json: ${taxonomyRows.length} 品类(已排除 ${RAW_TAXONOMY_ROWS.length - taxonomyRows.length} 个自营)`
 );
 console.log(`[mock] category-cache.json: ${categoryRows.length} 行(${WEEKS.length} 周 × ${taxonomyRows.length} 品类)`);
-console.log(`[mock] board-cache.json: ${boardRows.length} 行`);
