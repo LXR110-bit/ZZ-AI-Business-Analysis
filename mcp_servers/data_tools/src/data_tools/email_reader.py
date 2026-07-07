@@ -52,10 +52,12 @@ def list_emails(
     since: str | None = None,
     folder: str = "INBOX",
     max_results: int = 20,
+    include_attachments: bool = True,
 ) -> list[EmailSummary]:
     """列邮件，按主题/发件人/日期过滤。
 
     since: 'YYYY-MM-DD' 或 None。
+    include_attachments: if False, skip attachment scanning (faster).
     返回最新优先。
     """
     imap = _connect()
@@ -87,7 +89,7 @@ def list_emails(
             for part in msg_data:
                 if isinstance(part, tuple):
                     msg = email.message_from_bytes(part[1])
-                    atts = _list_attachments_meta(imap, uid)
+                    atts = _list_attachments_meta(imap, uid) if include_attachments else []
                     out.append(EmailSummary(
                         uid=uid.decode(),
                         subject=_decode(msg.get("Subject", "")),
@@ -104,14 +106,33 @@ def list_emails(
 
 
 def _list_attachments_meta(imap: imaplib.IMAP4_SSL, uid: bytes) -> list[str]:
-    """Quick scan for attachment filenames without downloading."""
+    """Scan for attachment filenames from BODYSTRUCTURE."""
     typ, data = imap.fetch(uid, "(BODYSTRUCTURE)")
     if typ != "OK":
         return []
-    # Lazy parse: regex the filename hints. (Robust enough for typical CSVs.)
     raw = b"".join(p if isinstance(p, bytes) else p[1] for p in data if p).decode("utf-8", errors="ignore")
+    # Standard quoted filename: "NAME" "somefile.xlsx"
     names = re.findall(r'"(?:NAME|FILENAME)"\s+"([^"]+)"', raw, re.I)
-    return list({_decode(n) for n in names})
+    # RFC 2047 encoded: =?utf-8?B?...?= possibly multi-line continuation
+    # Match individual encoded-word sequences (one filename = one or more consecutive encoded-words)
+    encoded_words = re.findall(r'=\?[^?]+\?[BbQq]\?[^?]+\?=', raw)
+    if encoded_words:
+        # Group consecutive encoded-words into filenames by decoding incrementally
+        current_parts: list[str] = []
+        for ew in encoded_words:
+            decoded_part = _decode(ew)
+            current_parts.append(decoded_part)
+            joined = "".join(current_parts)
+            # A complete filename ends with a known extension
+            if re.search(r'\.(xlsx|xls|csv|zip|rar|pdf)$', joined, re.I):
+                names.append(joined)
+                current_parts = []
+    decoded_set = set()
+    for n in names:
+        d = _decode(n)
+        if d:
+            decoded_set.add(d)
+    return list(decoded_set)
 
 
 def download_attachment(uid: str, attachment_name: str, save_dir: str | None = None) -> str:

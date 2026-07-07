@@ -689,6 +689,161 @@ git commit -m "feat(skills): add local imports pipeline mode"
 
 ---
 
+### Task 3.5: Wire `load_local_source_frames` to existing IMAP+xlsx parser
+
+**背景**：Task 3 中 `load_local_source_frames` 是 `raise NotImplementedError` 占位，测试通过是因为 monkeypatch 绕过了它。本 Task 将它接到现有的 IMAP 拉取 + xlsx 解析逻辑上，使 `--local-imports` 模式在真实环境中可运行。
+
+**Files:**
+- Modify: `skills/workflows/机型周数据/pipeline.py`
+- Modify: `scripts/tests/test_online_local_pipeline.py`
+
+- [ ] **Step 1: Write failing integration test**
+
+Append to `scripts/tests/test_online_local_pipeline.py`:
+
+```python
+def test_load_local_source_frames_returns_six_dataframes(monkeypatch, tmp_path: Path):
+    """Verify load_local_source_frames wires to the real mail fetcher and returns 6 keyed frames."""
+    import email
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.application import MIMEApplication
+    import zipfile, io
+
+    # Build a fake zip containing one xlsx per source
+    fake_mails = {}
+    for source in mail_sources.required_sources():
+        buf = io.BytesIO()
+        df = pd.DataFrame([{"统计周": "2026-W28", "成交量日均": 1.0}])
+        df.to_excel(buf, index=False)
+        buf.seek(0)
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w") as zf:
+            zf.writestr(f"{source.source_key}.xlsx", buf.getvalue())
+        zip_buf.seek(0)
+        fake_mails[source.subject_contains] = zip_buf.getvalue()
+
+    def fake_fetch_recent_zips(subjects, lookback_days=14):
+        results = {}
+        for subject, zip_bytes in fake_mails.items():
+            results[subject] = {"zip_bytes": zip_bytes, "subject": subject, "date": "2026-07-07"}
+        return results
+
+    monkeypatch.setattr(pipeline, "_fetch_recent_zips_by_subject", fake_fetch_recent_zips)
+
+    frames, metadata = pipeline.load_local_source_frames(lookback_days=14)
+
+    assert set(frames.keys()) == {s.source_key for s in mail_sources.required_sources()}
+    assert all(isinstance(df, pd.DataFrame) for df in frames.values())
+    assert all(len(df) > 0 for df in frames.values())
+    assert "mail_count" in metadata
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run:
+
+```bash
+python3 -m pytest scripts/tests/test_online_local_pipeline.py::test_load_local_source_frames_returns_six_dataframes -q
+```
+
+Expected:
+
+```text
+NotImplementedError: six-mail local source loader must be wired to the existing mailbox parser
+```
+
+- [ ] **Step 3: Implement the real loader**
+
+Replace the `load_local_source_frames` stub in `skills/workflows/机型周数据/pipeline.py`:
+
+```python
+def _fetch_recent_zips_by_subject(subjects: list[str], lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> dict[str, dict]:
+    """Fetch recent zip attachments from IMAP matching given subjects.
+
+    Wraps the existing data_tools.email_reader.fetch_attachments() interface.
+    Returns {subject_contains: {zip_bytes, subject, date}}.
+    """
+    from data_tools.email_reader import fetch_attachments
+
+    results = fetch_attachments(
+        subject_filters=subjects,
+        lookback_days=lookback_days,
+        attachment_type="zip",
+    )
+    return results
+
+
+def _extract_dataframe_from_zip(zip_bytes: bytes, source_key: str) -> pd.DataFrame:
+    """Extract the first xlsx/csv from a zip and return as DataFrame."""
+    import zipfile, io
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = zf.namelist()
+        xlsx_names = [n for n in names if n.endswith(".xlsx")]
+        csv_names = [n for n in names if n.endswith(".csv")]
+        target = xlsx_names[0] if xlsx_names else csv_names[0] if csv_names else names[0]
+
+        with zf.open(target) as f:
+            data = f.read()
+
+        if target.endswith(".xlsx"):
+            return pd.read_excel(io.BytesIO(data))
+        else:
+            return pd.read_csv(io.BytesIO(data))
+
+
+def load_local_source_frames(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
+    """Load six online mail sources into prepared DataFrames.
+
+    Connects to IMAP, fetches recent zips matching the six mail subject patterns,
+    extracts xlsx/csv, and returns keyed DataFrames ready for local CSV sink.
+    """
+    sources = required_sources()
+    subjects = [s.subject_contains for s in sources]
+
+    raw = _fetch_recent_zips_by_subject(subjects, lookback_days=lookback_days)
+
+    # Map subject_contains back to source_key
+    subject_to_source = {s.subject_contains: s for s in sources}
+    frames: dict[str, pd.DataFrame] = {}
+    for subject_contains, mail_data in raw.items():
+        source = subject_to_source.get(subject_contains)
+        if source is None:
+            continue
+        df = _extract_dataframe_from_zip(mail_data["zip_bytes"], source.source_key)
+        frames[source.source_key] = df
+
+    metadata = {
+        "mail_count": len(raw),
+        "fetched_subjects": list(raw.keys()),
+    }
+    return frames, metadata
+```
+
+- [ ] **Step 4: Run tests**
+
+Run:
+
+```bash
+python3 -m pytest scripts/tests/test_local_imports.py scripts/tests/test_online_local_pipeline.py -q
+```
+
+Expected:
+
+```text
+5 passed
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add skills/workflows/机型周数据/pipeline.py scripts/tests/test_online_local_pipeline.py
+git commit -m "feat(skills): wire load_local_source_frames to IMAP parser"
+```
+
+---
+
 
 ### Task 3.5: Wire six-mail loader to existing IMAP + xlsx parser
 
@@ -1275,7 +1430,7 @@ Before claiming this work is complete, run all commands below and read full outp
 
 ```bash
 git status --short --branch
-python3 -m pytest scripts/tests/test_base_migration.py scripts/tests/test_local_imports.py scripts/tests/test_online_local_pipeline.py -q
+python3 -m pytest scripts/tests/test_base_migration.py scripts/tests/test_local_imports.py scripts/tests/test_online_local_pipeline.py -v
 python3 -m compileall skills/workflows/机型周数据 scripts/import_weekly_base_partition_v1.py
 python3 - <<'PY'
 from pathlib import Path

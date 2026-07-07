@@ -1006,42 +1006,65 @@ def _month_from_frame(df: pd.DataFrame) -> str | None:
 
 
 def fetch_recent_zips_by_subject(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> tuple[dict[str, list[Path]], dict[str, Any]]:
+    from mcp_servers.data_tools.src.data_tools.email_reader import _connect, _list_attachments_meta
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     since = (date.today() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
     zips_by_source: dict[str, list[Path]] = {}
     mail_metadata: dict[str, Any] = {"since": since, "sources": {}, "mail_count": 0}
 
     for source in required_sources():
-        emails = list_emails(subject_contains=source.subject_contains, since=since, max_results=20)
-        matched = [email for email in emails if source.subject_contains in email.subject and email.attachments]
+        emails = list_emails(subject_contains=source.subject_contains, since=since, max_results=20, include_attachments=False)
+        matched = [em for em in emails if source.subject_contains in em.subject]
         if not matched:
             continue
-        source_zips: list[Path] = []
-        source_meta: list[dict[str, Any]] = []
-        for email in matched:
-            zip_name = next((a for a in email.attachments if a.lower().endswith(".zip")), None)
-            if not zip_name:
-                continue
-            cache_key = CACHE_DIR / f"{source.source_key}_{email.uid}_{zip_name}"
-            if not cache_key.exists():
-                tmp = tempfile.mkdtemp(prefix=f"{source.source_key}_")
-                try:
-                    path_str = download_attachment(email.uid, zip_name, tmp)
-                    shutil.move(path_str, cache_key)
-                finally:
-                    shutil.rmtree(tmp, ignore_errors=True)
-            source_zips.append(cache_key)
-            source_meta.append({"uid": email.uid, "subject": email.subject, "date": email.date, "attachment": zip_name})
-        if source_zips:
-            zips_by_source[source.source_key] = sorted(set(source_zips))
-            mail_metadata["sources"][source.source_key] = source_meta
-            mail_metadata["mail_count"] += len(source_meta)
+        # Single connection for attachment scanning + downloading per source
+        imap = _connect()
+        try:
+            imap.select("INBOX")
+            source_zips: list[Path] = []
+            source_meta: list[dict[str, Any]] = []
+            for em in matched:
+                # Get attachments for this specific email (reuse connection)
+                atts = _list_attachments_meta(imap, em.uid.encode())
+                if not atts:
+                    continue
+                # Accept .zip or direct .xlsx attachments
+                att_name = next((a for a in atts if a.lower().endswith(".zip")), None)
+                if not att_name:
+                    att_name = next((a for a in atts if a.lower().endswith(".xlsx")), None)
+                if not att_name:
+                    continue
+                cache_key = CACHE_DIR / f"{source.source_key}_{em.uid}_{att_name}"
+                if not cache_key.exists():
+                    tmp = tempfile.mkdtemp(prefix=f"{source.source_key}_")
+                    try:
+                        path_str = download_attachment(em.uid, att_name, tmp)
+                        shutil.move(path_str, cache_key)
+                    finally:
+                        shutil.rmtree(tmp, ignore_errors=True)
+                source_zips.append(cache_key)
+                source_meta.append({"uid": em.uid, "subject": em.subject, "date": em.date, "attachment": att_name})
+            if source_zips:
+                zips_by_source[source.source_key] = sorted(set(source_zips))
+                mail_metadata["sources"][source.source_key] = source_meta
+                mail_metadata["mail_count"] += len(source_meta)
+        finally:
+            try:
+                imap.logout()
+            except Exception:
+                pass
 
     return zips_by_source, mail_metadata
 
 
 def _read_xlsx_frames_from_zip(zip_path: Path) -> list[pd.DataFrame]:
     frames: list[pd.DataFrame] = []
+    # Handle direct .xlsx files (not zipped)
+    if zip_path.suffix.lower() == ".xlsx":
+        df = pd.read_excel(zip_path)
+        if not df.empty:
+            frames.append(df)
+        return frames
     workdir = Path(tempfile.mkdtemp(prefix="local_import_source_"))
     try:
         with zipfile.ZipFile(zip_path) as zf:
