@@ -219,7 +219,13 @@ function scanColumnValues(filepath, columnName) {
         return;
       }
       if (colIndex === -1) return;
-      const val = line.split(',')[colIndex];
+      let val;
+      if (colIndex === 0) {
+        const commaIdx = line.indexOf(',');
+        val = commaIdx >= 0 ? line.slice(0, commaIdx) : line;
+      } else {
+        val = line.split(',')[colIndex];
+      }
       if (val && val.trim()) values.add(val.trim());
     });
     rl.on('close', () => resolve(values));

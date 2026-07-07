@@ -79,6 +79,68 @@ const HEADER_MAP = {
   成交客单价: 'avgPrice',
 };
 
+const NUMERIC_FIELDS = ['jkuv', 'evaUv', 'evaCnt', 'orderUv', 'orderCnt', 'shipCnt', 'signCnt', 'qcCnt', 'dealCnt', 'returnCnt', 'gmv'];
+const MODEL_MAIN_DIMENSION_HEADERS = ['核心属性（估价）', '成色等级（估价）', '核心属性（质检）', '成色等级（质检）', '履约方式（只取线上流程）'];
+const JIKUANG_UV_HEADERS = ['机况uv', '机况UV', '机况UV日均', '机况UV汇总', '机况页UV'];
+
+function getRawValue(row, headerNames) {
+  for (const h of headerNames) {
+    if (Object.prototype.hasOwnProperty.call(row, h)) {
+      return String(row[h] ?? '').trim();
+    }
+  }
+  return '';
+}
+
+function canonicalizeModelId(value) {
+  const s = String(value ?? '').trim();
+  return s.replace(/^(\d+)\.0+$/, '$1');
+}
+
+function isModelMainGrainRow(csvRow) {
+  const hasDetailDimension = MODEL_MAIN_DIMENSION_HEADERS.some((h) => getRawValue(csvRow, [h]) !== '');
+  if (hasDetailDimension) return false;
+  return getRawValue(csvRow, JIKUANG_UV_HEADERS) !== '';
+}
+
+function recomputeDerivedFields(row) {
+  row.avgPrice = row.dealCnt > 0 ? row.gmv / row.dealCnt : 0;
+  Object.assign(row, computeRates(row));
+  return row;
+}
+
+function modelRowKey(row) {
+  const timeKey = row.startDate || row.week || '';
+  const modelKey = row.modelId || `name:${row.modelName}`;
+  return [timeKey, row.category, modelKey, row.modelName].join('\u001f');
+}
+
+function mergeModelRows(rows) {
+  const byKey = new Map();
+  let mergedRows = 0;
+
+  for (const row of rows) {
+    const key = modelRowKey(row);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...row });
+      continue;
+    }
+
+    mergedRows += 1;
+    for (const field of NUMERIC_FIELDS) {
+      existing[field] = toNum(existing[field]) + toNum(row[field]);
+    }
+    existing.daysReceived = Math.max(toNum(existing.daysReceived), toNum(row.daysReceived));
+    if (!existing.week && row.week) existing.week = row.week;
+    if (!existing.startDate && row.startDate) existing.startDate = row.startDate;
+    if (!existing.endDate && row.endDate) existing.endDate = row.endDate;
+  }
+
+  const merged = [...byKey.values()].map(recomputeDerivedFields);
+  return { rows: merged, mergedRows };
+}
+
 // 5 个核心转化率的计算口径
 function computeRates(row) {
   const safeDiv = (a, b) => (b > 0 ? a / b : null);
@@ -119,9 +181,9 @@ function normalizeRow(headers, values) {
     if (fields[k] !== undefined) fields[k] = String(fields[k]).trim();
     else fields[k] = '';
   });
-  // 转化率
-  Object.assign(fields, computeRates(fields));
-  return fields;
+  fields.modelId = canonicalizeModelId(fields.modelId);
+  // 转化率与客单价
+  return recomputeDerivedFields(fields);
 }
 
 /**
@@ -203,14 +265,14 @@ async function sync() {
 
   // Pass 2: 流式加载 + filter + normalize 一步到位（不留 CSV 原始行数组，降低堆压力）
   console.log('[sync] Pass 2: 加载并归一化数据...');
-  const rows = [];
+  let rows = [];
   let totalRead = 0;
   for (const { file } of targetFiles) {
     const added = await parseCSVStreamMapped(
       path.join(IMPORTS_DIR, file),
       (row) => {
-        const d = (row['week_start_date'] || row['周开始'] || row['开始日期'] || '').trim();
-        return keepDates.has(d);
+        const d = getRawValue(row, ['week_start_date', '周开始', '开始日期']);
+        return keepDates.has(d) && isModelMainGrainRow(row);
       },
       (csvRow) => {
         const norm = normalizeCSVRow(csvRow);
@@ -225,7 +287,11 @@ async function sync() {
     totalRead += added;
     console.log(`[sync]   ${file}: +${added} 行, 累计 ${rows.length}`);
   }
-  console.log(`[sync] 过滤+归一化后有效行数: ${rows.length}`);
+  console.log(`[sync] 主粒度过滤+归一化后有效行数（聚合前）: ${rows.length}`);
+  const beforeMergeRows = rows.length;
+  const mergeResult = mergeModelRows(rows);
+  rows = mergeResult.rows;
+  console.log(`[sync] 同 key 聚合: ${beforeMergeRows} -> ${rows.length}, 合并重复行 ${mergeResult.mergedRows}`);
 
   // 统计品类
   const categories = [...new Set(rows.map((r) => r.category))].sort();
@@ -250,4 +316,4 @@ async function sync() {
   return { rows: rows.length, categories: categories.length, weeks: weeks.length };
 }
 
-module.exports = { sync, computeRates, normalizeRow, normalizeCSVRow, toNum, HEADER_MAP };
+module.exports = { sync, computeRates, normalizeRow, normalizeCSVRow, toNum, HEADER_MAP, dateToISOWeek, isModelMainGrainRow, canonicalizeModelId, mergeModelRows };
