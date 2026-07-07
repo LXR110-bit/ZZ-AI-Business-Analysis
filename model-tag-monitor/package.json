@@ -8,6 +8,7 @@
     "dev": "node --watch src/server.js",
     "mock": "node scripts/gen-mock.js",
     "mock:reset": "rm -f data/cache.json data/tags.json data/rules.json && node scripts/gen-mock.js",
+    "mock:category": "node scripts/gen-mock-category.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

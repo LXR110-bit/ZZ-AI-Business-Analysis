@@ -4,8 +4,9 @@ const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
-const feishu = require('./feishu');
 const { sync } = require('./sync');
+const categorySync = require('./category-sync');
+const taxonomySync = require('./taxonomy-sync');
 const { monitor, DEFAULT_RULES } = require('./monitor');
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
 const { createProxy } = require('./proxy');
@@ -54,6 +55,44 @@ app.post('/api/sync', async (req, res) => {
     res.status(500).json({ error: e.message });
   } finally {
     syncing = false;
+  }
+});
+
+// ---- 品类漏斗数据同步 ----
+// 注：category-cache.json 暂未接入 dashboard 聚合逻辑(由 analysis-agent 后续接线)，
+// 这里不调 invalidateDashboardCache()，避免对现有机型层 dashboard 缓存造成无意义失效
+let syncingCategory = false;
+app.post('/api/sync/category', async (req, res) => {
+  if (syncingCategory) return res.status(409).json({ error: '品类数据正在同步中,请稍候' });
+  syncingCategory = true;
+  const user = getUser(req);
+  try {
+    const result = await categorySync.sync();
+    store.appendLog({ action: 'sync-category-manual', user, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[/api/sync/category] 失败:', e);
+    res.status(500).json({ error: e.message });
+  } finally {
+    syncingCategory = false;
+  }
+});
+
+// ---- 品类分层映射同步 ----
+let syncingTaxonomy = false;
+app.post('/api/sync/taxonomy', async (req, res) => {
+  if (syncingTaxonomy) return res.status(409).json({ error: '品类分层映射正在同步中,请稍候' });
+  syncingTaxonomy = true;
+  const user = getUser(req);
+  try {
+    const result = await taxonomySync.sync();
+    store.appendLog({ action: 'sync-taxonomy-manual', user, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[/api/sync/taxonomy] 失败:', e);
+    res.status(500).json({ error: e.message });
+  } finally {
+    syncingTaxonomy = false;
   }
 });
 
