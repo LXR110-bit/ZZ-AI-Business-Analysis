@@ -40,9 +40,12 @@ function httpGet(pathAndQuery) {
   });
 }
 
-async function waitReady(maxMs = 5000) {
+async function waitReady(child, maxMs = 5000) {
   const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
+    if (child.exitCode !== null) {
+      throw new Error(`server exited before ready: code=${child.exitCode} signal=${child.signalCode || ''}`);
+    }
     try {
       const r = await httpGet('/api/meta');
       if (r.status === 200) return;
@@ -88,9 +91,16 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d.toString('utf8'); });
+  child.stderr.on('data', (d) => { stderr += d.toString('utf8'); });
+  const exitPromise = new Promise((resolve) => {
+    child.once('exit', (code, signal) => resolve({ code, signal }));
+  });
 
   try {
-    await waitReady();
+    await waitReady(child);
 
     const r = await httpGet('/api/monitor');
     assert.equal(r.status, 200, 'status 200');
@@ -128,8 +138,16 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
       }
     }
   } finally {
-    child.kill('SIGTERM');
-    await new Promise((resolve) => child.on('exit', resolve));
+    if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
+    await Promise.race([
+      exitPromise,
+      new Promise((resolve) => setTimeout(resolve, 3000)),
+    ]);
     fs.rmSync(tmpDataDir, { recursive: true, force: true });
+    if (child.exitCode && child.exitCode !== 0) {
+      // 子进程提前退出时把日志带出来，避免测试静默卡死。
+      console.error('[server stdout]', stdout);
+      console.error('[server stderr]', stderr);
+    }
   }
 });
