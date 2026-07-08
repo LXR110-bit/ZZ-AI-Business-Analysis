@@ -10,7 +10,7 @@ const path = require('node:path');
 const IMPORTS_DIR = getImportsDir();
 const CSV_PREFIX = 'model_daily_avg_';
 
-// 保留最近几周的数据：v1.2.1 线上完整验证口径固定覆盖最近 10 周。
+// 保留最近几周的数据：v1.2.2 线上完整验证口径固定覆盖最近 10 周。
 // 可用 KEEP_WEEKS 环境变量覆盖，便于回归旧 5 周窗口或临时扩大窗口。
 const KEEP_WEEKS = Number.parseInt(process.env.KEEP_WEEKS || '10', 10);
 

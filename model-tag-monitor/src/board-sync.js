@@ -24,14 +24,6 @@ const HEADER_MAP = {
   大盘DAU: 'appDau',
   大盘日均DAU: 'appDau',
   appDau: 'appDau',
-  回收DAU: 'recycleDau',
-  '回收 DAU': 'recycleDau',
-  回收日均DAU: 'recycleDau',
-  '回收日均 DAU': 'recycleDau',
-  回收业务DAU: 'recycleDau',
-  回收业务日均DAU: 'recycleDau',
-  回收大盘DAU: 'recycleDau',
-  recycleDau: 'recycleDau',
   回收入口UV: 'recycleEntranceUv',
   '回收入口 UV': 'recycleEntranceUv',
   recycleEntranceUv: 'recycleEntranceUv',
@@ -41,7 +33,7 @@ const HEADER_MAP = {
   realPenetrationRate: 'realPenetrationRate',
 };
 
-const NUMBER_FIELDS = ['appDau', 'recycleDau', 'recycleEntranceUv'];
+const NUMBER_FIELDS = ['appDau', 'recycleEntranceUv'];
 const RATE_FIELDS = ['penetrationRate', 'realPenetrationRate'];
 
 function getField(fields, header) {
@@ -99,13 +91,23 @@ function parseTargetWeeks(value) {
   return new Set(weeks.sort());
 }
 
+function normalizeWeek(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  const full = s.match(/^(\d{4})[-_]?W(\d{1,2})$/i);
+  if (full) return `${full[1]}-W${String(Number(full[2])).padStart(2, '0')}`;
+  const short = s.match(/^(\d{2})[-_]?W(\d{1,2})$/i);
+  if (short) return `20${short[1]}-W${String(Number(short[2])).padStart(2, '0')}`;
+  return s;
+}
+
 function normalizeBoardMetricRecord(fields) {
   const row = {};
   for (const [sourceKey, targetKey] of Object.entries(HEADER_MAP)) {
     const val = getField(fields, sourceKey);
     if (val !== undefined) row[targetKey] = val;
   }
-  row.week = row.week != null ? String(row.week).trim() : '';
+  row.week = row.week != null ? normalizeWeek(row.week) : '';
   row.startDate = row.startDate != null ? String(row.startDate).trim() : '';
   if (!row.week && row.startDate) row.week = dateToISOWeek(row.startDate);
   for (const k of NUMBER_FIELDS) row[k] = toNum(row[k]);
@@ -158,7 +160,7 @@ function sync(opts = {}) {
   const weeks = rows.map((r) => r.week);
   const cache = {
     syncedAt: new Date().toISOString(),
-    version: '1.2.1',
+    version: '1.2.2',
     source: { dir: importsDir, prefixes: FILE_PREFIXES, targetWeeks: [...targetWeeks].sort() },
     weeks,
     rows,
@@ -174,6 +176,7 @@ module.exports = {
   normalizeBoardMetricRecord,
   dateToISOWeek,
   parseTargetWeeks,
+  normalizeWeek,
   mergeRows,
   toRate,
   HEADER_MAP,
