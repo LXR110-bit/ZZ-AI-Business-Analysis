@@ -155,6 +155,19 @@ function fallbackInsights(dashboard, warnings, extraWarning) {
   };
 }
 
+
+function isReusableAiCache(cache) {
+  return Boolean(
+    cache
+    && typeof cache === 'object'
+    && cache.week
+    && cache.mode === 'ai'
+    && cache.generatedBy === 'codex-cli-read-only'
+    && cache.insights
+    && typeof cache.insights === 'object'
+  );
+}
+
 function isGeneratedInsight(insights) {
   if (!insights || typeof insights !== 'object') return false;
   return Boolean(insights.generatedBy || insights.mode || insights.inputHash || insights.generatedAt);
@@ -298,9 +311,23 @@ async function main() {
 
   let cache;
   if (!aiEnabled) {
+    const existingCache = store.readJSON(outName, null);
+    if (isReusableAiCache(existingCache)) {
+      console.log(JSON.stringify({
+        ok: true,
+        mode: existingCache.mode,
+        aiEnabled: false,
+        preserved: true,
+        out: store.filePath(outName),
+        week: existingCache.week,
+        dashboardWeek: dashboard.week,
+        warnings: existingCache.warnings || [],
+      }, null, 2));
+      return;
+    }
     cache = fallbackInsights(dashboard, warnings);
     store.writeJSON(outName, cache);
-    console.log(JSON.stringify({ ok: true, mode: cache.mode, aiEnabled: false, out: store.filePath(outName), week: cache.week, warnings: cache.warnings }, null, 2));
+    console.log(JSON.stringify({ ok: true, mode: cache.mode, aiEnabled: false, preserved: false, out: store.filePath(outName), week: cache.week, warnings: cache.warnings }, null, 2));
     return;
   }
 
@@ -325,6 +352,7 @@ module.exports = {
   buildCodexEnv,
   fallbackInsights,
   isGeneratedInsight,
+  isReusableAiCache,
   summarizeDashboard,
   summarizeErrorMessage,
 };

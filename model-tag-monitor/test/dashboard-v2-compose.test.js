@@ -349,6 +349,45 @@ test('business overview generator: AI error warnings are sanitized and capped', 
   assert.equal(msg.includes('invalid_json_schema'), true);
 });
 
+test('business overview generator: AI disabled preserves existing AI cache', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-preserve-test-'));
+  const dashboardFile = path.join(tmp, 'dashboard.json');
+  fs.writeFileSync(dashboardFile, JSON.stringify(composeDashboard(baseOpts)), 'utf8');
+  const cacheFile = path.join(tmp, 'business-overview-insights.json');
+  fs.writeFileSync(cacheFile, JSON.stringify({
+    version: '1.3.0',
+    week: '2026-W27',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'existing-ai-hash',
+    insights: {
+      board: '已有 AI 大盘洞察',
+      tiers: { 发展: '已有发展', 孵化: '已有孵化', 种子: '已有种子' },
+      category: '已有品类',
+      monitor: '已有监测',
+    },
+    warnings: ['已有 warning'],
+  }), 'utf8');
+
+  const proc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
+    '--dashboard-file', dashboardFile,
+    '--out-name', 'business-overview-insights.json',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, BUSINESS_OVERVIEW_AI_ENABLED: '0' },
+    encoding: 'utf8',
+  });
+  assert.equal(proc.status, 0, proc.stderr || proc.stdout);
+  const stdout = JSON.parse(proc.stdout);
+  assert.equal(stdout.preserved, true);
+
+  const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+  assert.equal(cache.mode, 'ai');
+  assert.equal(cache.generatedBy, 'codex-cli-read-only');
+  assert.equal(cache.insights.board, '已有 AI 大盘洞察');
+});
+
 test('business overview generator: fixture dry-run writes deterministic warning cache', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-test-'));
   const dashboardFile = path.join(tmp, 'dashboard.json');
