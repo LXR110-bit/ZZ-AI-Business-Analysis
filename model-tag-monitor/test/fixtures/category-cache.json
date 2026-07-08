@@ -1,0 +1,16 @@
+{
+  "syncedAt": "2026-07-06T00:00:00.000Z",
+  "source": { "wikiNodesByMonth": { "2026-07": "DAcFwVw8ViG3PHkqUOUcbmYGnDc" } },
+  "rows": [
+    { "week": "2026-W26", "category": "无人机", "jkuv": 1000, "evaUv": 500, "evaCnt": 500, "orderUv": 100, "orderCnt": 100, "shipCnt": 100, "signCnt": 90, "qcCnt": 80, "dealCnt": 50, "returnCnt": 5, "gmv": 500000, "evaRate": 0.5, "orderRate": 0.2, "shipRate": 0.2, "dealRate": 0.1 },
+    { "week": "2026-W27", "category": "无人机", "jkuv": 1000, "evaUv": 500, "evaCnt": 500, "orderUv": 125, "orderCnt": 125, "shipCnt": 125, "signCnt": 110, "qcCnt": 100, "dealCnt": 75, "returnCnt": 6, "gmv": 600000, "evaRate": 0.5, "orderRate": 0.25, "shipRate": 0.25, "dealRate": 0.15 },
+    { "week": "2026-W26", "category": "运动相机", "jkuv": 200, "evaUv": 100, "evaCnt": 100, "orderUv": 20, "orderCnt": 20, "shipCnt": 20, "signCnt": 18, "qcCnt": 16, "dealCnt": 10, "returnCnt": 1, "gmv": 100000, "evaRate": 0.5, "orderRate": 0.2, "shipRate": 0.2, "dealRate": 0.1 },
+    { "week": "2026-W27", "category": "运动相机", "jkuv": 180, "evaUv": 90, "evaCnt": 90, "orderUv": 18, "orderCnt": 18, "shipCnt": 18, "signCnt": 16, "qcCnt": 14, "dealCnt": 9, "returnCnt": 1, "gmv": 90000, "evaRate": 0.5, "orderRate": 0.2, "shipRate": 0.2, "dealRate": 0.1 },
+    { "week": "2026-W26", "category": "台球杆", "jkuv": 800, "evaUv": 400, "evaCnt": 400, "orderUv": 80, "orderCnt": 80, "shipCnt": 80, "signCnt": 70, "qcCnt": 60, "dealCnt": 40, "returnCnt": 4, "gmv": 400000, "evaRate": 0.5, "orderRate": 0.2, "shipRate": 0.2, "dealRate": 0.1 },
+    { "week": "2026-W27", "category": "台球杆", "jkuv": 800, "evaUv": 400, "evaCnt": 400, "orderUv": 100, "orderCnt": 100, "shipCnt": 100, "signCnt": 90, "qcCnt": 80, "dealCnt": 60, "returnCnt": 5, "gmv": 500000, "evaRate": 0.5, "orderRate": 0.25, "shipRate": 0.25, "dealRate": 0.15 },
+    { "week": "2026-W26", "category": "拍立得", "jkuv": 100, "evaUv": 100, "evaCnt": 100, "orderUv": 10, "orderCnt": 10, "shipCnt": 10, "signCnt": 9, "qcCnt": 8, "dealCnt": 5, "returnCnt": 1, "gmv": 50000, "evaRate": 1, "orderRate": 0.1, "shipRate": 0.1, "dealRate": 0.05 },
+    { "week": "2026-W27", "category": "拍立得", "jkuv": 100, "evaUv": 100, "evaCnt": 100, "orderUv": 20, "orderCnt": 20, "shipCnt": 20, "signCnt": 18, "qcCnt": 16, "dealCnt": 15, "returnCnt": 1, "gmv": 80000, "evaRate": 1, "orderRate": 0.2, "shipRate": 0.2, "dealRate": 0.15 },
+    { "week": "2026-W26", "category": "显卡", "jkuv": 2000, "evaUv": 1000, "evaCnt": 1000, "orderUv": 200, "orderCnt": 200, "shipCnt": 200, "signCnt": 180, "qcCnt": 160, "dealCnt": 100, "returnCnt": 10, "gmv": 1000000, "evaRate": 0.5, "orderRate": 0.2, "shipRate": 0.2, "dealRate": 0.1 },
+    { "week": "2026-W27", "category": "显卡", "jkuv": 2000, "evaUv": 1000, "evaCnt": 1000, "orderUv": 250, "orderCnt": 250, "shipCnt": 250, "signCnt": 220, "qcCnt": 200, "dealCnt": 150, "returnCnt": 12, "gmv": 1200000, "evaRate": 0.5, "orderRate": 0.25, "shipRate": 0.25, "dealRate": 0.15 }
+  ]
+}

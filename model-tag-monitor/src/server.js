@@ -4,11 +4,13 @@ const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
-const feishu = require('./feishu');
 const { sync } = require('./sync');
+const categorySync = require('./category-sync');
+const taxonomySync = require('./taxonomy-sync');
 const { monitor, DEFAULT_RULES } = require('./monitor');
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
 const { createProxy } = require('./proxy');
+const { composeDashboard: composeDashboardV2 } = require('./compose-dashboard');
 
 const app = express();
 const PORT = process.env.PORT || 8848;
@@ -54,6 +56,46 @@ app.post('/api/sync', async (req, res) => {
     res.status(500).json({ error: e.message });
   } finally {
     syncing = false;
+  }
+});
+
+// ---- 品类漏斗数据同步 ----
+// 注：category-cache.json 暂未接入 dashboard 聚合逻辑(由 analysis-agent 后续接线)，
+// 这里不调 invalidateDashboardCache()，避免对现有机型层 dashboard 缓存造成无意义失效
+let syncingCategory = false;
+app.post('/api/sync/category', async (req, res) => {
+  if (syncingCategory) return res.status(409).json({ error: '品类数据正在同步中,请稍候' });
+  syncingCategory = true;
+  const user = getUser(req);
+  try {
+    const result = await categorySync.sync();
+    invalidateDashboardCache();
+    store.appendLog({ action: 'sync-category-manual', user, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[/api/sync/category] 失败:', e);
+    res.status(500).json({ error: e.message });
+  } finally {
+    syncingCategory = false;
+  }
+});
+
+// ---- 品类分层映射同步 ----
+let syncingTaxonomy = false;
+app.post('/api/sync/taxonomy', async (req, res) => {
+  if (syncingTaxonomy) return res.status(409).json({ error: '品类分层映射正在同步中,请稍候' });
+  syncingTaxonomy = true;
+  const user = getUser(req);
+  try {
+    const result = await taxonomySync.sync();
+    invalidateDashboardCache();
+    store.appendLog({ action: 'sync-taxonomy-manual', user, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[/api/sync/taxonomy] 失败:', e);
+    res.status(500).json({ error: e.message });
+  } finally {
+    syncingTaxonomy = false;
   }
 });
 
@@ -198,12 +240,29 @@ app.get('/api/monitor', (req, res) => {
   res.end(body);
 });
 
-// ---- 概览 ----
+// ---- 概览 v2：真实品类缓存聚合，保留 v1 兼容字段 ----
 app.get('/api/dashboard', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   try {
+    const categoryCache = store.readJSON('category-cache.json', null);
+    const taxonomy = store.readJSON('category-taxonomy.json', null);
+    const boardMetrics = store.readJSON('board-metrics.json', null);
+    if (categoryCache && taxonomy && Array.isArray(categoryCache.rows) && categoryCache.rows.length) {
+      const weeks = (categoryCache.weeks && categoryCache.weeks.length
+        ? categoryCache.weeks
+        : [...new Set(categoryCache.rows.map((r) => r.week).filter(Boolean))]
+      ).slice().sort();
+      const week = String(req.query.week || weeks[weeks.length - 1] || '').trim();
+      const prevWeek = weeks[weeks.indexOf(week) - 1] || null;
+      if (!week) return res.status(503).json({ error: '品类缓存缺少周次' });
+      const result = composeDashboardV2({ categoryCache, taxonomy, boardMetrics, week, prevWeek });
+      return res.json(result);
+    }
+
+    // 上游/旧 dashboard 仅作为调试兜底；生产 v1.1.0 验收必须命中上面的 v2 真实聚合。
     const d = UPSTREAM ? await getDashboardFromUpstream(UPSTREAM) : getDashboard();
     if (!d) return res.status(503).json({ error: '尚未同步数据' });
-    res.json(d);
+    res.json({ ...d, contractFallback: 'v1-dashboard' });
   } catch (e) {
     console.error('[/api/dashboard] failed:', e);
     res.status(502).json({ error: 'dashboard 组装失败', detail: e.message });

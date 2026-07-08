@@ -1,14 +1,18 @@
-// 从飞书 sheets 拉数据 → 归一化 → 落到 cache.json
-const feishu = require('./feishu');
+// 读取本地 CSV → 归一化 → 落到 cache.json
+// 数据来源：data pipeline 投递到 data/imports/model_daily_avg_*.csv
+'use strict';
+
+const { parseCSVStreamMapped, scanColumnValues, getImportsDir } = require('./csv-reader');
 const store = require('./store');
+const fs = require('node:fs');
+const path = require('node:path');
 
-// 飞书 wiki node:「机型维度周日均漏斗数据（6月）」
-// 该 doc 内含 "日期机型维度周日均" sheet,字段名以 "XX日均" 结尾,值为周日均
-const WIKI_NODE_TOKEN = 'UzEZwrOTVimV0RkjOaBcT4EWnGf';
-const EXPECTED_DOC_TITLE = '机型维度周日均漏斗数据（6月）';
+const IMPORTS_DIR = getImportsDir();
+const CSV_PREFIX = 'model_daily_avg_';
 
-// 主 sheet 页名称候选(优先匹配"周日均"版本)
-const MAIN_SHEET_KEYWORDS = ['日期机型维度周日均', '机型周日均', '日期机型'];
+// 保留最近几周的数据：v1.1.0 线上完整验证口径固定覆盖 W18~W27（10 周）。
+// 可用 KEEP_WEEKS 环境变量覆盖，便于回归旧 5 周窗口或临时扩大窗口。
+const KEEP_WEEKS = Number.parseInt(process.env.KEEP_WEEKS || '10', 10);
 
 // 表头字段 → 内部字段名映射
 // 官方口径已是"周日均":列名以 "XX日均" 结尾;老表用 "XX汇总" 是周累计,也做兼容(不推荐使用)
@@ -16,16 +20,19 @@ const HEADER_MAP = {
   // 时间维度
   统计周: 'week',
   周次: 'week',
+  week_start_date: 'startDate',
   周开始: 'startDate',
   开始日期: 'startDate',
   周结束: 'endDate',
   结束日期: 'endDate',
   已收到天数: 'daysReceived',
+  day_cnt: 'daysReceived',
   // 品类/机型
   品类名称: 'category',
   品类: 'category',
   一级品类: 'category',
   机型ID: 'modelId',
+  机型id: 'modelId',
   型号ID: 'modelId',
   机型名称: 'modelName',
   型号: 'modelName',
@@ -35,14 +42,17 @@ const HEADER_MAP = {
   机况UV汇总: 'jkuv',
   机况UV: 'jkuv',
   机况页UV: 'jkuv',
+  机况uv: 'jkuv',
   估价UV日均: 'evaUv',
   估价UV汇总: 'evaUv',
   估价UV: 'evaUv',
+  估价uv: 'evaUv',
   估价量日均: 'evaCnt',
   估价量: 'evaCnt',
   下单UV日均: 'orderUv',
   下单UV汇总: 'orderUv',
   下单UV: 'orderUv',
+  下单uv: 'orderUv',
   下单量日均: 'orderCnt',
   下单量汇总: 'orderCnt',
   下单量: 'orderCnt',
@@ -64,10 +74,73 @@ const HEADER_MAP = {
   成交GMV日均: 'gmv',
   成交GMV汇总: 'gmv',
   成交GMV: 'gmv',
+  成交gmv: 'gmv',
   GMV: 'gmv',
   客单价: 'avgPrice',
   成交客单价: 'avgPrice',
 };
+
+const NUMERIC_FIELDS = ['jkuv', 'evaUv', 'evaCnt', 'orderUv', 'orderCnt', 'shipCnt', 'signCnt', 'qcCnt', 'dealCnt', 'returnCnt', 'gmv'];
+const MODEL_MAIN_DIMENSION_HEADERS = ['核心属性（估价）', '成色等级（估价）', '核心属性（质检）', '成色等级（质检）', '履约方式（只取线上流程）'];
+const JIKUANG_UV_HEADERS = ['机况uv', '机况UV', '机况UV日均', '机况UV汇总', '机况页UV'];
+
+function getRawValue(row, headerNames) {
+  for (const h of headerNames) {
+    if (Object.prototype.hasOwnProperty.call(row, h)) {
+      return String(row[h] ?? '').trim();
+    }
+  }
+  return '';
+}
+
+function canonicalizeModelId(value) {
+  const s = String(value ?? '').trim();
+  return s.replace(/^(\d+)\.0+$/, '$1');
+}
+
+function isModelMainGrainRow(csvRow) {
+  const hasDetailDimension = MODEL_MAIN_DIMENSION_HEADERS.some((h) => getRawValue(csvRow, [h]) !== '');
+  if (hasDetailDimension) return false;
+  return getRawValue(csvRow, JIKUANG_UV_HEADERS) !== '';
+}
+
+function recomputeDerivedFields(row) {
+  row.avgPrice = row.dealCnt > 0 ? row.gmv / row.dealCnt : 0;
+  Object.assign(row, computeRates(row));
+  return row;
+}
+
+function modelRowKey(row) {
+  const timeKey = row.startDate || row.week || '';
+  const modelKey = row.modelId || `name:${row.modelName}`;
+  return [timeKey, row.category, modelKey, row.modelName].join('\u001f');
+}
+
+function mergeModelRows(rows) {
+  const byKey = new Map();
+  let mergedRows = 0;
+
+  for (const row of rows) {
+    const key = modelRowKey(row);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...row });
+      continue;
+    }
+
+    mergedRows += 1;
+    for (const field of NUMERIC_FIELDS) {
+      existing[field] = toNum(existing[field]) + toNum(row[field]);
+    }
+    existing.daysReceived = Math.max(toNum(existing.daysReceived), toNum(row.daysReceived));
+    if (!existing.week && row.week) existing.week = row.week;
+    if (!existing.startDate && row.startDate) existing.startDate = row.startDate;
+    if (!existing.endDate && row.endDate) existing.endDate = row.endDate;
+  }
+
+  const merged = [...byKey.values()].map(recomputeDerivedFields);
+  return { rows: merged, mergedRows };
+}
 
 // 5 个核心转化率的计算口径
 function computeRates(row) {
@@ -109,73 +182,127 @@ function normalizeRow(headers, values) {
     if (fields[k] !== undefined) fields[k] = String(fields[k]).trim();
     else fields[k] = '';
   });
-  // 转化率
-  Object.assign(fields, computeRates(fields));
-  return fields;
+  fields.modelId = canonicalizeModelId(fields.modelId);
+  // 转化率与客单价
+  return recomputeDerivedFields(fields);
 }
 
-// 找主 sheet 页
-function findMainSheet(sheets) {
-  for (const kw of MAIN_SHEET_KEYWORDS) {
-    const hit = sheets.find((s) => s.title && s.title.includes(kw));
-    if (hit) return hit;
-  }
-  // 兜底:返回第一个
-  return sheets[0];
+/**
+ * 从 CSV 原始行对象归一化为标准字段
+ * @param {Record<string, string>} csvRow parseCSV 返回的单行对象（key 是中文表头）
+ * @returns {object} 归一化后的行
+ */
+function normalizeCSVRow(csvRow) {
+  const headers = Object.keys(csvRow);
+  const values = Object.values(csvRow);
+  return normalizeRow(headers, values);
+}
+
+/**
+ * 从日期字符串（如 "2026-07-06"）计算 ISO 周次（如 "2026-W28"）
+ * @param {string} dateStr yyyy-MM-dd 格式
+ * @returns {string} ISO 周次字符串，如 "2026-W28"
+ */
+function dateToISOWeek(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  if (isNaN(d.getTime())) return '';
+  // ISO week: 周四所在的年的第几周
+  const jan4 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const dayOfYear = Math.floor((d - new Date(Date.UTC(d.getUTCFullYear(), 0, 1))) / 86400000) + 1;
+  // 调整到周一起始
+  const dayOfWeek = d.getUTCDay() || 7; // 1=Mon ... 7=Sun
+  const weekThursday = new Date(d.getTime() + (4 - dayOfWeek) * 86400000);
+  const year = weekThursday.getUTCFullYear();
+  const jan1 = new Date(Date.UTC(year, 0, 1));
+  const weekNum = Math.ceil(((weekThursday - jan1) / 86400000 + 1) / 7);
+  return `${year}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+
+function parseTargetWeeks(value) {
+  const weeks = String(value || '')
+    .split(',')
+    .map((w) => w.trim())
+    .filter(Boolean);
+  if (!weeks.length) return null;
+  const invalid = weeks.filter((w) => !/^\d{4}-W\d{2}$/.test(w));
+  if (invalid.length) throw new Error(`TARGET_WEEKS 格式错误: ${invalid.join(',')}`);
+  return new Set(weeks.sort());
 }
 
 async function sync() {
-  console.log('[sync] 开始同步飞书数据...');
-  const { objToken, objType, title } = await feishu.getWikiObjToken(WIKI_NODE_TOKEN);
-  if (objType !== 'sheet') throw new Error(`wiki node 不是 sheet 类型: ${objType}`);
-  console.log(`[sync] wiki -> sheet: ${title} (${objToken})`);
-  if (title.trim() !== EXPECTED_DOC_TITLE) {
-    console.warn(`[sync] 警告:doc 标题与预期不一致,预期="${EXPECTED_DOC_TITLE}",实际="${title.trim()}"。请确认 WIKI_NODE_TOKEN 未失效。`);
+  console.log('[sync] 开始同步本地 CSV 数据...');
+
+  // 文件名倒序（最新月份优先），便于按需短路
+  const allFiles = fs.readdirSync(IMPORTS_DIR)
+    .filter((f) => f.startsWith(CSV_PREFIX) && f.endsWith('.csv'))
+    .sort()
+    .reverse();
+
+  if (!allFiles.length) {
+    console.warn(`[sync] 未找到匹配文件: ${IMPORTS_DIR}/${CSV_PREFIX}*.csv`);
+    return { rows: 0, categories: 0, weeks: 0 };
   }
 
-  const sheets = await feishu.listSheets(objToken);
-  console.log(`[sync] 找到 ${sheets.length} 个 sheet 页:`, sheets.map((s) => s.title));
+  const explicitTargetWeeks = parseTargetWeeks(process.env.TARGET_WEEKS);
 
-  const main = findMainSheet(sheets);
-  console.log(`[sync] 选中主 sheet: ${main.title}`);
-
-  const rowCount = main.grid_properties?.row_count || 1000;
-  const colCount = main.grid_properties?.column_count || 26;
-  console.log(`[sync] sheet 尺寸: ${rowCount} 行 × ${colCount} 列`);
-
-  // 先读表头(第 1 行)
-  const colLetter = colToLetter(colCount);
-  const headerRange = `${main.sheet_id}!A1:${colLetter}1`;
-  const headerRows = await feishu.readSheetRange(objToken, headerRange);
-  const headers = (headerRows[0] || []).map((h) => String(h || '').trim());
-  console.log(`[sync] 表头:`, headers);
-
-  // 检查关键字段是否都能映射到
-  const mappedKeys = new Set(headers.map((h) => HEADER_MAP[h]).filter(Boolean));
-  const requiredKeys = ['week', 'category', 'modelName', 'evaUv'];
-  const missing = requiredKeys.filter((k) => !mappedKeys.has(k));
-  if (missing.length) {
-    console.warn(`[sync] 警告:缺少关键字段映射: ${missing.join(', ')}`);
+  // Pass 1: 扫周次。若设置 TARGET_WEEKS，则扫描所有文件并精确命中；否则按最新 KEEP_WEEKS 短路。
+  console.log(`[sync] Pass 1: 扫描周次（${explicitTargetWeeks ? 'TARGET_WEEKS 精确窗口' : '按文件名倒序短路'}）...`);
+  const filesToLoad = [];
+  const keepWeeks = new Set();
+  const keepDates = new Set();
+  for (const file of allFiles) {
+    const dates = await scanColumnValues(path.join(IMPORTS_DIR, file), 'week_start_date');
+    const fileWeeks = new Set();
+    for (const d of dates) {
+      const w = dateToISOWeek(d);
+      if (w) fileWeeks.add(w);
+    }
+    filesToLoad.push({ file, dates: [...dates], weeks: [...fileWeeks] });
+    for (const w of fileWeeks) keepWeeks.add(w);
+    // 未设置显式窗口时，一旦累计周次覆盖了最近 KEEP_WEEKS 周，就不再往前扫更老的文件
+    if (!explicitTargetWeeks && keepWeeks.size >= KEEP_WEEKS) break;
   }
 
-  // 分页读数据(跳过第 1 行表头)
-  const PAGE = 5000;
-  const rows = [];
-  for (let start = 2; start <= rowCount; start += PAGE) {
-    const end = Math.min(start + PAGE - 1, rowCount);
-    const range = `${main.sheet_id}!A${start}:${colLetter}${end}`;
-    console.log(`[sync] 读取 ${range}`);
-    const chunk = await feishu.readSheetRange(objToken, range);
-    if (!chunk.length) break;
-    for (const values of chunk) {
-      // 跳过完全空的行
-      if (values.every((v) => v === null || v === undefined || v === '')) continue;
-      const norm = normalizeRow(headers, values);
-      // 只保留有 week+category+modelName 的行
-      if (norm.week && norm.category && norm.modelName) rows.push(norm);
+  const finalWeeks = explicitTargetWeeks || new Set([...keepWeeks].sort().slice(-KEEP_WEEKS));
+  const targetFiles = filesToLoad.filter((f) => f.weeks.some((w) => finalWeeks.has(w)));
+  for (const f of targetFiles) {
+    for (const d of f.dates) {
+      if (finalWeeks.has(dateToISOWeek(d))) keepDates.add(d);
     }
   }
-  console.log(`[sync] 归一化后有效行数: ${rows.length}`);
+  console.log(`[sync] 保留 ${finalWeeks.size} 周: ${[...finalWeeks].sort().join(', ')}`);
+  console.log(`[sync] 待加载文件 ${targetFiles.length} 个: ${targetFiles.map((f) => f.file).join(', ')}`);
+
+  // Pass 2: 流式加载 + filter + normalize 一步到位（不留 CSV 原始行数组，降低堆压力）
+  console.log('[sync] Pass 2: 加载并归一化数据...');
+  let rows = [];
+  let totalRead = 0;
+  for (const { file } of targetFiles) {
+    const added = await parseCSVStreamMapped(
+      path.join(IMPORTS_DIR, file),
+      (row) => {
+        const d = getRawValue(row, ['week_start_date', '周开始', '开始日期']);
+        return keepDates.has(d) && isModelMainGrainRow(row);
+      },
+      (csvRow) => {
+        const norm = normalizeCSVRow(csvRow);
+        if (!norm.week && norm.startDate) {
+          norm.week = dateToISOWeek(norm.startDate);
+        }
+        if (!norm.week || !norm.category || !norm.modelName) return null;
+        return norm;
+      },
+      rows
+    );
+    totalRead += added;
+    console.log(`[sync]   ${file}: +${added} 行, 累计 ${rows.length}`);
+  }
+  console.log(`[sync] 主粒度过滤+归一化后有效行数（聚合前）: ${rows.length}`);
+  const beforeMergeRows = rows.length;
+  const mergeResult = mergeModelRows(rows);
+  rows = mergeResult.rows;
+  console.log(`[sync] 同 key 聚合: ${beforeMergeRows} -> ${rows.length}, 合并重复行 ${mergeResult.mergedRows}`);
 
   // 统计品类
   const categories = [...new Set(rows.map((r) => r.category))].sort();
@@ -184,13 +311,7 @@ async function sync() {
 
   const cache = {
     syncedAt: new Date().toISOString(),
-    source: {
-      wikiNode: WIKI_NODE_TOKEN,
-      objToken,
-      title,
-      sheetTitle: main.title,
-    },
-    headers,
+    source: { dir: IMPORTS_DIR, prefix: CSV_PREFIX },
     categories,
     weeks,
     rows,
@@ -206,15 +327,4 @@ async function sync() {
   return { rows: rows.length, categories: categories.length, weeks: weeks.length };
 }
 
-// 列数 → Excel 字母,26 → Z, 27 → AA
-function colToLetter(n) {
-  let s = '';
-  while (n > 0) {
-    const r = (n - 1) % 26;
-    s = String.fromCharCode(65 + r) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
-
-module.exports = { sync, computeRates, HEADER_MAP };
+module.exports = { sync, computeRates, normalizeRow, normalizeCSVRow, toNum, HEADER_MAP, dateToISOWeek, parseTargetWeeks, isModelMainGrainRow, canonicalizeModelId, mergeModelRows };

@@ -1,0 +1,23 @@
+{
+  "syncedAt": "2026-07-06T00:00:00.000Z",
+  "rows": [
+    { "week": "2026-W26", "category": "无人机", "modelName": "DJI Mini 4 Pro", "jkuv": 500, "evaUv": 250, "evaCnt": 250, "orderUv": 50, "orderCnt": 50, "shipCnt": 50, "signCnt": 45, "qcCnt": 40, "dealCnt": 25, "returnCnt": 2, "gmv": 250000 },
+    { "week": "2026-W26", "category": "无人机", "modelName": "DJI Air 3", "jkuv": 300, "evaUv": 150, "evaCnt": 150, "orderUv": 30, "orderCnt": 30, "shipCnt": 30, "signCnt": 27, "qcCnt": 24, "dealCnt": 15, "returnCnt": 2, "gmv": 150000 },
+    { "week": "2026-W26", "category": "无人机", "modelName": "Pocket 3", "jkuv": 200, "evaUv": 100, "evaCnt": 100, "orderUv": 20, "orderCnt": 20, "shipCnt": 20, "signCnt": 18, "qcCnt": 16, "dealCnt": 10, "returnCnt": 1, "gmv": 100000 },
+    { "week": "2026-W27", "category": "无人机", "modelName": "DJI Mini 4 Pro", "jkuv": 450, "evaUv": 220, "evaCnt": 220, "orderUv": 55, "orderCnt": 55, "shipCnt": 55, "signCnt": 48, "qcCnt": 44, "dealCnt": 33, "returnCnt": 3, "gmv": 250000 },
+    { "week": "2026-W27", "category": "无人机", "modelName": "DJI Air 3", "jkuv": 300, "evaUv": 150, "evaCnt": 150, "orderUv": 30, "orderCnt": 30, "shipCnt": 30, "signCnt": 27, "qcCnt": 24, "dealCnt": 15, "returnCnt": 1, "gmv": 150000 },
+    { "week": "2026-W27", "category": "无人机", "modelName": "Pocket 3", "jkuv": 250, "evaUv": 130, "evaCnt": 130, "orderUv": 40, "orderCnt": 40, "shipCnt": 40, "signCnt": 35, "qcCnt": 32, "dealCnt": 27, "returnCnt": 2, "gmv": 200000 },
+
+    { "week": "2026-W26", "category": "台球杆", "modelName": "LP 星耀", "jkuv": 500, "evaUv": 250, "evaCnt": 250, "orderUv": 50, "orderCnt": 50, "shipCnt": 50, "signCnt": 44, "qcCnt": 38, "dealCnt": 25, "returnCnt": 3, "gmv": 250000 },
+    { "week": "2026-W26", "category": "台球杆", "modelName": "美洲豹 PRO", "jkuv": 300, "evaUv": 150, "evaCnt": 150, "orderUv": 30, "orderCnt": 30, "shipCnt": 30, "signCnt": 26, "qcCnt": 22, "dealCnt": 15, "returnCnt": 1, "gmv": 150000 },
+    { "week": "2026-W27", "category": "台球杆", "modelName": "LP 星耀", "jkuv": 500, "evaUv": 250, "evaCnt": 250, "orderUv": 65, "orderCnt": 65, "shipCnt": 65, "signCnt": 58, "qcCnt": 52, "dealCnt": 40, "returnCnt": 3, "gmv": 320000 },
+    { "week": "2026-W27", "category": "台球杆", "modelName": "美洲豹 PRO", "jkuv": 300, "evaUv": 150, "evaCnt": 150, "orderUv": 35, "orderCnt": 35, "shipCnt": 35, "signCnt": 32, "qcCnt": 28, "dealCnt": 20, "returnCnt": 2, "gmv": 180000 },
+
+    { "week": "2026-W26", "category": "显卡", "modelName": "RTX 4090", "jkuv": 800, "evaUv": 400, "evaCnt": 400, "orderUv": 80, "orderCnt": 80, "shipCnt": 80, "signCnt": 72, "qcCnt": 64, "dealCnt": 40, "returnCnt": 4, "gmv": 500000 },
+    { "week": "2026-W26", "category": "显卡", "modelName": "RTX 4060", "jkuv": 700, "evaUv": 350, "evaCnt": 350, "orderUv": 70, "orderCnt": 70, "shipCnt": 70, "signCnt": 63, "qcCnt": 56, "dealCnt": 35, "returnCnt": 3, "gmv": 300000 },
+    { "week": "2026-W26", "category": "显卡", "modelName": "RX 7900 XTX", "jkuv": 500, "evaUv": 250, "evaCnt": 250, "orderUv": 50, "orderCnt": 50, "shipCnt": 50, "signCnt": 45, "qcCnt": 40, "dealCnt": 25, "returnCnt": 3, "gmv": 200000 },
+    { "week": "2026-W27", "category": "显卡", "modelName": "RTX 4090", "jkuv": 900, "evaUv": 450, "evaCnt": 450, "orderUv": 120, "orderCnt": 120, "shipCnt": 120, "signCnt": 106, "qcCnt": 96, "dealCnt": 72, "returnCnt": 6, "gmv": 700000 },
+    { "week": "2026-W27", "category": "显卡", "modelName": "RTX 4060", "jkuv": 650, "evaUv": 330, "evaCnt": 330, "orderUv": 80, "orderCnt": 80, "shipCnt": 80, "signCnt": 70, "qcCnt": 64, "dealCnt": 48, "returnCnt": 4, "gmv": 320000 },
+    { "week": "2026-W27", "category": "显卡", "modelName": "RX 7900 XTX", "jkuv": 450, "evaUv": 220, "evaCnt": 220, "orderUv": 50, "orderCnt": 50, "shipCnt": 50, "signCnt": 44, "qcCnt": 40, "dealCnt": 30, "returnCnt": 2, "gmv": 180000 }
+  ]
+}

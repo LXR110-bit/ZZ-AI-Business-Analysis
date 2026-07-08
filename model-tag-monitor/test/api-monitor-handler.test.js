@@ -19,6 +19,7 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const REPO_ROOT = path.join(__dirname, '..');
@@ -39,9 +40,12 @@ function httpGet(pathAndQuery) {
   });
 }
 
-async function waitReady(maxMs = 5000) {
+async function waitReady(child, maxMs = 5000) {
   const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
+    if (child.exitCode !== null) {
+      throw new Error(`server exited before ready: code=${child.exitCode} signal=${child.signalCode || ''}`);
+    }
     try {
       const r = await httpGet('/api/meta');
       if (r.status === 200) return;
@@ -51,25 +55,52 @@ async function waitReady(maxMs = 5000) {
   throw new Error('server not ready within ' + maxMs + 'ms');
 }
 
-test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连', async (t) => {
-  // 前置：确认本地有 data/cache.json（不然 handler 返 "尚未同步数据" 而不是走归一化路径）
-  const cachePath = path.join(REPO_ROOT, 'data', 'cache.json');
-  if (!fs.existsSync(cachePath)) {
-    t.skip('data/cache.json 不存在（本地没同步过数据），跳过 handler 集成测试');
-    return;
-  }
+function writeTinyMonitorFixture(dir) {
+  const weeks = ['2026-W23', '2026-W24', '2026-W25', '2026-W26', '2026-W27'];
+  const rows = weeks.map((week, i) => {
+    const jkuv = 1000 + i * 20;
+    const evaUv = 500 + i * 10;
+    const orderUv = 100 + i * 5;
+    const shipCnt = 80 + i * 4;
+    const qcCnt = 70 + i * 3;
+    const dealCnt = 60 + i * 2;
+    const returnCnt = 3;
+    const safeDiv = (a, b) => (b > 0 ? a / b : null);
+    return {
+      week, startDate: '2026-06-01', endDate: '2026-06-07', daysReceived: 7,
+      category: '手机', modelId: 'M1', modelName: '测试机型',
+      jkuv, evaUv, evaCnt: evaUv, orderUv, orderCnt: orderUv, shipCnt, signCnt: shipCnt, qcCnt, dealCnt, returnCnt, gmv: dealCnt * 1000,
+      evaRate: safeDiv(evaUv, jkuv), orderRate: safeDiv(orderUv, evaUv), shipRate: safeDiv(shipCnt, evaUv), dealRate: safeDiv(dealCnt, evaUv), returnRate: safeDiv(returnCnt, qcCnt),
+    };
+  });
+  fs.writeFileSync(path.join(dir, 'cache.json'), JSON.stringify({ syncedAt: new Date().toISOString(), categories: ['手机'], weeks, rows }, null, 2));
+  fs.writeFileSync(path.join(dir, 'rules.json'), JSON.stringify({ poolTopN: 20, waveThreshold: 0.1, trendWeeks: 3, minEvaUv: 15 }, null, 2));
+  fs.writeFileSync(path.join(dir, 'tags.json'), '{}');
+}
+
+test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连', async () => {
+  // 使用隔离 DATA_DIR 小 fixture，避免本地真实 30 万行 cache 让 HTTP 集成测试超时。
+  const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'model-tag-monitor-test-'));
+  writeTinyMonitorFixture(tmpDataDir);
 
   // 起 server.js 子进程（不带 PROXY_UPSTREAM → 走 handler 路径，跟生产一致）
-  const env = { ...process.env, PORT: String(PORT) };
+  const env = { ...process.env, PORT: String(PORT), DATA_DIR: tmpDataDir };
   delete env.PROXY_UPSTREAM; // 显式清空，防继承
   const child = spawn(process.execPath, ['src/server.js'], {
     cwd: REPO_ROOT,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d.toString('utf8'); });
+  child.stderr.on('data', (d) => { stderr += d.toString('utf8'); });
+  const exitPromise = new Promise((resolve) => {
+    child.once('exit', (code, signal) => resolve({ code, signal }));
+  });
 
   try {
-    await waitReady();
+    await waitReady(child);
 
     const r = await httpGet('/api/monitor');
     assert.equal(r.status, 200, 'status 200');
@@ -107,7 +138,16 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
       }
     }
   } finally {
-    child.kill('SIGTERM');
-    await new Promise((resolve) => child.on('exit', resolve));
+    if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
+    await Promise.race([
+      exitPromise,
+      new Promise((resolve) => setTimeout(resolve, 3000)),
+    ]);
+    fs.rmSync(tmpDataDir, { recursive: true, force: true });
+    if (child.exitCode && child.exitCode !== 0) {
+      // 子进程提前退出时把日志带出来，避免测试静默卡死。
+      console.error('[server stdout]', stdout);
+      console.error('[server stderr]', stderr);
+    }
   }
 });

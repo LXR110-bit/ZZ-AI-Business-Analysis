@@ -1,0 +1,9 @@
+# model-tag-monitor v1.1.0 production crontab (Asia/Shanghai)
+# Goal: 06:30 local CSV/cache/dashboard refresh + style-2 card; Feishu Sheets legacy job is backup only.
+
+# Official morning report flow: local cache/dashboard refresh, then style-2 card to dashboard.
+30 6 * * * cd /root/model-tag-monitor && /root/model-tag-monitor/scripts/refresh-dashboard-daily.sh >> /root/model-tag-monitor/logs/cron-refresh-dashboard.log 2>&1
+
+# Legacy Feishu backup flow (if kept): MUST disable notification to avoid old 12:39-style robot messages.
+# Replace the old 09:30 line with this form if the legacy script supports --skip-notify:
+30 9 * * * /root/workspace/ZZ-AI-Business-Analysis/scripts/机型周数据_cron.sh --skip-notify >> /root/workspace/ZZ-AI-Business-Analysis/logs/model_weekly_legacy_backup.log 2>&1

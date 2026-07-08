@@ -1,6 +1,6 @@
 {
   "name": "model-tag-monitor",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "机型标签管理 + 转化率异常监测",
   "main": "src/server.js",
   "scripts": {
@@ -8,7 +8,11 @@
     "dev": "node --watch src/server.js",
     "mock": "node scripts/gen-mock.js",
     "mock:reset": "rm -f data/cache.json data/tags.json data/rules.json && node scripts/gen-mock.js",
-    "test": "node --test test/*.test.js"
+    "mock:category": "node scripts/gen-mock-category.js",
+    "test": "node --test test/*.test.js",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "dependencies": {
     "compression": "^1.8.1",

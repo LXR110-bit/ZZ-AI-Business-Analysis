@@ -59,7 +59,11 @@ const state = {
   vocab: null,
   rules: null,
   monitor: null,
+  monitorCache: {},
 };
+
+let _monitorSortKey = '';
+let _monitorSortAsc = false;
 
 // ---- Tab 切换 ----
 function activateTab(name, opts = {}) {
@@ -123,6 +127,7 @@ async function init() {
   // 标签管理页：品类改立即生效；搜索框输入时暂缓，回车或点确认应用
   const applyTags = () => { markFilterApplied('tags'); refreshTagsPage(); };
   $('#btnTagsRun').addEventListener('click', applyTags);
+  $('#btnBatchTags').addEventListener('click', openBatchTagModal);
   $('#tagsCategory').addEventListener('change', applyTags);
   $('#tagsSearch').addEventListener('input', () => markFilterDirty('tags'));
   $('#tagsSearch').addEventListener('keydown', (e) => {
@@ -154,6 +159,28 @@ async function init() {
     applyStateToMonitorSelects(s);
     activateTab(s.tab || 'dashboard', { skipUrl: true });
   });
+
+  // v2: Tier Tab 点击
+  $$('#dashTierTabs .dash-tier-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tier = btn.dataset.tier;
+      writeUrlState({ tier, secondary: '' });
+      refreshDashboard();
+    });
+  });
+  // v2: 精简/详细切换
+  const toggle = $('#dashViewToggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      if (typeof toggleDashboardColumnPicker === 'function') toggleDashboardColumnPicker();
+    });
+  }
+  const secondaryToggle = $('#dashSecondaryColumnToggle');
+  if (secondaryToggle) {
+    secondaryToggle.addEventListener('click', () => {
+      if (typeof toggleSecondaryColumnPicker === 'function') toggleSecondaryColumnPicker();
+    });
+  }
 }
 
 async function loadMeta() {
@@ -199,12 +226,13 @@ async function loadRules() {
 
 // ---- 同步 ----
 async function doSync() {
-  if (!confirm('从飞书拉最新数据?此操作会覆盖本地缓存。')) return;
+  if (!confirm('同步最新数据? 此操作会覆盖本地缓存。')) return;
   const btn = $('#btnSync');
   btn.disabled = true;
   btn.textContent = '同步中...';
   try {
     const r = await api('/api/sync', { method: 'POST' });
+    state.monitorCache = {};
     toast(`同步完成:${r.rows} 行 · ${r.categories} 品类 · ${r.weeks} 周`);
     await loadMeta();
     refreshMonitor();
@@ -212,7 +240,7 @@ async function doSync() {
     toast('同步失败: ' + e.message, 5000);
   } finally {
     btn.disabled = false;
-    btn.textContent = '同步飞书数据';
+    btn.textContent = '同步数据';
   }
 }
 
@@ -221,19 +249,31 @@ async function refreshMonitor() {
   const m = state.meta;
   if (!m || !m.synced) {
     $('#monitorTable thead').innerHTML = '';
-    $('#monitorTable tbody').innerHTML = '<tr><td colspan="99">尚未同步数据,请先点顶部"同步飞书数据"。</td></tr>';
+    $('#monitorTable tbody').innerHTML = '<tr><td colspan="99">尚未同步数据,请先点顶部「同步数据」。</td></tr>';
     $('#monitorSummary').textContent = '';
+    $('#monitorInsightOverview').innerHTML = '';
     return;
   }
-  // loading 态:响应体积较大(压缩前约 2.8MB),提前给用户反馈
+  const w = ($('#monitorWeek') && $('#monitorWeek').value) || '';
+  const cacheKey = w || '__latest__';
+  if (state.monitorCache && state.monitorCache[cacheKey]) {
+    state.monitor = state.monitorCache[cacheKey];
+    renderMonitor();
+    updateBreadcrumb();
+    handleHighlightAfterRender();
+    return;
+  }
+
+  // loading 态:响应体积较大且服务端会重新计算监测池，首次加载提前给用户反馈
   $('#monitorTable thead').innerHTML = '';
   $('#monitorTable tbody').innerHTML = '<tr><td colspan="99" style="padding:24px;text-align:center;color:#888">正在计算监测结果…</td></tr>';
   $('#monitorSummary').textContent = '加载中…';
+  $('#monitorInsightOverview').innerHTML = '';
   try {
-    const w = ($('#monitorWeek') && $('#monitorWeek').value) || '';
     const qs = w ? `?week=${encodeURIComponent(w)}` : '';
     const t0 = Date.now();
     state.monitor = await api('/api/monitor' + qs);
+    state.monitorCache[cacheKey] = state.monitor;
     console.log('[monitor] 加载耗时', Date.now() - t0, 'ms');
   } catch (e) {
     $('#monitorTable tbody').innerHTML = `<tr><td colspan="99" style="padding:24px;text-align:center;color:#c33">监测失败: ${e.message}</td></tr>`;
@@ -259,6 +299,7 @@ function renderMonitor() {
   } else if (trend === 'down') {
     filtered = filtered.filter((x) => x.delta && typeof x.delta.orderRate === 'number' && x.delta.orderRate < 0);
   }
+  filtered = sortMonitorRows(filtered);
 
   const rates = r.rules.rates;
 
@@ -299,6 +340,22 @@ function renderMonitor() {
     </div>
   `;
 
+  const focusModels = filtered
+    .filter((x) => (x.flags || []).length)
+    .slice()
+    .sort((a, b) => (b.flags || []).length - (a.flags || []).length || ((b.cur && b.cur.evaUv) || 0) - ((a.cur && a.cur.evaUv) || 0))
+    .slice(0, 3)
+    .map((x) => x.modelName);
+  $('#monitorInsightOverview').innerHTML = `
+    <div class="analysis-title">机型分析概览</div>
+    <div class="analysis-body">待数据分析 Agent 输出：识别本周机型异动原因、影响最大的转化率/成交指标，并给出需要优先打标或复盘的机型。</div>
+    <div class="analysis-tags">
+      <span>建议关注：${escapeHtml(trend === 'down' ? '连续下滑机型' : '大幅波动机型')}</span>
+      <span>重点指标：估价完成率、下单率、发货率、成交率、GMV</span>
+      <span>候选机型：${escapeHtml(focusModels.join('、') || '待筛选')}</span>
+    </div>
+  `;
+
   const thead = $('#monitorTable thead');
   thead.innerHTML = `
     <tr class="head-group">
@@ -309,23 +366,35 @@ function renderMonitor() {
     </tr>
     <tr>
       <th class="row-status" aria-label="状态"></th>
-      <th>品类</th>
-      <th>机型</th>
-      <th class="num" title="周汇总 / 已收到天数">估价UV<sub class="mut">/日</sub></th>
-      <th class="num" title="周日均">机况UV<sub class="mut">/日</sub></th>
-      <th class="num" title="周日均">下单UV<sub class="mut">/日</sub></th>
-      <th class="num" title="周日均">发货<sub class="mut">/日</sub></th>
-      <th class="num" title="周日均">质检<sub class="mut">/日</sub></th>
-      <th class="num" title="周日均">成交<sub class="mut">/日</sub></th>
-      <th class="num" title="周日均 GMV">GMV<sub class="mut">/日</sub></th>
-      ${rates.map((x) => `<th class="rate">${x.name}</th>`).join('')}
-      <th>关注原因 &amp; 标签</th>
+      ${monitorSortableTh('category', '品类', '', '按品类排序')}
+      ${monitorSortableTh('modelName', '机型', '', '按机型名称排序')}
+      ${monitorSortableTh('evaUv', '估价UV<sub class="mut">/日</sub>', 'num', '周汇总 / 已收到天数')}
+      ${monitorSortableTh('jkuv', '机况UV<sub class="mut">/日</sub>', 'num', '周日均')}
+      ${monitorSortableTh('orderUv', '下单UV<sub class="mut">/日</sub>', 'num', '周日均')}
+      ${monitorSortableTh('shipCnt', '发货<sub class="mut">/日</sub>', 'num', '周日均')}
+      ${monitorSortableTh('qcCnt', '质检<sub class="mut">/日</sub>', 'num', '周日均')}
+      ${monitorSortableTh('dealCnt', '成交<sub class="mut">/日</sub>', 'num', '周日均')}
+      ${monitorSortableTh('gmv', 'GMV<sub class="mut">/日</sub>', 'num', '周日均 GMV')}
+      ${rates.map((x) => monitorSortableTh('rate:' + x.key, x.name, 'rate', '按当前转化率排序；单元格内同时展示周环比')).join('')}
+      ${monitorSortableTh('flags', '关注原因 &amp; 标签', '', '按异常/标签数量排序')}
       <th>操作</th>
     </tr>
   `;
+  $$('#monitorTable thead th[data-sort]').forEach((th) => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (_monitorSortKey === key) {
+        _monitorSortAsc = !_monitorSortAsc;
+      } else {
+        _monitorSortKey = key;
+        _monitorSortAsc = key === 'category' || key === 'modelName';
+      }
+      renderMonitor();
+    });
+  });
   const tbody = $('#monitorTable tbody');
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="99" class="empty-cell">没有匹配的机型 · 换个视图或先做一次「同步飞书数据」</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="99" class="empty-cell">没有匹配的机型 · 换个视图或先做一次「同步数据」</td></tr>`;
   } else {
     tbody.innerHTML = filtered
       .map((row) => renderMonitorRow(row, rates, r.rules.waveThreshold))
@@ -342,6 +411,42 @@ function renderMonitor() {
       });
     });
   }
+}
+
+function monitorSortableTh(key, labelHtml, cls = '', title = '') {
+  const arrow = _monitorSortKey === key ? (_monitorSortAsc ? ' ↑' : ' ↓') : '';
+  return `<th class="${cls}" data-sort="${escapeAttr(key)}" title="${escapeAttr(title)}">${labelHtml}${arrow}</th>`;
+}
+
+function sortMonitorRows(rows) {
+  const list = (rows || []).slice();
+  if (!_monitorSortKey) return list;
+  list.sort((a, b) => compareMonitorValues(monitorSortValue(a, _monitorSortKey), monitorSortValue(b, _monitorSortKey), _monitorSortAsc));
+  return list;
+}
+
+function monitorSortValue(row, key) {
+  if (!row) return null;
+  const cur = row.cur || {};
+  if (key === 'category') return row.category || '';
+  if (key === 'modelName') return row.modelName || '';
+  if (key === 'flags') return (row.flags || []).length + (row.tags || []).length * 0.01;
+  if (key.startsWith('rate:')) return cur[key.slice(5)];
+  return cur[key];
+}
+
+function compareMonitorValues(a, b, asc) {
+  const aMissing = a === null || a === undefined || a === '' || (typeof a === 'number' && !Number.isFinite(a));
+  const bMissing = b === null || b === undefined || b === '' || (typeof b === 'number' && !Number.isFinite(b));
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  if (typeof a === 'string' || typeof b === 'string') {
+    const r = String(a).localeCompare(String(b), 'zh');
+    return asc ? r : -r;
+  }
+  const r = Number(a) - Number(b);
+  return asc ? r : -r;
 }
 
 function renderMonitorRow(row, rates, waveThreshold) {
@@ -449,7 +554,7 @@ function refreshTagsPage() {
 
       const thead = $('#tagsTable thead');
       thead.innerHTML = `<tr>
-        <th>机型</th><th>最新周</th><th class="num">估价UV<sub class="mut">/日</sub></th><th class="num">下单UV<sub class="mut">/日</sub></th><th class="num">成交量<sub class="mut">/日</sub></th>
+        <th><input type="checkbox" id="tagsSelectAll" title="全选当前列表" /></th><th>机型</th><th>最新周</th><th class="num">估价UV<sub class="mut">/日</sub></th><th class="num">下单UV<sub class="mut">/日</sub></th><th class="num">成交量<sub class="mut">/日</sub></th>
         <th>标签</th><th>备注</th><th>操作</th>
       </tr>`;
       const tbody = $('#tagsTable tbody');
@@ -458,6 +563,7 @@ function refreshTagsPage() {
           const k = keyOf(cat, r.modelName);
           const t = state.tags[k] || { tags: [], note: '' };
           return `<tr>
+            <td><input type="checkbox" class="tag-row-check" data-model="${escapeAttr(r.modelName)}" /></td>
             <td>${escapeHtml(r.modelName)}</td>
             <td>${r.week}</td>
             <td class="num">${fmtInt(r.evaUv)}</td>
@@ -472,6 +578,12 @@ function refreshTagsPage() {
       $$('#tagsTable button.edit-tag').forEach((b) => {
         b.addEventListener('click', () => openTagModal(b.dataset.cat, b.dataset.model));
       });
+      const all = $('#tagsSelectAll');
+      if (all) {
+        all.addEventListener('change', () => {
+          $$('#tagsTable .tag-row-check').forEach((ck) => { ck.checked = all.checked; });
+        });
+      }
       $('#tagsSummary').textContent = `${cat}: ${rows.length} 个机型 (仅显示最新周有数据的)`;
     })
     .catch((e) => toast('加载失败: ' + e.message));
@@ -479,11 +591,25 @@ function refreshTagsPage() {
 
 // ---- 标签编辑弹层 ----
 let modalCtx = null;
+function openBatchTagModal() {
+  const cat = $('#tagsCategory').value || ((state.meta && state.meta.categories && state.meta.categories[0]) || '');
+  const models = $$('#tagsTable .tag-row-check')
+    .filter((ck) => ck.checked)
+    .map((ck) => ck.dataset.model)
+    .filter(Boolean);
+  if (!models.length) {
+    toast('请先勾选要批量标记的机型');
+    return;
+  }
+  openTagModal(cat, models[0], { batchModels: models });
+}
+
 function openTagModal(cat, model) {
-  modalCtx = { cat, model };
-  $('#modalTagTitle').textContent = `${cat} · ${model}`;
+  const opts = arguments[2] || {};
+  modalCtx = opts.batchModels ? { cat, model, models: opts.batchModels } : { cat, model };
+  $('#modalTagTitle').textContent = opts.batchModels ? `${cat} · 批量编辑 ${opts.batchModels.length} 个机型` : `${cat} · ${model}`;
   const key = keyOf(cat, model);
-  const cur = state.tags[key] || { tags: [], note: '' };
+  const cur = opts.batchModels ? { tags: [], note: '' } : (state.tags[key] || { tags: [], note: '' });
   const selected = new Set(cur.tags || []);
   const v = state.vocab || {};
   const groups = [
@@ -516,14 +642,17 @@ async function saveTagModal() {
   if (!modalCtx) return;
   const tags = $$('#modalTagGroups .tag-opt.selected').map((b) => b.dataset.tag);
   const note = $('#modalTagNote').value;
-  const key = keyOf(modalCtx.cat, modalCtx.model);
   try {
-    await api('/api/tags/' + encodeURIComponent(key), {
-      method: 'PUT',
-      body: JSON.stringify({ tags, note }),
-    });
-    state.tags[key] = { tags, note };
-    toast('已保存');
+    const models = modalCtx.models && modalCtx.models.length ? modalCtx.models : [modalCtx.model];
+    for (const model of models) {
+      const key = keyOf(modalCtx.cat, model);
+      await api('/api/tags/' + encodeURIComponent(key), {
+        method: 'PUT',
+        body: JSON.stringify({ tags, note }),
+      });
+      state.tags[key] = { tags, note };
+    }
+    toast(models.length > 1 ? `已批量保存 ${models.length} 个机型` : '已保存');
     $('#modalTag').classList.add('hidden');
     // 刷新当前页
     if (!$('#page-monitor').classList.contains('hidden')) renderMonitor();
@@ -613,6 +742,7 @@ async function saveRules(e) {
   try {
     const r = await api('/api/rules', { method: 'PUT', body: JSON.stringify(body) });
     state.rules = r.rules;
+    state.monitorCache = {};
     toast('规则已保存');
   } catch (e) {
     toast('保存失败: ' + e.message);
@@ -644,10 +774,11 @@ function doImport(e) {
     try {
       const bundle = JSON.parse(reader.result);
       if (!bundle.tags && !bundle.vocab && !bundle.rules) throw new Error('文件格式不对');
-      if (!confirm(`导入配置(合并模式)?\n标签: ${Object.keys(bundle.tags || {}).length} 个机型\n字典/规则一并导入`)) return;
+      if (!confirm(`导入设置(合并模式)?\n标签: ${Object.keys(bundle.tags || {}).length} 个机型\n字典/规则一并导入`)) return;
       if (bundle.tags) await api('/api/tags/import', { method: 'POST', body: JSON.stringify({ data: bundle.tags, mode: 'merge' }) });
       if (bundle.vocab) await api('/api/tag-vocab', { method: 'PUT', body: JSON.stringify(bundle.vocab) });
       if (bundle.rules) await api('/api/rules', { method: 'PUT', body: JSON.stringify(bundle.rules) });
+      state.monitorCache = {};
       await loadTags();
       await loadVocab();
       await loadRules();
@@ -689,204 +820,43 @@ function markFilterApplied(scope) {
 // ============================================================================
 // 概览页 · dashboard
 // ============================================================================
-let dashState = null;
-
 async function refreshDashboard() {
-  const wrap = $('#dashKpiRow');
-  const line = $('#dashLineWrap');
-  const donut = $('#dashDonutWrap');
-  const topTb = $('#dashTopTable tbody');
   const meta = $('#dashMeta');
+  const boardKpi = $('#dashBoardKpi');
+  const boardOverview = $('#dashBoardOverview');
+  const tierOverview = $('#dashTierOverview');
+  const tierSummary = $('#dashTierSummary');
+  const catThead = $('#dashCategoryTable thead');
+  const catTbody = $('#dashCategoryTable tbody');
   try {
     if (!state.meta || !state.meta.synced) {
       meta.innerHTML = '';
-      wrap.innerHTML = '';
-      line.innerHTML = '';
-      donut.innerHTML = '';
-      topTb.innerHTML = `<tr><td colspan="5" class="dash-empty">尚未同步数据 · 请先点顶部「同步飞书数据」</td></tr>`;
+      if (boardOverview) boardOverview.innerHTML = '';
+      boardKpi.innerHTML = '';
+      if (tierOverview) tierOverview.innerHTML = '';
+      tierSummary.innerHTML = '';
+      catThead.innerHTML = '';
+      catTbody.innerHTML = '<tr><td colspan="99" class="dash-empty">尚未同步数据 · 请先点顶部「同步数据」</td></tr>';
       return;
     }
     const d = await api('/api/dashboard');
-    dashState = d;
-    renderDashboardMeta(d);
-    renderDashboardKpi(d);
-    renderDashboardLine(d);
-    renderDashboardDonut(d);
-    renderDashboardTop(d);
+    if (!d || !d.board) {
+      catTbody.innerHTML = '<tr><td colspan="99" class="dash-empty">数据组装中，请稍后刷新</td></tr>';
+      return;
+    }
+    renderDashboardMetaV2(d);
+    renderDashboardOverviewV2(d);
+    renderBoardKpi(d);
+    const curTier = readUrlState().tier || '发展';
+    setActiveTierTab(curTier);
+    renderTierOverview(d.tiers, curTier);
+    renderTierSummary(d.tiers, curTier, d.categories);
+    if (typeof renderSecondaryCategorySummary === 'function') renderSecondaryCategorySummary(d.categories, curTier);
+    renderCategoryTable(d.categories, curTier);
   } catch (e) {
-    console.error('[dashboard] failed', e);
-    topTb.innerHTML = `<tr><td colspan="5" class="dash-empty">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+    console.error('[dashboard-v2] failed', e);
+    catTbody.innerHTML = '<tr><td colspan="99" class="dash-empty">加载失败: ' + escapeHtml(e.message) + '</td></tr>';
   }
-}
-
-function renderDashboardMeta(d) {
-  const t = d.meta.syncedAt ? new Date(d.meta.syncedAt).toLocaleString('zh-CN') : '-';
-  $('#dashMeta').innerHTML = `
-    <span class="dash-meta-week">${escapeHtml(d.meta.latestWeek || '-')}</span>
-    ${d.meta.weekRange ? `<span class="dash-meta-sep">·</span><span>${escapeHtml(d.meta.weekRange)}</span>` : ''}
-    <span class="dash-meta-sep">·</span>
-    <span>共 ${d.meta.totalWeeks} 周历史</span>
-    <span class="dash-meta-sep">·</span>
-    <span>同步于 ${escapeHtml(t)}</span>
-    <button class="dash-meta-cta" id="dashEnterMonitor">进入监测详情 →</button>
-  `;
-  $('#dashEnterMonitor').addEventListener('click', () => {
-    drillTo({ tab: 'monitor', week: d.meta.latestWeek, view: 'watch', from: 'dashboard' });
-  });
-}
-
-function renderDashboardDonut(d) {
-  const wrap = $('#dashDonutWrap');
-  const items = d.watchByCategory || [];
-  if (!items.length) { wrap.innerHTML = '<div class="dash-empty">暂无数据</div>'; return; }
-  // 所有汇总均由后端 watchCategoryStats 提供，前端只格式化与绘制
-  const stats = d.watchCategoryStats || {};
-  const gmvGrandTotal = Number(stats.gmvGrandTotal) || 0;
-  const top6GmvSum = Number(stats.top6GmvSum) || 0;
-  const top6Pct = Number(stats.top6GmvPct) || 0;
-  const totalCats = Number(stats.totalCategories) || items.length;
-  const grandTotal = (d.kpi && d.kpi.totalModels) || 0;
-  const fmtGmv = (v) => {
-    const n = Number(v) || 0;
-    if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
-    if (n >= 1e4) return (n / 1e4).toFixed(1) + '万';
-    return String(Math.round(n));
-  };
-  const palette = ['#3b82f6', '#22d3ee', '#8b5cf6', '#f59e0b', '#10b981', '#f472b6'];
-  const R = 60, C = 74, STROKE = 22;
-  const circ = 2 * Math.PI * R;
-  let offset = 0;
-  const arcs = items.map((it, i) => {
-    // 弧长按 Top 6 GMV 归一化（top6GmvSum 分母），6 段填满圆环、视觉平衡
-    const gmv = Number(it.gmv) || 0;
-    const len = top6GmvSum > 0 ? (gmv / top6GmvSum) * circ : circ / items.length;
-    const gap = 2; // 分段留缝
-    const dash = `${Math.max(0.1, len - gap)} ${circ - Math.max(0.1, len - gap)}`;
-    const seg = `<circle class="donut-arc" data-cat="${escapeAttr(it.name)}" cx="${C}" cy="${C}" r="${R}"
-      stroke="${palette[i % palette.length]}" stroke-dasharray="${dash}" stroke-dashoffset="${-offset}"
-      transform="rotate(-90 ${C} ${C})"><title>${escapeHtml(it.name)} · GMV ${fmtGmv(gmv)} · ${it.count} 机型</title></circle>`;
-    offset += len;
-    return seg;
-  }).join('');
-  const legend = items.map((it, i) => `
-    <div class="dash-legend-item" data-cat="${escapeAttr(it.name)}" title="${escapeAttr(it.name)} · GMV ${fmtGmv(it.gmv)} · ${it.count} 机型">
-      <span class="dash-legend-swatch" style="background:${palette[i % palette.length]}"></span>
-      <span class="dash-legend-name">${escapeHtml(it.name)}</span>
-      <span class="dash-legend-count">${fmtGmv(it.gmv)}</span>
-    </div>
-  `).join('');
-  wrap.innerHTML = `
-    <svg class="dash-donut-svg" viewBox="0 0 148 148">
-      ${arcs}
-      <text class="dash-donut-center-num" x="74" y="74" text-anchor="middle">${grandTotal}</text>
-      <text class="dash-donut-center-label" x="74" y="92" text-anchor="middle">覆盖机型（全池）</text>
-    </svg>
-    <div class="dash-donut-foot">Top 6 品类占全盘 GMV ${top6Pct.toFixed(1)}%（${fmtGmv(top6GmvSum)} / ${fmtGmv(gmvGrandTotal)}） · 共 ${totalCats} 品类</div>
-    <div class="dash-legend">${legend}</div>
-  `;
-  const go = (cat) => drillTo({ tab: 'monitor', week: d.meta.latestWeek, category: cat, view: 'pool', from: 'dashboard' });
-  $$('#dashDonutWrap .donut-arc').forEach((el) => el.addEventListener('click', () => go(el.dataset.cat)));
-  $$('#dashDonutWrap .dash-legend-item').forEach((el) => el.addEventListener('click', () => go(el.dataset.cat)));
-}
-
-function renderDashboardTop(d) {
-  const tb = $('#dashTopTable tbody');
-  const rows = d.topRows || [];
-  if (!rows.length) {
-    tb.innerHTML = `<tr><td colspan="5" class="dash-empty">当前周次没有异常机型</td></tr>`;
-    return;
-  }
-  tb.innerHTML = rows.map((r) => `
-    <tr data-model-id="${escapeAttr(r.modelId)}" data-category="${escapeAttr(r.category)}">
-      <td class="dash-rank">${r.rank}</td>
-      <td class="dash-model">${escapeHtml(r.modelName)}<span class="dash-cat">${escapeHtml(r.category)}</span></td>
-      <td class="dash-num">${fmtRate(r.orderRate)}</td>
-      <td class="dash-delta"><span class="dash-delta-pill ${r.deltaDir}">${escapeHtml(r.deltaLabel)}</span></td>
-      <td class="dash-arrow">→</td>
-    </tr>
-  `).join('');
-  $$('#dashTopTable tbody tr').forEach((tr) => {
-    tr.addEventListener('click', () => drillTo({
-      tab: 'monitor', week: d.meta.latestWeek, category: tr.dataset.category,
-      view: 'pool', highlight: tr.dataset.modelId, from: 'dashboard',
-    }));
-  });
-}
-
-function renderDashboardLine(d) {
-  const wrap = $('#dashLineWrap');
-  const data = d.gmvTrend || [];
-  if (!data.length) { wrap.innerHTML = '<div class="dash-empty">暂无数据</div>'; return; }
-  const W = 640, H = 190, pad = { l: 44, r: 16, t: 18, b: 26 };
-  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
-  const values = data.map((p) => p.gmv);
-  const vMax = Math.max(...values, 1);
-  const vMin = Math.min(...values);
-  const yRange = Math.max(vMax - vMin, vMax * 0.1, 1);
-  const yTop = vMax + yRange * 0.18;
-  const yBot = Math.max(0, vMin - yRange * 0.05);
-  const x = (i) => pad.l + (data.length === 1 ? iw / 2 : (iw * i) / (data.length - 1));
-  const y = (v) => pad.t + ih - ((v - yBot) / (yTop - yBot)) * ih;
-  const pts = data.map((p, i) => ({ ...p, x: x(i), y: y(p.gmv) }));
-  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area = `${path} L${pts[pts.length - 1].x.toFixed(1)},${pad.t + ih} L${pts[0].x.toFixed(1)},${pad.t + ih} Z`;
-  const ticks = 4;
-  const yTicks = Array.from({ length: ticks + 1 }, (_, i) => yBot + ((yTop - yBot) * i) / ticks);
-  const fmtY = (v) => v >= 1e8 ? (v / 1e8).toFixed(1) + '亿' : v >= 1e4 ? (v / 1e4).toFixed(1) + '万' : String(Math.round(v));
-  const gridSvg = yTicks.map((v) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>`).join('');
-  const yAxis = yTicks.map((v) => `<text x="${pad.l - 8}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmtY(v)}</text>`).join('');
-  const xAxis = pts.map((p) => `<text x="${p.x.toFixed(1)}" y="${H - pad.b + 16}" text-anchor="middle">${escapeHtml(p.week.replace(/^\d{4}-/, ''))}</text>`).join('');
-  const dots = pts.map((p, i) => {
-    const isLast = i === pts.length - 1;
-    return `<circle class="dot ${isLast ? 'dot-latest' : ''}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${isLast ? 5 : 4}" data-week="${escapeAttr(p.week)}" data-gmv="${p.gmv}"><title>${escapeHtml(p.week)} · GMV ${fmtInt(p.gmv)}</title></circle>`;
-  }).join('');
-  const last = pts[pts.length - 1];
-  wrap.innerHTML = `
-    <svg class="dash-line-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      <defs><linearGradient id="dashLineGradient" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.28"/>
-        <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
-      </linearGradient></defs>
-      <g class="grid">${gridSvg}</g>
-      <path class="area-fill" d="${area}"/>
-      <path class="line-path" d="${path}"/>
-      <g class="axis">${yAxis}${xAxis}</g>
-      <text class="value-label" x="${(last.x + 6).toFixed(1)}" y="${(last.y - 8).toFixed(1)}">${fmtY(last.gmv)}</text>
-      ${dots}
-    </svg>
-  `;
-  $$('#dashLineWrap .dot').forEach((c) => {
-    c.addEventListener('click', () => drillTo({ tab: 'monitor', week: c.dataset.week, view: 'watch', from: 'dashboard' }));
-  });
-}
-
-function renderDashboardKpi(d) {
-  const k = d.kpi;
-  const watchDeltaStr = k.watchDelta === 0
-    ? '与上周持平'
-    : (k.watchDelta > 0
-      ? `<span class="dash-delta-up">+${k.watchDelta}</span> 较上周`
-      : `<span class="dash-delta-down">${k.watchDelta}</span> 较上周`);
-  const cards = [
-    { key: 'total',  label: '覆盖机型', value: k.totalModels, unit: '个', sub: `${k.totalCategories} 个品类`, act: { view: 'pool' } },
-    { key: 'watch',  label: '需关注机型', value: k.watchCount, unit: '个', sub: watchDeltaStr, act: { view: 'watch' } },
-    { key: 'up',     label: '周环比上涨', value: k.upCount, unit: '个', sub: 'orderRate ↑', act: { view: 'pool', trend: 'up' } },
-    { key: 'week',   label: '最新周次', value: d.meta.latestWeek || '-', unit: '', sub: d.meta.weekRange || `第 ${d.meta.totalWeeks} 周`, act: { view: 'watch' } },
-  ];
-  $('#dashKpiRow').innerHTML = cards.map((c) => `
-    <div class="dash-kpi" data-key="${c.key}" role="button" tabindex="0">
-      <div class="dash-kpi-label">${escapeHtml(c.label)}</div>
-      <div class="dash-kpi-value">${escapeHtml(String(c.value))}${c.unit ? `<span class="dash-unit">${c.unit}</span>` : ''}</div>
-      <div class="dash-kpi-sub">${c.sub}</div>
-    </div>
-  `).join('');
-  $$('#dashKpiRow .dash-kpi').forEach((el) => {
-    const key = el.dataset.key;
-    const conf = cards.find((c) => c.key === key);
-    const go = () => drillTo({ tab: 'monitor', week: d.meta.latestWeek, from: 'dashboard', ...conf.act });
-    el.addEventListener('click', go);
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
-  });
 }
 
 // ============================================================================
@@ -902,6 +872,8 @@ function readUrlState() {
     trend: p.get('trend') || '',
     highlight: p.get('highlight') || '',
     from: p.get('from') || '',
+    tier: p.get('tier') || '',
+    secondary: p.get('secondary') || '',
   };
 }
 function writeUrlState(patch) {
