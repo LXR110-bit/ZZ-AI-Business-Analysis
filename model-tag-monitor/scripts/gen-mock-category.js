@@ -17,6 +17,26 @@ const RAW_TAXONOMY_ROWS = [
   { category: '自营尾货', tier: '自营(非聚合)', board: '自营', status: '在售', confidence: '高', lastWeekGmv: 999000 },
 ];
 
+
+function isoWeekStart(week) {
+  const match = String(week || '').match(/^(\d{4})-W(\d{2})$/);
+  if (!match) return '';
+  const year = Number(match[1]);
+  const weekNum = Number(match[2]);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const week1Monday = new Date(jan4.getTime() - (jan4Day - 1) * 86400000);
+  const monday = new Date(week1Monday.getTime() + (weekNum - 1) * 7 * 86400000);
+  return monday.toISOString().slice(0, 10);
+}
+
+function addDays(dateStr, days) {
+  const d = new Date(String(dateStr || '') + 'T00:00:00Z');
+  if (Number.isNaN(d.getTime())) return '';
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function seed(str) {
   let h = 0;
   for (const c of str) h = (h * 31 + c.charCodeAt(0)) & 0xffffffff;
@@ -28,7 +48,11 @@ function seed(str) {
 
 function genCategoryRow(category, week, base) {
   const r = seed(category + '|' + week);
+  const startDate = isoWeekStart(week);
+  const endDate = addDays(startDate, 6);
+  const daysReceived = 7;
   const jkuv = Math.round(base * (2.2 + r() * 0.8));
+  const conditionUv = jkuv;
   const evaUv = Math.round(jkuv * (0.3 + r() * 0.3));
   const evaCnt = evaUv;
   const orderUv = Math.round(evaUv * (0.15 + r() * 0.2));
@@ -39,7 +63,25 @@ function genCategoryRow(category, week, base) {
   const dealCnt = Math.round(shipCnt * (0.6 + r() * 0.3));
   const returnCnt = Math.round(qcCnt * (0.02 + r() * 0.08));
   const gmv = Math.round(dealCnt * (500 + r() * 3000));
-  const row = { week, category, jkuv, evaUv, evaCnt, orderUv, orderCnt, shipCnt, signCnt, qcCnt, dealCnt, returnCnt, gmv };
+  const row = {
+    week,
+    startDate,
+    endDate,
+    daysReceived,
+    category,
+    jkuv,
+    conditionUv,
+    evaUv,
+    evaCnt,
+    orderUv,
+    orderCnt,
+    shipCnt,
+    signCnt,
+    qcCnt,
+    dealCnt,
+    returnCnt,
+    gmv,
+  };
   return { ...row, ...categorySync.computeRates(row) };
 }
 

@@ -4,26 +4,31 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const DATA_DIR = path.join(REPO_ROOT, 'data');
 
-function readJSON(name) {
-  return JSON.parse(fs.readFileSync(path.join(DATA_DIR, name), 'utf8'));
+function readJSON(dataDir, name) {
+  return JSON.parse(fs.readFileSync(path.join(dataDir, name), 'utf8'));
 }
 
 test('gen-mock-category.js 产出的文件字段/过滤规则符合契约', () => {
-  execFileSync(process.execPath, ['scripts/gen-mock-category.js'], { cwd: REPO_ROOT });
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'model-tag-monitor-category-contract-'));
+  execFileSync(process.execPath, ['scripts/gen-mock-category.js'], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, DATA_DIR: dataDir },
+  });
 
-  const categoryCache = readJSON('category-cache.json');
-  const taxonomy = readJSON('category-taxonomy.json');
+  const categoryCache = readJSON(dataDir, 'category-cache.json');
+  const taxonomy = readJSON(dataDir, 'category-taxonomy.json');
 
   // 1) category-cache.json 字段名 100% 匹配契约
   const expectedCategoryFields = [
-    'category', 'dealCnt', 'dealRate', 'evaCnt', 'evaRate', 'evaUv', 'gmv',
-    'jkuv', 'orderCnt', 'orderRate', 'orderUv', 'qcCnt', 'returnCnt',
-    'shipCnt', 'shipRate', 'signCnt', 'week',
+    'category', 'conditionUv', 'daysReceived', 'dealCnt', 'dealRate', 'endDate',
+    'evaCnt', 'evaRate', 'evaUv', 'gmv', 'jkuv', 'orderCnt', 'orderRate',
+    'orderUv', 'qcCnt', 'returnCnt', 'shipCnt', 'shipRate', 'signCnt',
+    'startDate', 'week',
   ];
   assert.ok(categoryCache.rows.length > 0, 'category-cache 应有数据');
   for (const row of categoryCache.rows) {

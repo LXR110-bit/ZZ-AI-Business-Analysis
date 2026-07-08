@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const EXPECTED_VERSION = process.env.EXPECTED_VERSION || '1.4.1';
+const EXPECTED_VERSION = process.env.EXPECTED_VERSION || '1.4.2';
 const EXPECTED_WEEKS = (process.env.TARGET_WEEKS || '2026-W19,2026-W20,2026-W21,2026-W22,2026-W23,2026-W24,2026-W25,2026-W26,2026-W27,2026-W28')
   .split(',')
   .map((w) => w.trim())
