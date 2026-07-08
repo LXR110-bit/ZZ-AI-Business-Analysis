@@ -7,7 +7,7 @@
     "insights": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["board", "tiers", "category", "monitor"],
+      "required": ["board", "tiers", "secondaryCategories", "categories", "category", "monitor"],
       "properties": {
         "board": { "type": "string" },
         "tiers": {
@@ -18,6 +18,30 @@
             "发展": { "type": "string" },
             "孵化": { "type": "string" },
             "种子": { "type": "string" }
+          }
+        },
+        "secondaryCategories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "insight"],
+            "properties": {
+              "name": { "type": "string" },
+              "insight": { "type": "string" }
+            }
+          }
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "insight"],
+            "properties": {
+              "name": { "type": "string" },
+              "insight": { "type": "string" }
+            }
           }
         },
         "category": { "type": "string" },

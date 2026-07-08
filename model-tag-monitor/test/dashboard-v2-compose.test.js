@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { composeDashboard, mergeBusinessOverviewInsights } = require('../src/compose-dashboard');
 const { COUNT_KEYS, RATE_KEYS } = require('../src/aggregate/funnel');
 
@@ -31,6 +31,46 @@ const baseOpts = {
   categoryCache, taxonomy, week: '2026-W27', prevWeek: '2026-W26',
   boardBenchmark, boardMetrics, modelCache, modelTaxonomy,
 };
+
+async function waitForJson(url, timeoutMs = 5000) {
+  const started = Date.now();
+  let lastErr;
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) return resp.json();
+      lastErr = new Error(`HTTP ${resp.status}`);
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw lastErr || new Error(`timeout waiting for ${url}`);
+}
+
+function buildCompleteAiResult(summary) {
+  return {
+    insights: {
+      board: 'AI 大盘：风险中，链路看估价到下单，量价需关注。',
+      tiers: {
+        发展: 'AI 发展：表现稳定，核心问题是下单转化，建议复盘头部品类。',
+        孵化: 'AI 孵化：贡献抬升，核心问题是成交承接，建议优化供给。',
+        种子: 'AI 种子：波动较大，核心问题是规模不足，建议小流量验证。',
+      },
+      secondaryCategories: (summary.secondaryCategories || []).map((s) => ({
+        name: s.secondaryCategory,
+        insight: `AI 二级 ${s.secondaryCategory}：贡献、波动、拖累、机会和下钻品类已覆盖。`,
+      })),
+      categories: (summary.categories || []).map((c) => ({
+        name: c.category,
+        insight: `AI 品类 ${c.category}：影响度、异常原因、可解决度和行动建议已覆盖。`,
+      })),
+      category: 'AI 旧字段品类概览兼容。',
+      monitor: 'AI 监测页本期为空态，只看结构化明细。',
+    },
+    warnings: [],
+  };
+}
 
 // --- 顶层结构 ---
 
@@ -257,6 +297,8 @@ test('business overview cache: week 匹配时覆盖 insights 并附加 metadata/
     insights: {
       board: 'AI 大盘洞察',
       tiers: { 发展: 'AI 发展洞察', 孵化: 'AI 孵化洞察', 种子: 'AI 种子洞察' },
+      secondaryCategories: { 摄影摄像: 'AI 摄影摄像洞察' },
+      categories: { 无人机: 'AI 无人机洞察' },
       category: 'AI 品类洞察',
       monitor: 'AI 监测洞察',
     },
@@ -265,9 +307,34 @@ test('business overview cache: week 匹配时覆盖 insights 并附加 metadata/
 
   assert.equal(merged.insights.board, 'AI 大盘洞察');
   assert.equal(merged.insights.tiers.发展, 'AI 发展洞察');
+  assert.equal(merged.insights.secondaryCategories.摄影摄像, 'AI 摄影摄像洞察');
+  assert.equal(merged.insights.categories.无人机, 'AI 无人机洞察');
   assert.equal(merged.insights.mode, 'ai');
   assert.equal(merged.insights.generatedBy, 'codex-cli-read-only');
   assert.deepEqual(merged.insights.warnings, ['未配置上周策略/预判，暂无法检核兑现']);
+});
+
+test('business overview cache: old v1.3.0 cache keeps compatibility while base maps remain available', () => {
+  const result = composeDashboard(baseOpts);
+  const merged = mergeBusinessOverviewInsights(result, {
+    version: '1.3.0',
+    week: '2026-W27',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    insights: {
+      board: '旧 AI 大盘洞察',
+      tiers: { 发展: '旧 AI 发展', 孵化: '旧 AI 孵化', 种子: '旧 AI 种子' },
+      category: '旧 AI 品类字段',
+      monitor: '旧 AI 监测字段',
+    },
+    warnings: [],
+  });
+
+  assert.equal(merged.insights.board, '旧 AI 大盘洞察');
+  assert.equal(merged.insights.category, '旧 AI 品类字段');
+  assert.equal(merged.insights.monitor, '旧 AI 监测字段');
+  assert.equal(typeof merged.insights.secondaryCategories.摄影摄像, 'string');
+  assert.equal(typeof merged.insights.categories.无人机, 'string');
 });
 
 test('business overview cache: week 不匹配或坏结构时保持原 insights', () => {
@@ -285,6 +352,52 @@ test('business overview cache: week 不匹配或坏结构时保持原 insights',
     insights: null,
   });
   assert.equal(bad.insights.board, original);
+});
+
+test('business overview generator: schema and normalize require AI insight maps', () => {
+  const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'business-overview-insights.schema.json'), 'utf8'));
+  assert.deepEqual(schema.properties.insights.required, [
+    'board',
+    'tiers',
+    'secondaryCategories',
+    'categories',
+    'category',
+    'monitor',
+  ]);
+  assert.deepEqual(schema.properties.insights.properties.tiers.required, ['发展', '孵化', '种子']);
+  assert.equal(schema.properties.insights.properties.secondaryCategories.type, 'array');
+  assert.deepEqual(schema.properties.insights.properties.secondaryCategories.items.required, ['name', 'insight']);
+  assert.equal(schema.properties.insights.properties.categories.type, 'array');
+  assert.deepEqual(schema.properties.insights.properties.categories.items.required, ['name', 'insight']);
+
+  const {
+    normalizeAiCache,
+    summarizeDashboard,
+  } = require('../scripts/generate-business-overview-insights');
+  const dashboard = composeDashboard(baseOpts);
+  const summary = summarizeDashboard(dashboard);
+  const normalized = normalizeAiCache(
+    buildCompleteAiResult(summary),
+    dashboard,
+    summary,
+    ['未配置上周策略/预判，暂无法检核兑现']
+  );
+
+  assert.equal(normalized.mode, 'ai');
+  assert.equal(normalized.generatedBy, 'codex-cli-read-only');
+  assert.equal(typeof normalized.insights.board, 'string');
+  assert.equal(typeof normalized.insights.tiers.发展, 'string');
+  assert.equal(typeof normalized.insights.secondaryCategories.摄影摄像, 'string');
+  assert.equal(typeof normalized.insights.categories.无人机, 'string');
+  assert.equal(normalized.insights.category, 'AI 旧字段品类概览兼容。');
+  assert.equal(normalized.insights.monitor, 'AI 监测页本期为空态，只看结构化明细。');
+
+  const incomplete = buildCompleteAiResult(summary);
+  incomplete.insights.categories = incomplete.insights.categories.filter((item) => item.name !== '无人机');
+  assert.throws(
+    () => normalizeAiCache(incomplete, dashboard, summary, []),
+    /AI insights\.categories\.无人机 missing/
+  );
 });
 
 test('business overview generator: Codex env is allowlisted and excludes production secrets by default', () => {
@@ -368,6 +481,20 @@ test('business overview generator: AI disabled preserves existing AI cache', () 
     },
     warnings: ['已有 warning'],
   }), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights.json'), JSON.stringify({
+    version: '1.3.0',
+    week: '2026-W27',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'latest-ai-hash',
+    insights: {
+      board: 'latest cache 不应优先于周冻结文件',
+      tiers: { 发展: 'latest', 孵化: 'latest', 种子: 'latest' },
+      category: 'latest',
+      monitor: 'latest',
+    },
+    warnings: [],
+  }), 'utf8');
 
   const proc = spawnSync(process.execPath, [
     path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
@@ -382,11 +509,75 @@ test('business overview generator: AI disabled preserves existing AI cache', () 
   const stdout = JSON.parse(proc.stdout);
   assert.equal(stdout.preserved, true);
   assert.equal(stdout.out.endsWith('business-overview-insights-2026-W27.json'), true);
+  assert.equal(path.basename(stdout.out), 'business-overview-insights-2026-W27.json');
 
   const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
   assert.equal(cache.mode, 'ai');
   assert.equal(cache.generatedBy, 'codex-cli-read-only');
   assert.equal(cache.insights.board, '已有 AI 大盘洞察');
+});
+
+test('api dashboard: W27 weekly frozen cache has priority over latest cache and returns new maps', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-api-freeze-test-'));
+  fs.writeFileSync(path.join(tmp, 'category-cache.json'), JSON.stringify(categoryCache), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'category-taxonomy.json'), JSON.stringify(taxonomy), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'board-metrics.json'), JSON.stringify(boardMetrics), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), JSON.stringify({
+    version: '1.3.0',
+    week: '2026-W27',
+    generatedAt: '2026-07-08T12:00:00.000Z',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'weekly-hash',
+    insights: {
+      board: 'W27 frozen weekly AI board',
+      tiers: { 发展: 'W27 发展', 孵化: 'W27 孵化', 种子: 'W27 种子' },
+      secondaryCategories: { 摄影摄像: 'W27 摄影摄像 AI' },
+      categories: { 无人机: 'W27 无人机 AI' },
+      category: 'W27 category compat',
+      monitor: 'W27 monitor compat',
+    },
+    warnings: ['weekly warning'],
+  }), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights.json'), JSON.stringify({
+    version: '1.3.0',
+    week: '2026-W27',
+    generatedAt: '2026-07-08T13:00:00.000Z',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'latest-hash',
+    insights: {
+      board: 'latest cache should not win',
+      tiers: { 发展: 'latest', 孵化: 'latest', 种子: 'latest' },
+      secondaryCategories: { 摄影摄像: 'latest 摄影摄像' },
+      categories: { 无人机: 'latest 无人机' },
+      category: 'latest',
+      monitor: 'latest',
+    },
+    warnings: [],
+  }), 'utf8');
+
+  const port = 21000 + Math.floor(Math.random() * 1000);
+  const server = spawn(process.execPath, [path.join(__dirname, '..', 'src', 'server.js')], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  try {
+    const dashboard = await waitForJson(`http://127.0.0.1:${port}/api/dashboard?week=2026-W27`, 8000);
+    assert.equal(dashboard.week, '2026-W27');
+    assert.equal(dashboard.insights.board, 'W27 frozen weekly AI board');
+    assert.equal(dashboard.insights.secondaryCategories.摄影摄像, 'W27 摄影摄像 AI');
+    assert.equal(dashboard.insights.categories.无人机, 'W27 无人机 AI');
+    assert.equal(dashboard.insights.category, 'W27 category compat');
+    assert.equal(dashboard.insights.monitor, 'W27 monitor compat');
+    assert.equal(dashboard.insights.inputHash, 'weekly-hash');
+    assert.deepEqual(dashboard.insights.warnings, ['weekly warning']);
+  } finally {
+    server.kill('SIGTERM');
+    await new Promise((resolve) => server.once('exit', resolve));
+  }
 });
 
 test('business overview generator: writes week-specific frozen cache and latest cache', () => {
@@ -422,6 +613,21 @@ test('business overview generator: AI disabled does not preserve latest cache fr
   const dashboardFile = path.join(tmp, 'dashboard.json');
   const w28 = composeDashboard({ ...baseOpts, week: '2026-W28', prevWeek: '2026-W27' });
   fs.writeFileSync(dashboardFile, JSON.stringify(w28), 'utf8');
+  const frozenW27 = {
+    version: '1.3.0',
+    week: '2026-W27',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'frozen-w27-hash',
+    insights: {
+      board: 'W27 frozen AI must remain unchanged',
+      tiers: { 发展: 'W27 frozen', 孵化: 'W27 frozen', 种子: 'W27 frozen' },
+      category: 'W27 frozen',
+      monitor: 'W27 frozen',
+    },
+    warnings: ['frozen'],
+  };
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), JSON.stringify(frozenW27), 'utf8');
   fs.writeFileSync(path.join(tmp, 'business-overview-insights.json'), JSON.stringify({
     version: '1.3.0',
     week: '2026-W27',
@@ -453,6 +659,8 @@ test('business overview generator: AI disabled does not preserve latest cache fr
   assert.equal(w28Cache.week, '2026-W28');
   assert.equal(w28Cache.mode, 'deterministic');
   assert.notEqual(w28Cache.insights.board, 'W27 AI should not be reused for W28');
+  const w27After = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), 'utf8'));
+  assert.deepEqual(w27After, frozenW27);
 });
 
 test('business overview generator: fixture dry-run writes deterministic warning cache', () => {
@@ -478,6 +686,10 @@ test('business overview generator: fixture dry-run writes deterministic warning 
   assert.equal(cache.insights.tiers.发展.length > 0, true);
   assert.equal(cache.insights.tiers.孵化.length > 0, true);
   assert.equal(cache.insights.tiers.种子.length > 0, true);
+  assert.equal(typeof cache.insights.secondaryCategories.摄影摄像, 'string');
+  assert.equal(typeof cache.insights.categories.无人机, 'string');
+  assert.equal(typeof cache.insights.category, 'string');
+  assert.equal(typeof cache.insights.monitor, 'string');
   assert.deepEqual(cache.warnings, ['未配置上周策略/预判，暂无法检核兑现']);
 });
 

@@ -24,6 +24,9 @@ const aiEnabled = process.env.BUSINESS_OVERVIEW_AI_ENABLED === '1';
 const repoRoot = path.resolve(__dirname, '..', '..');
 const schemaPath = path.join(__dirname, 'business-overview-insights.schema.json');
 const STRATEGY_WARNING = '未配置上周策略/预判，暂无法检核兑现';
+const REQUIRED_TIERS = ['发展', '孵化', '种子'];
+const COUNT_FIELDS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealCnt', 'gmv'];
+const RATE_FIELDS = ['evaRate', 'orderRate', 'shipRate', 'dealRate'];
 const DEFAULT_CODEX_ENV_ALLOWLIST = [
   'PATH',
   'HOME',
@@ -87,29 +90,181 @@ function formatWan(v) {
   return `${Math.round(n)}`;
 }
 
+function numberOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getCategoryName(c) {
+  return String(c && (c.category || c.name) || '').trim();
+}
+
+function getSecondaryName(c) {
+  return String(c && (c.secondaryCategory || c.board) || '未归类').trim() || '未归类';
+}
+
+function slimCur(cur) {
+  const out = {};
+  const src = cur || {};
+  for (const key of COUNT_FIELDS) {
+    const value = key === 'conditionUv' && src[key] == null ? src.jkuv : src[key];
+    out[key] = numberOrNull(value);
+  }
+  for (const key of RATE_FIELDS) out[key] = numberOrNull(src[key]);
+  return out;
+}
+
+function slimDelta(delta) {
+  if (!delta || typeof delta !== 'object') return null;
+  const out = {};
+  for (const key of ['gmv', ...RATE_FIELDS]) out[key] = numberOrNull(delta[key]);
+  return out;
+}
+
+function slimTrend(trend) {
+  const src = trend || {};
+  const out = {};
+  for (const key of ['conditionUv', 'evaUv', 'orderUv', 'shipCnt', 'dealCnt', 'gmv']) {
+    const item = src[key] || {};
+    out[key] = {
+      delta: numberOrNull(item.delta),
+      deltaPct: numberOrNull(item.deltaPct),
+      direction: item.direction || null,
+    };
+  }
+  return out;
+}
+
+function slimCategory(c) {
+  const secondaryCategory = getSecondaryName(c);
+  return {
+    category: getCategoryName(c),
+    tier: String(c && c.tier || ''),
+    secondaryCategory,
+    board: secondaryCategory,
+    status: c && c.status,
+    cur: slimCur(c && c.cur),
+    delta: slimDelta(c && c.delta),
+    trend: slimTrend(c && c.trend),
+    anomalyScore: Number(c && c.anomalyScore) || 0,
+  };
+}
+
+function onlineCategories(categories) {
+  return (categories || []).filter((c) => c && c.status !== '已下线');
+}
+
+function sumCur(categories) {
+  const out = {};
+  for (const key of COUNT_FIELDS) out[key] = 0;
+  for (const c of categories || []) {
+    const cur = c.cur || {};
+    for (const key of COUNT_FIELDS) out[key] += Number(cur[key]) || 0;
+  }
+  if (!out.conditionUv && out.jkuv) out.conditionUv = out.jkuv;
+  return out;
+}
+
+function trendScore(c) {
+  const trend = (c && c.trend) || {};
+  const delta = (c && c.delta) || {};
+  let score = Number(c && c.anomalyScore) || 0;
+  for (const key of ['gmv', ...RATE_FIELDS]) {
+    const raw = key === 'gmv' ? ((trend.gmv || {}).deltaPct ?? delta.gmv) : delta[key];
+    const n = Number(raw);
+    if (Number.isFinite(n) && n < 0) score += Math.abs(n);
+  }
+  return score;
+}
+
+function opportunityScore(c) {
+  const cur = (c && c.cur) || {};
+  const trend = (c && c.trend) || {};
+  const gmvTrend = Number((trend.gmv || {}).deltaPct);
+  return (Number(cur.gmv) || 0) * (Number.isFinite(gmvTrend) && gmvTrend > 0 ? 1 + gmvTrend : 1);
+}
+
+function pickCategoryNames(categories, sorter, limit = 5) {
+  return (categories || [])
+    .slice()
+    .sort(sorter)
+    .slice(0, limit)
+    .map((c) => c.category)
+    .filter(Boolean);
+}
+
+function summarizeCategoryGroup(categories) {
+  const list = onlineCategories(categories);
+  const byGmv = (a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0);
+  const byRisk = (a, b) => trendScore(b) - trendScore(a);
+  const byOpportunity = (a, b) => opportunityScore(b) - opportunityScore(a);
+  return {
+    categoryCount: list.length,
+    cur: sumCur(list),
+    topCategories: pickCategoryNames(list, byGmv, 5),
+    dragCategories: pickCategoryNames(list.filter((c) => trendScore(c) > 0), byRisk, 5),
+    opportunityCategories: pickCategoryNames(list, byOpportunity, 5),
+    anomalyCategories: pickCategoryNames(list.filter((c) => (c.anomalyScore || 0) > 0), byRisk, 5),
+  };
+}
+
+function groupBy(items, keyFn) {
+  const out = {};
+  for (const item of items || []) {
+    const key = keyFn(item);
+    if (!out[key]) out[key] = [];
+    out[key].push(item);
+  }
+  return out;
+}
+
+function summarizeSecondaryCategories(categories) {
+  const groups = groupBy(onlineCategories(categories), (c) => c.secondaryCategory || c.board || '未归类');
+  return Object.entries(groups)
+    .map(([secondaryCategory, list]) => {
+      const base = summarizeCategoryGroup(list);
+      const tierCounts = {};
+      for (const c of list) tierCounts[c.tier || '未分层'] = (tierCounts[c.tier || '未分层'] || 0) + 1;
+      return { secondaryCategory, tierCounts, ...base };
+    })
+    .sort((a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0));
+}
+
+function summarizeTiers(dashboardTiers, categories) {
+  const byTier = groupBy(onlineCategories(categories), (c) => c.tier || '未分层');
+  const tierMap = {};
+  for (const t of dashboardTiers || []) tierMap[t.tier] = t;
+  return REQUIRED_TIERS.map((tier) => {
+    const raw = tierMap[tier] || {};
+    const list = byTier[tier] || [];
+    const group = summarizeCategoryGroup(list);
+    return {
+      tier,
+      cur: {
+        ...group.cur,
+        ...slimCur(raw.cur),
+        categoryCount: numberOrNull(raw.cur && raw.cur.categoryCount) ?? list.length,
+      },
+      delta: slimDelta(raw.delta),
+      trend: slimTrend(raw.trend),
+      topCategories: group.topCategories,
+      dragCategories: group.dragCategories,
+      opportunityCategories: group.opportunityCategories,
+      anomalyCategories: group.anomalyCategories,
+      secondaryCategories: summarizeSecondaryCategories(list).map((s) => s.secondaryCategory),
+    };
+  });
+}
+
 function summarizeDashboard(dashboard) {
   const categories = (dashboard.categories || [])
+    .map(slimCategory)
+    .filter((c) => c.category)
     .slice()
-    .sort((a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0))
-    .slice(0, 20)
-    .map((c) => ({
-      category: c.category,
-      tier: c.tier,
-      board: c.board || c.secondaryCategory || '',
-      status: c.status,
-      cur: {
-        conditionUv: c.cur && (c.cur.conditionUv ?? c.cur.jkuv),
-        evaUv: c.cur && c.cur.evaUv,
-        orderUv: c.cur && c.cur.orderUv,
-        shipCnt: c.cur && c.cur.shipCnt,
-        dealCnt: c.cur && c.cur.dealCnt,
-        gmv: c.cur && c.cur.gmv,
-        orderRate: c.cur && c.cur.orderRate,
-        dealRate: c.cur && c.cur.dealRate,
-      },
-      delta: c.delta || null,
-      anomalyScore: c.anomalyScore || 0,
-    }));
+    .sort((a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0));
+  const secondaryCategories = summarizeSecondaryCategories(categories);
+  const tiers = summarizeTiers(dashboard.tiers || [], categories);
 
   return {
     version: dashboard.version,
@@ -119,9 +274,10 @@ function summarizeDashboard(dashboard) {
     syncedAt: dashboard.syncedAt || '',
     board: dashboard.board || {},
     kpiCards: dashboard.kpiCards || [],
-    tiers: dashboard.tiers || [],
-    existingInsights: dashboard.insights || {},
-    topCategories: categories,
+    tiers,
+    secondaryCategories,
+    categories,
+    topCategories: categories.slice(0, 20),
   };
 }
 
@@ -150,31 +306,89 @@ function writeCacheForWeek(cache, primaryName = outName) {
   return names;
 }
 
+function cleanInsightMap(map) {
+  const out = {};
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return out;
+  for (const [key, value] of Object.entries(map)) {
+    const k = String(key || '').trim();
+    const v = String(value || '').trim();
+    if (k && v) out[k] = v;
+  }
+  return out;
+}
+
+function formatSignedWan(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '环比待补';
+  return `${n >= 0 ? '+' : '-'}${formatWan(Math.abs(n))}`;
+}
+
+function formatSignedPct(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '待补';
+  return `${n >= 0 ? '+' : ''}${(n * 100).toFixed(1)}pct`;
+}
+
+function fallbackSecondaryCategoryInsights(summary) {
+  const out = {};
+  for (const s of summary.secondaryCategories || []) {
+    const drags = (s.dragCategories || []).slice(0, 3).join('、') || '暂无显著拖累';
+    const opportunities = (s.opportunityCategories || []).slice(0, 3).join('、') || '待观察';
+    out[s.secondaryCategory] = `${s.secondaryCategory}二级类目覆盖 ${s.categoryCount || 0} 个在售品类，成交GMV ${formatWan(s.cur && s.cur.gmv)}；主要拖累：${drags}；机会/需下钻品类：${opportunities}。`;
+  }
+  return out;
+}
+
+function fallbackCategoryInsights(summary) {
+  const out = {};
+  for (const c of summary.categories || []) {
+    const gmvDelta = c.trend && c.trend.gmv && c.trend.gmv.delta != null
+      ? formatSignedWan(c.trend.gmv.delta)
+      : formatSignedWan(c.delta && c.delta.gmv);
+    const orderRateDelta = formatSignedPct(c.delta && c.delta.orderRate);
+    const risk = (c.anomalyScore || 0) >= 2 ? '高' : ((c.anomalyScore || 0) === 1 ? '中' : '低');
+    out[c.category] = `${c.category}（${c.tier || '未分层'} / ${c.secondaryCategory || '未归类'}）成交GMV ${formatWan(c.cur && c.cur.gmv)}，GMV变化 ${gmvDelta}，下单率变化 ${orderRateDelta}，影响风险${risk}；建议复盘估价完成、下单UV、发货与成交链路。`;
+  }
+  return out;
+}
+
 function fallbackInsights(dashboard, warnings, extraWarning) {
   const rawExisting = dashboard.insights && typeof dashboard.insights === 'object' ? dashboard.insights : {};
   // `/api/dashboard` may already contain a cached AI insight for the same week.
   // When AI is disabled or fails, do not re-label stale AI copy as deterministic.
   const existing = isGeneratedInsight(rawExisting) ? {} : rawExisting;
+  const summary = summarizeDashboard(dashboard);
   const fallbackTiers = Object.fromEntries((dashboard.tiers || []).map((t) => {
     const cur = t.cur || {};
     return [t.tier, `${t.tier}层覆盖 ${cur.categoryCount || 0} 个在售品类，成交GMV ${formatWan(cur.gmv)}。`];
   }));
   const tiers = { ...fallbackTiers, ...((existing.tiers && typeof existing.tiers === 'object') ? existing.tiers : {}) };
+  for (const tier of REQUIRED_TIERS) if (!tiers[tier]) tiers[tier] = `${tier}层暂无自动洞察。`;
+  const secondaryCategories = {
+    ...fallbackSecondaryCategoryInsights(summary),
+    ...cleanInsightMap(existing.secondaryCategories),
+  };
+  const categories = {
+    ...fallbackCategoryInsights(summary),
+    ...cleanInsightMap(existing.categories),
+  };
   const topTier = (dashboard.tiers || []).slice().sort((a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0))[0];
   const board = dashboard.board && dashboard.board.cur ? dashboard.board.cur : {};
   return {
-    version: '1.3.0',
+    version: '1.4.0',
     week: dashboard.week,
     prevWeek: dashboard.prevWeek || '',
     generatedAt: new Date().toISOString(),
     generatedBy: 'business_overview_deterministic',
     mode: 'deterministic',
-    inputHash: hashInput(summarizeDashboard(dashboard)),
+    inputHash: hashInput(summary),
     insights: {
       board: existing.board || `${dashboard.week}：成交GMV ${formatWan(board.gmv)}，${topTier ? `${topTier.tier}层贡献最高` : '分层数据待补齐'}。`,
       tiers,
+      secondaryCategories,
+      categories,
       category: existing.category || '按当前层识别品类异动原因、建议关注指标和需要复盘的核心/波动品类。',
-      monitor: existing.monitor || '监测页可继续查看机型级异动明细。',
+      monitor: existing.monitor || '监测页本期不生成机型级 AI 分析，可继续查看结构化异动明细。',
     },
     warnings: extraWarning ? warnings.concat(extraWarning) : warnings,
   };
@@ -204,12 +418,13 @@ function buildPrompt(summary, strategy, warnings) {
     '你是转转回收经营分析助手。请基于输入的 dashboard 周日均数据，输出给数据看板展示的经营分析洞察。',
     '要求：',
     '1. 只输出 JSON，必须符合 output schema。',
-    '2. insights.board 是大盘一句话结论，覆盖风险等级、链路形态、量价判断。',
-    '3. insights.tiers 必须至少包含 发展/孵化/种子 三个 key，每个 value 是对应层概览。',
-    '4. insights.category 是品类简述概览，指出重点关注品类和原因。',
-    '5. insights.monitor 是机型/监测页提示。',
-    '6. 如果上周策略为空，warnings 必须包含“未配置上周策略/预判，暂无法检核兑现”。',
-    '7. 不要编造未给出的策略、竞对或行情事实；不确定时标注待补充。',
+    '2. 所有判断只能来自 <dashboard_summary> 里的结构化数据；不要自由查数，不要编造策略、竞对或行情事实。',
+    '3. insights.board 是大盘概览，必须覆盖风险等级、链路判断、量价判断、关键拖累/机会。',
+    '4. insights.tiers 必须包含且只按 发展/孵化/种子 三个 key 输出，每个 value 覆盖该层表现、核心问题、建议。',
+    '5. insights.secondaryCategories 是数组，每项为 { name, insight }，name 必须覆盖 dashboard_summary.secondaryCategories[].secondaryCategory；insight 覆盖贡献、波动、拖累、机会、需要下钻的品类。',
+    '6. insights.categories 是数组，每项为 { name, insight }，name 必须覆盖 dashboard_summary.categories[].category；insight 覆盖影响度、异常原因、可解决度、行动建议。',
+    '7. insights.category 是兼容旧字段，可写全局/当前筛选品类概览；insights.monitor 本期只写监测页总提示或明确空态，不输出机型级 AI 分析。',
+    '8. 如果上周策略为空，warnings 必须包含“未配置上周策略/预判，暂无法检核兑现”。',
     '',
     '<last_week_strategies>',
     strategy || '',
@@ -235,6 +450,45 @@ function parseJsonText(text) {
   throw new Error('Codex output is not JSON');
 }
 
+function expectedInsightKeys(summary, field) {
+  if (field === 'secondaryCategories') {
+    return [...new Set(((summary && summary.secondaryCategories) || []).map((s) => s.secondaryCategory).filter(Boolean))];
+  }
+  if (field === 'categories') {
+    return [...new Set(((summary && summary.categories) || []).map((c) => c.category).filter(Boolean))];
+  }
+  return [];
+}
+
+function cleanInsightArray(items) {
+  const out = {};
+  if (!Array.isArray(items)) return out;
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const k = String(item.name || item.key || item.secondaryCategory || item.category || '').trim();
+    const v = String(item.insight || item.value || item.text || '').trim();
+    if (k && v) out[k] = v;
+  }
+  return out;
+}
+
+function normalizeInsightCollection(insights, field) {
+  if (Array.isArray(insights[field])) return cleanInsightArray(insights[field]);
+  if (insights[field] && typeof insights[field] === 'object') return cleanInsightMap(insights[field]);
+  return null;
+}
+
+function validateInsightMap(insights, field, expectedKeys) {
+  const out = normalizeInsightCollection(insights, field);
+  if (!out) throw new Error(`AI insights.${field} missing`);
+  for (const key of expectedKeys || []) {
+    if (typeof out[key] !== 'string' || !out[key].trim()) {
+      throw new Error(`AI insights.${field}.${key} missing`);
+    }
+  }
+  return out;
+}
+
 function normalizeAiCache(aiResult, dashboard, summary, warnings) {
   if (!aiResult || typeof aiResult !== 'object' || !aiResult.insights) {
     throw new Error('AI result missing insights');
@@ -244,22 +498,32 @@ function normalizeAiCache(aiResult, dashboard, summary, warnings) {
     if (typeof insights[key] !== 'string' || !insights[key].trim()) throw new Error(`AI insights.${key} missing`);
   }
   if (!insights.tiers || typeof insights.tiers !== 'object') throw new Error('AI insights.tiers missing');
-  for (const tier of ['发展', '孵化', '种子']) {
+  for (const tier of REQUIRED_TIERS) {
     if (typeof insights.tiers[tier] !== 'string' || !insights.tiers[tier].trim()) {
       throw new Error(`AI insights.tiers.${tier} missing`);
     }
   }
+  const secondaryCategories = validateInsightMap(insights, 'secondaryCategories', expectedInsightKeys(summary, 'secondaryCategories'));
+  const categories = validateInsightMap(insights, 'categories', expectedInsightKeys(summary, 'categories'));
+  const normalizedInsights = {
+    board: insights.board.trim(),
+    tiers: Object.fromEntries(REQUIRED_TIERS.map((tier) => [tier, insights.tiers[tier].trim()])),
+    secondaryCategories,
+    categories,
+    category: insights.category.trim(),
+    monitor: insights.monitor.trim(),
+  };
   const aiWarnings = Array.isArray(aiResult.warnings) ? aiResult.warnings.filter(Boolean).map(String) : [];
   const mergedWarnings = [...new Set(warnings.concat(aiWarnings))];
   return {
-    version: '1.3.0',
+    version: '1.4.0',
     week: dashboard.week,
     prevWeek: dashboard.prevWeek || '',
     generatedAt: new Date().toISOString(),
     generatedBy: 'codex-cli-read-only',
     mode: 'ai',
     inputHash: hashInput(summary),
-    insights,
+    insights: normalizedInsights,
     warnings: mergedWarnings,
   };
 }
@@ -377,9 +641,11 @@ if (require.main === module) {
 module.exports = {
   businessOverviewCacheName,
   buildCodexEnv,
+  buildPrompt,
   fallbackInsights,
   isGeneratedInsight,
   isReusableAiCache,
+  normalizeAiCache,
   readExistingAiCacheForWeek,
   summarizeDashboard,
   summarizeErrorMessage,

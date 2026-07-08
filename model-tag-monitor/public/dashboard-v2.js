@@ -94,7 +94,7 @@ function renderDashboardMetaV2(d) {
   if (sel) {
     sel.value = d.week || '';
     sel.addEventListener('change', function() {
-      writeUrlState({ tab: 'dashboard', week: sel.value || '', secondary: '' });
+      writeUrlState({ tab: 'dashboard', week: sel.value || '', secondary: '', category: '' });
       refreshDashboard();
     });
   }
@@ -114,11 +114,19 @@ function renderDashboardOverviewV2(d) {
 function renderTierOverview(tiers, activeTier) {
   var el = $('#dashTierOverview');
   if (!el) return;
-  var tier = activeTier || '发展';
-  var tierInsights = (_dashboardInsights && _dashboardInsights.tiers) || {};
+  var model = buildTierOverviewModel(_dashboardInsights, activeTier);
   el.innerHTML =
-    '<div class="dash-insight-title">' + escapeHtml(tier) + '概览</div>' +
-    '<div class="dash-insight-body">' + escapeHtml(tierInsights[tier] || ('暂无' + tier + '层自动洞察。')) + '</div>';
+    '<div class="dash-insight-title">' + escapeHtml(model.title) + '</div>' +
+    '<div class="dash-insight-body">' + escapeHtml(model.body) + '</div>';
+}
+
+function buildTierOverviewModel(insights, activeTier) {
+  var tier = activeTier || '发展';
+  var tierInsights = (insights && insights.tiers) || {};
+  return {
+    title: tier + '概览',
+    body: tierInsights[tier] || ('暂无' + tier + '层自动洞察。'),
+  };
 }
 
 // ---- 大盘 KPI 卡 ----
@@ -235,6 +243,18 @@ function getActiveSecondaryFilter(categories, activeTier) {
   if (!selected) return '';
   var exists = (categories || []).some(function(c) {
     return c.tier === activeTier && getSecondaryCategoryName(c) === selected;
+  });
+  return exists ? selected : '';
+}
+
+function getActiveCategoryFilter(categories, activeTier, selectedSecondary) {
+  var selected = '';
+  try { selected = readUrlState().category || ''; } catch (e) { selected = ''; }
+  if (!selected) return '';
+  var exists = (categories || []).some(function(c) {
+    return c.tier === activeTier &&
+      (!selectedSecondary || getSecondaryCategoryName(c) === selectedSecondary) &&
+      categoryName(c) === selected;
   });
   return exists ? selected : '';
 }
@@ -384,7 +404,7 @@ function renderSecondaryCategorySummary(categories, activeTier) {
   }).join('');
   select.value = selected;
   select.onchange = function() {
-    writeUrlState({ secondary: select.value || '' });
+    writeUrlState({ secondary: select.value || '', category: '' });
     renderSecondaryCategorySummary(_lastDashCategories, _lastDashTier);
     renderCategoryTable(_lastDashCategories, _lastDashTier);
   };
@@ -430,7 +450,7 @@ function renderSecondaryCategorySummary(categories, activeTier) {
   $$('#dashSecondaryTable tbody tr[data-secondary]').forEach(function(row) {
     row.addEventListener('click', function() {
       var value = row.dataset.secondary || '';
-      writeUrlState({ secondary: value === selected ? '' : value });
+      writeUrlState({ secondary: value === selected ? '' : value, category: '' });
       renderSecondaryCategorySummary(_lastDashCategories, _lastDashTier);
       renderCategoryTable(_lastDashCategories, _lastDashTier);
     });
@@ -476,21 +496,25 @@ function renderCategoryOverview(categories, activeTier) {
   if (!el) return;
   categories = categories || [];
   var selectedSecondary = getActiveSecondaryFilter(categories, activeTier);
-  var overview = buildCategoryOverviewModel(categories, activeTier, selectedSecondary);
+  var selectedCategory = getActiveCategoryFilter(categories, activeTier, selectedSecondary);
+  var overview = buildCategoryOverviewModel(categories, activeTier, selectedSecondary, _dashboardInsights, selectedCategory);
   if (overview.empty) {
     el.innerHTML =
       '<div class="dash-insight-title">' + escapeHtml(overview.title) + '</div>' +
       '<div class="dash-insight-body">' + escapeHtml(overview.body) + '</div>';
     return;
   }
-  el.innerHTML =
-    '<div class="dash-insight-title">' + escapeHtml(overview.title) + '</div>' +
-    '<div class="dash-insight-body">' + escapeHtml(overview.body) + '</div>' +
+  var tagsHtml = overview.showTags === false ? '' : (
     '<div class="dash-insight-tags">' +
       '<span>核心观测品类：' + escapeHtml(overview.coreCategories.join('、') || '待筛选') + '</span>' +
       '<span>波动关注品类：' + escapeHtml(overview.volatileCategories.join('、') || '待筛选') + '</span>' +
       '<span>建议指标：' + escapeHtml(overview.suggestionMetrics.join('、') || '成交GMV') + '</span>' +
-    '</div>';
+    '</div>'
+  );
+  el.innerHTML =
+    '<div class="dash-insight-title">' + escapeHtml(overview.title) + '</div>' +
+    '<div class="dash-insight-body">' + escapeHtml(overview.body) + '</div>' +
+    tagsHtml;
 }
 
 function filterCategoryOverviewList(categories, activeTier, selectedSecondary) {
@@ -501,11 +525,14 @@ function filterCategoryOverviewList(categories, activeTier, selectedSecondary) {
   });
 }
 
-function buildCategoryOverviewModel(categories, activeTier, selectedSecondary) {
+function buildCategoryOverviewModel(categories, activeTier, selectedSecondary, insights, selectedCategory) {
   var tier = activeTier || '发展';
   var secondary = selectedSecondary || '';
+  var category = selectedCategory || '';
   var context = tier + (secondary ? ' / ' + secondary : ' / 全部二级类目');
   var contextText = tier + (secondary ? ' · ' + secondary : ' · 全部二级类目');
+  var aiOverview = buildAiCategoryOverviewModel(tier, secondary, category, insights);
+  if (aiOverview) return aiOverview;
   var list = filterCategoryOverviewList(categories, tier, secondary);
   if (!list.length) {
     return {
@@ -546,6 +573,63 @@ function buildCategoryOverviewModel(categories, activeTier, selectedSecondary) {
     filteredCount: list.length,
     totalGmv: totalGmv,
   };
+}
+
+function getInsightMap(insights, key) {
+  var map = insights && insights[key];
+  return map && typeof map === 'object' ? map : {};
+}
+
+function buildAiCategoryOverviewModel(tier, secondary, category, insights) {
+  if (!insights || typeof insights !== 'object') return null;
+  var context = tier + (secondary ? ' / ' + secondary : ' / 全部二级类目');
+  if (category) {
+    var categoryMap = getInsightMap(insights, 'categories');
+    var categoryBody = categoryMap[category];
+    return {
+      empty: !categoryBody,
+      title: '品类简述概览 · ' + context + ' / ' + category,
+      body: categoryBody || ('当前筛选：' + tier + ' · ' + (secondary || '全部二级类目') + ' · ' + category + '。该品类暂无自动洞察，不展示其他品类、二级类目或层级的洞察。'),
+      coreCategories: [],
+      volatileCategories: [],
+      suggestionMetrics: [],
+      filteredCount: categoryBody ? 1 : 0,
+      totalGmv: 0,
+      showTags: false,
+      source: categoryBody ? 'ai-category' : 'empty-category',
+    };
+  }
+  if (secondary) {
+    var secondaryMap = getInsightMap(insights, 'secondaryCategories');
+    var secondaryBody = secondaryMap[secondary];
+    return {
+      empty: !secondaryBody,
+      title: '二级类目概览 · ' + tier + ' / ' + secondary,
+      body: secondaryBody || ('当前筛选：' + tier + ' · ' + secondary + '。该二级类目暂无自动洞察，不展示其他二级类目、品类或层级的洞察。'),
+      coreCategories: [],
+      volatileCategories: [],
+      suggestionMetrics: [],
+      filteredCount: 0,
+      totalGmv: 0,
+      showTags: false,
+      source: secondaryBody ? 'ai-secondary' : 'empty-secondary',
+    };
+  }
+  if (typeof insights.category === 'string' && insights.category.trim()) {
+    return {
+      empty: false,
+      title: '品类简述概览 · ' + context,
+      body: insights.category,
+      coreCategories: [],
+      volatileCategories: [],
+      suggestionMetrics: [],
+      filteredCount: 0,
+      totalGmv: 0,
+      showTags: false,
+      source: 'compat-category',
+    };
+  }
+  return null;
 }
 
 function categoryName(c) {
@@ -796,7 +880,9 @@ if (typeof module !== 'undefined' && module.exports) {
     fmtCountShort: fmtCountShort,
     fmtDeltaArrow: fmtDeltaArrow,
     anomalyDots: anomalyDots,
+    buildTierOverviewModel: buildTierOverviewModel,
     buildCategoryOverviewModel: buildCategoryOverviewModel,
+    buildAiCategoryOverviewModel: buildAiCategoryOverviewModel,
     filterCategoryOverviewList: filterCategoryOverviewList,
   };
 }

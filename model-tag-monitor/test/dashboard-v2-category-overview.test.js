@@ -2,7 +2,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildCategoryOverviewModel, filterCategoryOverviewList } = require('../public/dashboard-v2');
+const {
+  buildCategoryOverviewModel,
+  buildTierOverviewModel,
+  filterCategoryOverviewList,
+} = require('../public/dashboard-v2');
 
 const categories = [
   {
@@ -103,4 +107,100 @@ test('category overview empty state does not fallback to global or other context
 test('filterCategoryOverviewList returns only current context categories', () => {
   const list = filterCategoryOverviewList(categories, '发展', '运动户外');
   assert.deepEqual(list.map((c) => c.category), ['运动相机', '无人机']);
+});
+
+test('tier AI overview renders only current tier insight', () => {
+  const model = buildTierOverviewModel({
+    tiers: {
+      发展: '发展层 AI：关注运动相机',
+      孵化: '孵化层 AI：不应展示',
+      种子: '种子层 AI：不应展示',
+    },
+  }, '发展');
+
+  const text = allText(model);
+  assert.equal(model.title, '发展概览');
+  assert.match(text, /发展层 AI/);
+  assert.doesNotMatch(text, /孵化层 AI|种子层 AI/);
+});
+
+test('secondary AI overview renders only selected secondary insight', () => {
+  const model = buildCategoryOverviewModel(categories, '发展', '运动户外', {
+    category: '全局品类概览不应展示',
+    secondaryCategories: {
+      运动户外: '运动户外 AI：只看运动相机和无人机',
+      数码3C: '数码3C AI：不应展示',
+    },
+    categories: {
+      运动相机: '运动相机 AI：未选品类时不应展示',
+    },
+  });
+
+  const text = allText(model);
+  assert.equal(model.empty, false);
+  assert.equal(model.source, 'ai-secondary');
+  assert.equal(model.title, '二级类目概览 · 发展 / 运动户外');
+  assert.match(text, /运动户外 AI/);
+  assert.doesNotMatch(text, /数码3C AI|全局品类概览|运动相机 AI/);
+});
+
+test('category AI overview renders only selected category insight', () => {
+  const model = buildCategoryOverviewModel(categories, '发展', '运动户外', {
+    category: '全局品类概览不应展示',
+    secondaryCategories: {
+      运动户外: '运动户外 AI：选品类时不应展示',
+    },
+    categories: {
+      无人机: '无人机 AI：影响度高，可解决度中',
+      运动相机: '运动相机 AI：不应展示',
+    },
+  }, '无人机');
+
+  const text = allText(model);
+  assert.equal(model.empty, false);
+  assert.equal(model.source, 'ai-category');
+  assert.match(model.title, /发展 \/ 运动户外 \/ 无人机/);
+  assert.match(text, /无人机 AI/);
+  assert.doesNotMatch(text, /运动相机 AI|运动户外 AI|全局品类概览/);
+});
+
+test('missing selected AI insight shows explicit empty state without fallback', () => {
+  const secondary = buildCategoryOverviewModel(categories, '发展', '运动户外', {
+    category: '全局品类概览不应 fallback',
+    secondaryCategories: {
+      数码3C: '数码3C AI 不应 fallback',
+    },
+    categories: {
+      运动相机: '运动相机 AI 不应 fallback',
+    },
+  });
+
+  assert.equal(secondary.empty, true);
+  assert.match(secondary.body, /该二级类目暂无自动洞察/);
+  assert.doesNotMatch(allText(secondary), /全局品类概览|数码3C AI|运动相机 AI/);
+
+  const category = buildCategoryOverviewModel(categories, '发展', '运动户外', {
+    category: '全局品类概览不应 fallback',
+    secondaryCategories: {
+      运动户外: '运动户外 AI 不应 fallback',
+    },
+    categories: {
+      运动相机: '运动相机 AI 不应 fallback',
+    },
+  }, '无人机');
+
+  assert.equal(category.empty, true);
+  assert.match(category.body, /该品类暂无自动洞察/);
+  assert.doesNotMatch(allText(category), /全局品类概览|运动户外 AI|运动相机 AI/);
+});
+
+test('legacy category insight remains readable when no secondary or category selected', () => {
+  const model = buildCategoryOverviewModel(categories, '发展', '', {
+    category: '旧字段 category 兼容概览',
+    monitor: '旧字段 monitor 兼容提示',
+  });
+
+  assert.equal(model.empty, false);
+  assert.equal(model.source, 'compat-category');
+  assert.match(model.body, /旧字段 category 兼容概览/);
 });

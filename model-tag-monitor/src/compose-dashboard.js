@@ -10,7 +10,7 @@ const TREND_KEYS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealC
 
 /**
  * 将六层聚合结果转换为前端 dashboard v2 契约。
- * v1.3.0 约定：
+ * v1.4.0 约定：
  * - rate delta 为百分点绝对差；
  * - count/GMV 趋势统一放到 trend[key].deltaPct；
  * - 同时保留 v1 dashboard 常用字段，避免旧入口完全断裂。
@@ -31,7 +31,7 @@ function composeDashboard(opts) {
   const kpiCards = buildKpiCards(board, payload.penetration);
 
   const result = {
-    version: '1.3.0',
+    version: '1.4.0',
     week,
     prevWeek: prevWeek || null,
     weeks,
@@ -248,9 +248,42 @@ function buildInsights({ week, prevWeek, board, tiers, categories }) {
   return {
     board: `${week}${prevWeek ? ` 较 ${prevWeek}` : ''}：成交GMV ${formatWan(gmv)}，${topTier ? `${topTier.tier}层贡献最高` : '分层数据待补齐'}，异常品类 ${alertCats.length} 个。`,
     tiers: Object.fromEntries(tiers.map((t) => [t.tier, `${t.tier}层覆盖 ${t.cur.categoryCount || 0} 个在售品类，成交GMV ${formatWan(t.cur.gmv)}。`])),
+    secondaryCategories: buildSecondaryInsightMap(categories),
+    categories: buildCategoryInsightMap(categories),
     category: alertCats.length ? `重点关注：${alertCats.map((c) => c.category).join('、')}。` : '当前筛选下暂无显著异常品类。',
-    monitor: alertCats.length ? `建议优先复盘 ${alertCats[0].category} 等品类的估价完成率、下单UV、发货数与成交GMV。` : '监测页可继续查看机型级异动明细。',
+    monitor: alertCats.length ? `建议优先复盘 ${alertCats[0].category} 等品类的估价完成率、下单UV、发货数与成交GMV。` : '监测页本期不生成机型级 AI 分析，可继续查看结构化异动明细。',
   };
+}
+
+function buildSecondaryInsightMap(categories) {
+  const groups = {};
+  for (const c of categories || []) {
+    if (!c || c.status === '已下线') continue;
+    const secondary = c.secondaryCategory || c.board || '未归类';
+    if (!groups[secondary]) groups[secondary] = [];
+    groups[secondary].push(c);
+  }
+  const out = {};
+  for (const [secondary, list] of Object.entries(groups)) {
+    const gmv = list.reduce((sum, c) => sum + ((c.cur && Number(c.cur.gmv)) || 0), 0);
+    const top = list.slice().sort((a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0)).slice(0, 3).map((c) => c.category).join('、') || '待补充';
+    const alert = list.filter((c) => (c.anomalyScore || 0) > 0).sort((a, b) => (b.anomalyScore || 0) - (a.anomalyScore || 0)).slice(0, 3).map((c) => c.category).join('、') || '暂无显著异常';
+    out[secondary] = `${secondary}二级类目覆盖 ${list.length} 个在售品类，成交GMV ${formatWan(gmv)}；贡献品类：${top}；拖累/波动关注：${alert}。`;
+  }
+  return out;
+}
+
+function buildCategoryInsightMap(categories) {
+  const out = {};
+  for (const c of categories || []) {
+    if (!c || !c.category) continue;
+    const cur = c.cur || {};
+    const delta = c.delta || {};
+    const risk = (c.anomalyScore || 0) >= 2 ? '高' : ((c.anomalyScore || 0) === 1 ? '中' : '低');
+    const orderRateDelta = delta.orderRate == null ? '待补' : `${delta.orderRate >= 0 ? '+' : ''}${(delta.orderRate * 100).toFixed(1)}pct`;
+    out[c.category] = `${c.category}（${c.tier || '未分层'} / ${c.secondaryCategory || c.board || '未归类'}）成交GMV ${formatWan(cur.gmv)}，下单率变化 ${orderRateDelta}，异常风险${risk}；建议复盘估价完成、下单UV、发货与成交链路。`;
+  }
+  return out;
 }
 
 function mergeBusinessOverviewInsights(result, cached) {
@@ -262,17 +295,27 @@ function mergeBusinessOverviewInsights(result, cached) {
   const warnings = Array.isArray(cached.warnings)
     ? cached.warnings.filter(Boolean).map(String)
     : [];
+  const baseInsights = result.insights || {};
+  const mergedInsights = {
+    ...baseInsights,
+    ...cachedInsights,
+    secondaryCategories: {
+      ...((baseInsights.secondaryCategories && typeof baseInsights.secondaryCategories === 'object') ? baseInsights.secondaryCategories : {}),
+      ...((cachedInsights.secondaryCategories && typeof cachedInsights.secondaryCategories === 'object') ? cachedInsights.secondaryCategories : {}),
+    },
+    categories: {
+      ...((baseInsights.categories && typeof baseInsights.categories === 'object') ? baseInsights.categories : {}),
+      ...((cachedInsights.categories && typeof cachedInsights.categories === 'object') ? cachedInsights.categories : {}),
+    },
+    warnings,
+    generatedAt: cached.generatedAt || null,
+    generatedBy: cached.generatedBy || null,
+    mode: cached.mode || 'ai',
+    inputHash: cached.inputHash || null,
+  };
   return {
     ...result,
-    insights: {
-      ...(result.insights || {}),
-      ...cachedInsights,
-      warnings,
-      generatedAt: cached.generatedAt || null,
-      generatedBy: cached.generatedBy || null,
-      mode: cached.mode || 'ai',
-      inputHash: cached.inputHash || null,
-    },
+    insights: mergedInsights,
   };
 }
 
