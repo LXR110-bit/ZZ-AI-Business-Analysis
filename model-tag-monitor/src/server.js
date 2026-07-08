@@ -61,8 +61,7 @@ app.post('/api/sync', async (req, res) => {
 });
 
 // ---- 品类漏斗数据同步 ----
-// 注：category-cache.json 暂未接入 dashboard 聚合逻辑(由 analysis-agent 后续接线)，
-// 这里不调 invalidateDashboardCache()，避免对现有机型层 dashboard 缓存造成无意义失效
+// category-cache.json 是 v2 dashboard 的主数据源；同步后必须失效 dashboard 缓存。
 let syncingCategory = false;
 app.post('/api/sync/category', async (req, res) => {
   if (syncingCategory) return res.status(409).json({ error: '品类数据正在同步中,请稍候' });

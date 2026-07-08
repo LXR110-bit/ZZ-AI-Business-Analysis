@@ -75,6 +75,35 @@ test('board.cur.gmv > 0', () => {
   assert.ok(board.cur.gmv > 0);
 });
 
+test('大盘漏斗计数字段均由品类维度日均 cache 聚合，不读取大盘补充表', () => {
+  const noisyBoardMetrics = {
+    rows: [
+      {
+        week: '2026-W27',
+        appDau: 5200000,
+        recycleEntranceUv: 162000,
+        brandPageUv: 999999999,
+        evaUv: 999999999,
+        orderUv: 999999999,
+        shipCnt: 999999999,
+        dealCnt: 999999999,
+        gmv: 999999999,
+      },
+    ],
+  };
+  const { board } = composeDashboard({ ...baseOpts, boardMetrics: noisyBoardMetrics });
+  const expected = {};
+  for (const k of COUNT_KEYS) expected[k] = 0;
+  for (const row of categoryCache.rows.filter((r) => r.week === '2026-W27')) {
+    for (const k of COUNT_KEYS) expected[k] += Number(row[k]) || 0;
+  }
+  if (!expected.conditionUv && expected.jkuv) expected.conditionUv = expected.jkuv;
+
+  for (const k of COUNT_KEYS) {
+    assert.equal(board.cur[k], expected[k], `board.cur.${k} 必须等于 category-cache 当周品类日均求和`);
+  }
+});
+
 test('board.delta 为绝对差（非百分比变化率）', () => {
   const { board } = composeDashboard(baseOpts);
   // delta 的 rate 字段值应接近 0（小幅波动），而非百分比变化率（>1 or <-1 的可能性极低）
