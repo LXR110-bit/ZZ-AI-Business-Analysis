@@ -158,7 +158,7 @@ function sync(opts = {}) {
   const weeks = rows.map((r) => r.week);
   const cache = {
     syncedAt: new Date().toISOString(),
-    version: '1.1.0',
+    version: '1.2.0',
     source: { dir: importsDir, prefixes: FILE_PREFIXES, targetWeeks: [...targetWeeks].sort() },
     weeks,
     rows,

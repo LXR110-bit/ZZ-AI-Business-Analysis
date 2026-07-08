@@ -10,7 +10,7 @@ const TREND_KEYS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealC
 
 /**
  * 将六层聚合结果转换为前端 dashboard v2 契约。
- * v1.1.0 约定：
+ * v1.2.0 约定：
  * - rate delta 为百分点绝对差；
  * - count/GMV 趋势统一放到 trend[key].deltaPct；
  * - 同时保留 v1 dashboard 常用字段，避免旧入口完全断裂。
@@ -31,7 +31,7 @@ function composeDashboard(opts) {
   const kpiCards = buildKpiCards(board, payload.penetration);
 
   const result = {
-    version: '1.1.0',
+    version: '1.2.0',
     week,
     prevWeek: prevWeek || null,
     weeks,
