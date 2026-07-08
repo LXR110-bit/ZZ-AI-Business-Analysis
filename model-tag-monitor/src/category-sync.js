@@ -57,6 +57,7 @@ const HEADER_MAP = {
 };
 
 const NUMBER_FIELDS = ['jkuv', 'conditionUv', 'evaUv', 'evaCnt', 'orderUv', 'orderCnt', 'shipCnt', 'signCnt', 'qcCnt', 'dealCnt', 'returnCnt', 'gmv', 'daysReceived'];
+const DAILY_AVG_FIELDS = NUMBER_FIELDS.filter((field) => field !== 'daysReceived');
 const TEXT_FIELDS = ['week', 'startDate', 'endDate', 'category'];
 
 function toNum(v) {
@@ -105,17 +106,42 @@ function parseTargetWeeks(value) {
   return new Set(weeks.sort());
 }
 
+function isExplicitDailyAverageHeader(header) {
+  return /日均|daily[_\s-]*avg|avg[_\s-]*daily/i.test(String(header || ''));
+}
+
+function shouldScaleToDailyAverage(sourceHeader, daysReceived) {
+  const days = Number(daysReceived) || 0;
+  if (days <= 1) return false;
+  if (!sourceHeader) return false;
+  return !isExplicitDailyAverageHeader(sourceHeader);
+}
+
+function applyDailyAverageNormalization(row, fieldSources) {
+  const days = Number(row.daysReceived) || 0;
+  if (days <= 1) return row;
+  for (const field of DAILY_AVG_FIELDS) {
+    if (row[field] === undefined) continue;
+    if (!shouldScaleToDailyAverage(fieldSources[field], days)) continue;
+    row[field] = row[field] / days;
+  }
+  return row;
+}
+
 function normalizeCategoryRecord(fields) {
   const row = {};
+  const fieldSources = {};
   for (const [cnKey, enKey] of Object.entries(HEADER_MAP)) {
     const val = getField(fields, cnKey);
     if (val === undefined) continue;
     row[enKey] = val;
+    fieldSources[enKey] = cnKey;
   }
   for (const k of TEXT_FIELDS) row[k] = row[k] != null ? String(row[k]).trim() : '';
   if (!row.week && row.startDate) row.week = dateToISOWeek(row.startDate);
   if (!row.endDate && row.startDate) row.endDate = addDays(row.startDate, 6);
   for (const k of NUMBER_FIELDS) row[k] = toNum(row[k]);
+  applyDailyAverageNormalization(row, fieldSources);
   if (!row.conditionUv) row.conditionUv = row.jkuv;
   return row;
 }
@@ -185,13 +211,13 @@ function sync() {
 
   const cache = {
     syncedAt: new Date().toISOString(),
-    version: '1.2.0',
+    version: '1.2.1',
     source: {
       dir: IMPORTS_DIR,
       prefix: CSV_PREFIX,
       targetWeeks: [...targetWeeks].sort(),
-      grain: 'category_dedup_daily_avg',
-      evaUv: 'category-level deduplicated weekly daily average',
+      grain: 'daily_slice_category_dedup_daily_avg',
+      evaUv: 'daily-slice category-level deduplicated UV sum',
     },
     weeks,
     categories,
@@ -212,5 +238,8 @@ module.exports = {
   filterByExcludedCategories,
   dateToISOWeek,
   parseTargetWeeks,
+  isExplicitDailyAverageHeader,
+  shouldScaleToDailyAverage,
+  applyDailyAverageNormalization,
   HEADER_MAP,
 };

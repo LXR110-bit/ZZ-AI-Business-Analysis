@@ -70,3 +70,30 @@ test('normalizeRow: 兼容旧"汇总"命名', () => {
   assert.equal(row.jkuv, 2000);
   assert.equal(row.evaUv, 1500);
 });
+
+
+test('normalizeRow: model_daily_avg 普通指标列按 day_cnt 转机型日均', () => {
+  const headers = ['week_start_date', '品类名称', '机型名称', 'day_cnt', '机况uv', '估价uv', '下单uv', '发货量', '成交量', '成交GMV'];
+  const values = ['2026-06-29', '拍立得', '富士 instax mini 12', '7', '2934', '2566', '700', '140', '110', '28327'];
+  const row = normalizeRow(headers, values);
+  assert.equal(row.startDate, '2026-06-29');
+  assert.equal(row.category, '拍立得');
+  assert.equal(row.modelName, '富士 instax mini 12');
+  assert.equal(row.daysReceived, 7);
+  assert.equal(row.jkuv, 2934 / 7);
+  assert.equal(row.evaUv, 2566 / 7);
+  assert.equal(row.orderUv, 100);
+  assert.equal(row.shipCnt, 20);
+  assert.equal(row.dealCnt, 110 / 7);
+  assert.equal(row.gmv, 28327 / 7);
+});
+
+test('normalizeRow: 显式日均字段不按 day_cnt 重复除', () => {
+  const headers = ['统计周', '品类名称', '机型名称', 'day_cnt', '机况UV日均', '估价UV日均', '成交量日均', '成交GMV日均'];
+  const values = ['2026-W27', '手机', 'iPhone 15', '7', '1000', '800', '50', '120000'];
+  const row = normalizeRow(headers, values);
+  assert.equal(row.jkuv, 1000);
+  assert.equal(row.evaUv, 800);
+  assert.equal(row.dealCnt, 50);
+  assert.equal(row.gmv, 120000);
+});

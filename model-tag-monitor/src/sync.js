@@ -10,7 +10,7 @@ const path = require('node:path');
 const IMPORTS_DIR = getImportsDir();
 const CSV_PREFIX = 'model_daily_avg_';
 
-// 保留最近几周的数据：v1.2.0 线上完整验证口径固定覆盖 W18~W27（10 周）。
+// 保留最近几周的数据：v1.2.1 线上完整验证口径固定覆盖最近 10 周。
 // 可用 KEEP_WEEKS 环境变量覆盖，便于回归旧 5 周窗口或临时扩大窗口。
 const KEEP_WEEKS = Number.parseInt(process.env.KEEP_WEEKS || '10', 10);
 
@@ -81,6 +81,7 @@ const HEADER_MAP = {
 };
 
 const NUMERIC_FIELDS = ['jkuv', 'evaUv', 'evaCnt', 'orderUv', 'orderCnt', 'shipCnt', 'signCnt', 'qcCnt', 'dealCnt', 'returnCnt', 'gmv'];
+const DAILY_AVG_FIELDS = NUMERIC_FIELDS;
 const MODEL_MAIN_DIMENSION_HEADERS = ['核心属性（估价）', '成色等级（估价）', '核心属性（质检）', '成色等级（质检）', '履约方式（只取线上流程）'];
 const JIKUANG_UV_HEADERS = ['机况uv', '机况UV', '机况UV日均', '机况UV汇总', '机况页UV'];
 
@@ -102,6 +103,28 @@ function isModelMainGrainRow(csvRow) {
   const hasDetailDimension = MODEL_MAIN_DIMENSION_HEADERS.some((h) => getRawValue(csvRow, [h]) !== '');
   if (hasDetailDimension) return false;
   return getRawValue(csvRow, JIKUANG_UV_HEADERS) !== '';
+}
+
+function isExplicitDailyAverageHeader(header) {
+  return /日均|daily[_\s-]*avg|avg[_\s-]*daily/i.test(String(header || ''));
+}
+
+function shouldScaleToDailyAverage(sourceHeader, daysReceived) {
+  const days = Number(daysReceived) || 0;
+  if (days <= 1) return false;
+  if (!sourceHeader) return false;
+  return !isExplicitDailyAverageHeader(sourceHeader);
+}
+
+function applyDailyAverageNormalization(row, fieldSources) {
+  const days = Number(row.daysReceived) || 0;
+  if (days <= 1) return row;
+  for (const field of DAILY_AVG_FIELDS) {
+    if (row[field] === undefined) continue;
+    if (!shouldScaleToDailyAverage(fieldSources[field], days)) continue;
+    row[field] = row[field] / days;
+  }
+  return row;
 }
 
 function recomputeDerivedFields(row) {
@@ -166,9 +189,14 @@ function toNum(v) {
 // 归一化一行:根据表头映射把值填入标准字段
 function normalizeRow(headers, values) {
   const fields = {};
+  const fieldSources = {};
   headers.forEach((h, i) => {
-    const key = HEADER_MAP[String(h || '').trim()];
-    if (key) fields[key] = values[i];
+    const header = String(h || '').trim();
+    const key = HEADER_MAP[header];
+    if (key) {
+      fields[key] = values[i];
+      fieldSources[key] = header;
+    }
   });
   // 数字字段
   ['jkuv', 'evaUv', 'evaCnt', 'orderUv', 'orderCnt', 'shipCnt', 'signCnt', 'qcCnt', 'dealCnt', 'returnCnt', 'gmv', 'avgPrice', 'daysReceived'].forEach(
@@ -177,6 +205,7 @@ function normalizeRow(headers, values) {
       else fields[k] = 0;
     }
   );
+  applyDailyAverageNormalization(fields, fieldSources);
   // 文本字段
   ['week', 'startDate', 'endDate', 'category', 'modelId', 'modelName'].forEach((k) => {
     if (fields[k] !== undefined) fields[k] = String(fields[k]).trim();
@@ -311,7 +340,7 @@ async function sync() {
 
   const cache = {
     syncedAt: new Date().toISOString(),
-    source: { dir: IMPORTS_DIR, prefix: CSV_PREFIX },
+    source: { dir: IMPORTS_DIR, prefix: CSV_PREFIX, grain: 'model_main_daily_avg' },
     categories,
     weeks,
     rows,
@@ -327,4 +356,4 @@ async function sync() {
   return { rows: rows.length, categories: categories.length, weeks: weeks.length };
 }
 
-module.exports = { sync, computeRates, normalizeRow, normalizeCSVRow, toNum, HEADER_MAP, dateToISOWeek, parseTargetWeeks, isModelMainGrainRow, canonicalizeModelId, mergeModelRows };
+module.exports = { sync, computeRates, normalizeRow, normalizeCSVRow, toNum, HEADER_MAP, dateToISOWeek, parseTargetWeeks, isExplicitDailyAverageHeader, shouldScaleToDailyAverage, applyDailyAverageNormalization, isModelMainGrainRow, canonicalizeModelId, mergeModelRows };
