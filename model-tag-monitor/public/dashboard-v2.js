@@ -140,7 +140,6 @@ function buildBoardKpiFromPayload(payload) {
   var avgPrice = cur.dealCnt ? (cur.gmv || 0) / cur.dealCnt : null;
   return [
     { key: 'appDau', label: 'APP DAU', value: penetration.appDau, deltaPct: null, note: 'APP 日均 DAU' },
-    { key: 'recycleDau', label: '回收DAU', value: penetration.recycleDau, deltaPct: null, note: '回收业务日均 DAU' },
     { key: 'recycleEntranceUv', label: '回收入口UV', value: penetration.recycleEntranceUv, deltaPct: null, note: '回收入口日均 UV' },
     { key: 'evaUv', label: '估价UV', value: cur.evaUv, deltaPct: null, note: '日切片品类维度估价UV去重汇总' },
     { key: 'shipCnt', label: '发货数', value: cur.shipCnt, deltaPct: null, note: '发货订单数日均' },

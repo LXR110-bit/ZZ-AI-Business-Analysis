@@ -21,7 +21,7 @@ const boardBenchmark = parseBenchmarkCsv(fs.readFileSync(path.join(FIX_DIR, 'boa
 
 function parseBoardMetrics(csvStr) {
   const lines = csvStr.trim().split('\n').slice(1);
-  return { rows: lines.map((l) => { const [week, appDau, recycleDau, recycleEntranceUv] = l.split(','); return { week, appDau: Number(appDau), recycleDau: Number(recycleDau), recycleEntranceUv: Number(recycleEntranceUv) }; }) };
+  return { rows: lines.map((l) => { const [week, appDau, recycleEntranceUv] = l.split(','); return { week, appDau: Number(appDau), recycleEntranceUv: Number(recycleEntranceUv) }; }) };
 }
 const boardMetrics = parseBoardMetrics(fs.readFileSync(path.join(FIX_DIR, 'board-metrics.csv'), 'utf8'));
 
@@ -81,7 +81,6 @@ test('大盘漏斗计数字段均由品类维度日均 cache 聚合，不读取�
       {
         week: '2026-W27',
         appDau: 5200000,
-        recycleDau: 910000,
         recycleEntranceUv: 162000,
         brandPageUv: 999999999,
         evaUv: 999999999,
@@ -263,9 +262,17 @@ test('kpiCards: 无大盘补充数据时不展示空 DAU 卡，估价UV口径文
   const result = composeDashboard({ ...baseOpts, boardMetrics: null });
   const keys = result.kpiCards.map((c) => c.key);
   assert.equal(keys.includes('appDau'), false);
-  assert.equal(keys.includes('recycleDau'), false);
   assert.equal(keys.includes('recycleEntranceUv'), false);
   const evaCard = result.kpiCards.find((c) => c.key === 'evaUv');
   assert.ok(evaCard);
   assert.equal(evaCard.note, '日切片品类维度估价UV去重汇总');
+});
+
+
+test('kpiCards: 有大盘补充数据时展示 APP DAU 与回收入口UV，不展示回收DAU', () => {
+  const result = composeDashboard(baseOpts);
+  const keys = result.kpiCards.map((c) => c.key);
+  assert.equal(keys.includes('appDau'), true);
+  assert.equal(keys.includes('recycleEntranceUv'), true);
+  assert.equal(keys.includes('recycleDau'), false);
 });

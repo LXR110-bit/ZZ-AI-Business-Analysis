@@ -3,25 +3,24 @@
 /**
  * Level 1：大盘渗透层。
  *
- * 飞书/board_metrics 补充边界固定为：APP DAU、回收 DAU、回收入口 UV。
+ * 飞书/board_metrics 补充边界固定为：APP DAU、回收入口 UV。
  * 大盘漏斗字段仍由 category-cache 的品类维度周日均数据聚合，不从这里读取。
  */
 
 /**
- * @param {{rows:Array<{week:string, appDau:number, recycleDau?:number, recycleEntranceUv:number, penetrationRate?:number, realPenetrationRate?:number}>}|null} boardMetrics
+ * @param {{rows:Array<{week:string, appDau:number, recycleEntranceUv:number, penetrationRate?:number, realPenetrationRate?:number}>}|null} boardMetrics
  * @param {string} week
  * @param {string|null} prevWeek
  * @param {{orderUv:number}|null} boardCur  大盘漏斗层 cur（用于计算真实渗透率）
- * @returns {{appDau, recycleDau, recycleEntranceUv, penetrationRate, realPenetrationRate, delta}}
+ * @returns {{appDau, recycleEntranceUv, penetrationRate, realPenetrationRate, delta}}
  */
 function buildBoardPenetrationLayer(boardMetrics, week, prevWeek, boardCur) {
   const nullResult = {
     appDau: null,
-    recycleDau: null,
     recycleEntranceUv: null,
     penetrationRate: null,
     realPenetrationRate: null,
-    delta: { appDau: null, recycleDau: null, recycleEntranceUv: null, penetrationRate: null, realPenetrationRate: null },
+    delta: { appDau: null, recycleEntranceUv: null, penetrationRate: null, realPenetrationRate: null },
   };
 
   if (!boardMetrics || !boardMetrics.rows) return nullResult;
@@ -30,7 +29,6 @@ function buildBoardPenetrationLayer(boardMetrics, week, prevWeek, boardCur) {
   if (!curRow) return nullResult;
 
   const appDau = Number(curRow.appDau) || 0;
-  const recycleDau = curRow.recycleDau == null ? null : (Number(curRow.recycleDau) || 0);
   const recycleEntranceUv = Number(curRow.recycleEntranceUv) || 0;
 
   const penetrationRate = curRow.penetrationRate == null
@@ -43,12 +41,11 @@ function buildBoardPenetrationLayer(boardMetrics, week, prevWeek, boardCur) {
     : Number(curRow.realPenetrationRate);
 
   // 环比
-  let delta = { appDau: null, recycleDau: null, recycleEntranceUv: null, penetrationRate: null, realPenetrationRate: null };
+  let delta = { appDau: null, recycleEntranceUv: null, penetrationRate: null, realPenetrationRate: null };
   if (prevWeek) {
     const prevRow = boardMetrics.rows.find((r) => r.week === prevWeek);
     if (prevRow) {
       const prevDau = Number(prevRow.appDau) || 0;
-      const prevRecycleDau = prevRow.recycleDau == null ? null : (Number(prevRow.recycleDau) || 0);
       const prevUv = Number(prevRow.recycleEntranceUv) || 0;
       const prevPenetration = prevRow.penetrationRate == null
         ? (prevDau > 0 ? prevUv / prevDau : null)
@@ -58,7 +55,6 @@ function buildBoardPenetrationLayer(boardMetrics, week, prevWeek, boardCur) {
         : Number(prevRow.realPenetrationRate);
 
       delta.appDau = appDau - prevDau;
-      delta.recycleDau = recycleDau == null || prevRecycleDau == null ? null : recycleDau - prevRecycleDau;
       delta.recycleEntranceUv = recycleEntranceUv - prevUv;
 
       if (prevPenetration != null && prevPenetration !== 0 && penetrationRate != null) {
@@ -70,7 +66,7 @@ function buildBoardPenetrationLayer(boardMetrics, week, prevWeek, boardCur) {
     }
   }
 
-  return { appDau, recycleDau, recycleEntranceUv, penetrationRate, realPenetrationRate, delta };
+  return { appDau, recycleEntranceUv, penetrationRate, realPenetrationRate, delta };
 }
 
 module.exports = { buildBoardPenetrationLayer };

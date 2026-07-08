@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# model-tag-monitor v1.2.1 daily refresh flow
+# model-tag-monitor v1.2.2 daily refresh flow
 # 06:30 Asia/Shanghai: local CSV/cache refresh -> dashboard health -> style-2 Lark card.
 set -Eeuo pipefail
 export PATH="/root/.local/bin:/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
-VERSION="1.2.1"
+VERSION="1.2.2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONITOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PARENT_DIR="$(cd "$MONITOR_DIR/.." && pwd)"
@@ -65,10 +65,18 @@ get_json() {
 log "model-tag-monitor refresh start version=$VERSION api=$API_BASE import_dir=$IMPORT_DIR target_weeks=$TARGET_WEEKS feishu_repo=${FEISHU_REPO_DIR:-<not-found>}"
 
 # 注意：IMPORT_DIR/TARGET_WEEKS 必须在 PM2 env 中配置，curl 调用不会修改已运行 Node 进程环境。
-# ecosystem.config.js 已固定 v1.2.1 生产默认值；此处打印用于日志审计。
+# ecosystem.config.js 已固定 v1.2.2 生产默认值；此处打印用于日志审计。
 post_json /api/sync
 post_json /api/sync/taxonomy
 post_json /api/sync/category
+
+BOARD_METRICS_OUT="$IMPORT_DIR/board_metrics_feishu.csv"
+log "sync board metrics from Feishu sheet -> $BOARD_METRICS_OUT"
+if node "$SCRIPT_DIR/sync-board-metrics-from-feishu.js" --out "$BOARD_METRICS_OUT" | tee -a "$LOG_FILE"; then
+  log "Feishu board metrics materialized"
+else
+  log "WARN: Feishu board metrics materialization failed; /api/sync/board will use existing local CSV if any"
+fi
 post_json /api/sync/board
 
 DASHBOARD_JSON="$(get_json /api/dashboard)"
@@ -79,7 +87,7 @@ const file = process.argv[2];
 const expected = process.argv[3].split(',').filter(Boolean);
 const d = JSON.parse(fs.readFileSync(file, 'utf8'));
 const weeks = d.weeks || d.weekWindow || [];
-if (d.version !== '1.2.1') throw new Error(`dashboard version != 1.2.1: ${d.version}`);
+if (d.version !== '1.2.2') throw new Error(`dashboard version != 1.2.2: ${d.version}`);
 if (JSON.stringify(weeks) !== JSON.stringify(expected)) throw new Error(`dashboard weeks mismatch: ${weeks.join(',')} != ${expected.join(',')}`);
 if (d.week !== expected[expected.length - 1]) throw new Error(`dashboard latest week mismatch: ${d.week}`);
 if (!d.board || !Array.isArray(d.categories) || !d.categories.length) throw new Error('dashboard contract incomplete');

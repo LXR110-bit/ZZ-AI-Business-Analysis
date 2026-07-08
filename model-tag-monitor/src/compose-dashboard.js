@@ -10,7 +10,7 @@ const TREND_KEYS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealC
 
 /**
  * 将六层聚合结果转换为前端 dashboard v2 契约。
- * v1.2.1 约定：
+ * v1.2.2 约定：
  * - rate delta 为百分点绝对差；
  * - count/GMV 趋势统一放到 trend[key].deltaPct；
  * - 同时保留 v1 dashboard 常用字段，避免旧入口完全断裂。
@@ -31,7 +31,7 @@ function composeDashboard(opts) {
   const kpiCards = buildKpiCards(board, payload.penetration);
 
   const result = {
-    version: '1.2.1',
+    version: '1.2.2',
     week,
     prevWeek: prevWeek || null,
     weeks,
@@ -214,7 +214,6 @@ function buildKpiCards(board, penetration) {
   const prevAvgPrice = prevGmv != null && prevDeal > 0 ? prevGmv / prevDeal : null;
   const supplementCards = [
     { key: 'appDau', label: 'APP DAU', value: p.appDau, delta: d.appDau ?? null, deltaPct: pctDelta(p.appDau, p.appDau != null && d.appDau != null ? p.appDau - d.appDau : null), note: 'APP 日均 DAU' },
-    { key: 'recycleDau', label: '回收DAU', value: p.recycleDau, delta: d.recycleDau ?? null, deltaPct: pctDelta(p.recycleDau, p.recycleDau != null && d.recycleDau != null ? p.recycleDau - d.recycleDau : null), note: '回收业务日均 DAU' },
     { key: 'recycleEntranceUv', label: '回收入口UV', value: p.recycleEntranceUv, delta: d.recycleEntranceUv ?? null, deltaPct: pctDelta(p.recycleEntranceUv, p.recycleEntranceUv != null && d.recycleEntranceUv != null ? p.recycleEntranceUv - d.recycleEntranceUv : null), note: '回收入口日均 UV' },
   ].filter((card) => hasMetricValue(card.value));
 

@@ -211,7 +211,7 @@ function sync() {
 
   const cache = {
     syncedAt: new Date().toISOString(),
-    version: '1.2.1',
+    version: '1.2.2',
     source: {
       dir: IMPORTS_DIR,
       prefix: CSV_PREFIX,
