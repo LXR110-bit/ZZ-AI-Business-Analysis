@@ -24,6 +24,33 @@ const aiEnabled = process.env.BUSINESS_OVERVIEW_AI_ENABLED === '1';
 const repoRoot = path.resolve(__dirname, '..', '..');
 const schemaPath = path.join(__dirname, 'business-overview-insights.schema.json');
 const STRATEGY_WARNING = '未配置上周策略/预判，暂无法检核兑现';
+const DEFAULT_CODEX_ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TERM',
+  'COLORTERM',
+  'CODEX_HOME',
+  'XDG_CONFIG_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_DATA_HOME',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'no_proxy',
+];
 
 async function getJson(apiPath, timeout = 300000) {
   const ctrl = new AbortController();
@@ -99,7 +126,10 @@ function summarizeDashboard(dashboard) {
 }
 
 function fallbackInsights(dashboard, warnings, extraWarning) {
-  const existing = dashboard.insights || {};
+  const rawExisting = dashboard.insights && typeof dashboard.insights === 'object' ? dashboard.insights : {};
+  // `/api/dashboard` may already contain a cached AI insight for the same week.
+  // When AI is disabled or fails, do not re-label stale AI copy as deterministic.
+  const existing = isGeneratedInsight(rawExisting) ? {} : rawExisting;
   const fallbackTiers = Object.fromEntries((dashboard.tiers || []).map((t) => {
     const cur = t.cur || {};
     return [t.tier, `${t.tier}层覆盖 ${cur.categoryCount || 0} 个在售品类，成交GMV ${formatWan(cur.gmv)}。`];
@@ -123,6 +153,11 @@ function fallbackInsights(dashboard, warnings, extraWarning) {
     },
     warnings: extraWarning ? warnings.concat(extraWarning) : warnings,
   };
+}
+
+function isGeneratedInsight(insights) {
+  if (!insights || typeof insights !== 'object') return false;
+  return Boolean(insights.generatedBy || insights.mode || insights.inputHash || insights.generatedAt);
 }
 
 function buildPrompt(summary, strategy, warnings) {
@@ -190,6 +225,23 @@ function normalizeAiCache(aiResult, dashboard, summary, warnings) {
   };
 }
 
+function buildCodexEnv(source = process.env) {
+  const allow = new Set(DEFAULT_CODEX_ENV_ALLOWLIST);
+  String(source.BUSINESS_OVERVIEW_CODEX_ENV_ALLOW || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .forEach((key) => allow.add(key));
+
+  const out = {};
+  for (const key of allow) {
+    if (Object.prototype.hasOwnProperty.call(source, key) && source[key] !== undefined) {
+      out[key] = source[key];
+    }
+  }
+  return out;
+}
+
 function runCodex(prompt) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-'));
   const lastMessage = path.join(dir, 'last-message.json');
@@ -207,7 +259,7 @@ function runCodex(prompt) {
     input: prompt,
     encoding: 'utf8',
     timeout: timeoutMs,
-    env: { ...process.env },
+    env: buildCodexEnv(process.env),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   if (proc.error) throw proc.error;
@@ -240,7 +292,16 @@ async function main() {
   console.log(JSON.stringify({ ok: true, mode: cache.mode, out: store.filePath(outName), week: cache.week, warnings: cache.warnings }, null, 2));
 }
 
-main().catch((e) => {
-  console.error('[business-overview] failed:', e && e.stack ? e.stack : e);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('[business-overview] failed:', e && e.stack ? e.stack : e);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  buildCodexEnv,
+  fallbackInsights,
+  isGeneratedInsight,
+  summarizeDashboard,
+};

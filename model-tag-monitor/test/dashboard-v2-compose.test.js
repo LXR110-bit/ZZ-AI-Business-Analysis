@@ -287,6 +287,50 @@ test('business overview cache: week 不匹配或坏结构时保持原 insights',
   assert.equal(bad.insights.board, original);
 });
 
+test('business overview generator: Codex env is allowlisted and excludes production secrets by default', () => {
+  const { buildCodexEnv } = require('../scripts/generate-business-overview-insights');
+  const env = buildCodexEnv({
+    PATH: '/usr/bin',
+    HOME: '/root',
+    CODEX_HOME: '/root/.codex',
+    FEISHU_CHAT_ID: 'secret-chat',
+    WEEKLY_REPORT_CHAT_ID: 'secret-weekly',
+    MY_OPEN_ID: 'secret-open-id',
+    LARK_APP_SECRET: 'secret-lark',
+    OPENAI_API_KEY: 'secret-api-key',
+  });
+
+  assert.equal(env.PATH, '/usr/bin');
+  assert.equal(env.HOME, '/root');
+  assert.equal(env.CODEX_HOME, '/root/.codex');
+  assert.equal(env.FEISHU_CHAT_ID, undefined);
+  assert.equal(env.WEEKLY_REPORT_CHAT_ID, undefined);
+  assert.equal(env.MY_OPEN_ID, undefined);
+  assert.equal(env.LARK_APP_SECRET, undefined);
+  assert.equal(env.OPENAI_API_KEY, undefined);
+});
+
+test('business overview generator: deterministic fallback does not reuse stale generated AI copy', () => {
+  const { fallbackInsights } = require('../scripts/generate-business-overview-insights');
+  const dashboard = composeDashboard(baseOpts);
+  dashboard.insights = {
+    board: '旧 AI 大盘洞察，不应复用',
+    tiers: { 发展: '旧 AI 发展', 孵化: '旧 AI 孵化', 种子: '旧 AI 种子' },
+    category: '旧 AI 品类洞察，不应复用',
+    monitor: '旧 AI 监测洞察，不应复用',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'old-hash',
+  };
+
+  const cache = fallbackInsights(dashboard, ['warning']);
+  assert.equal(cache.mode, 'deterministic');
+  assert.notEqual(cache.insights.board, '旧 AI 大盘洞察，不应复用');
+  assert.notEqual(cache.insights.category, '旧 AI 品类洞察，不应复用');
+  assert.notEqual(cache.insights.monitor, '旧 AI 监测洞察，不应复用');
+  assert.notEqual(cache.insights.tiers.发展, '旧 AI 发展');
+});
+
 test('business overview generator: fixture dry-run writes deterministic warning cache', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-test-'));
   const dashboardFile = path.join(tmp, 'dashboard.json');
