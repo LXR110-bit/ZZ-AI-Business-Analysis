@@ -4,13 +4,14 @@ const { buildSixLayerPayload } = require('./aggregate/index');
 const { buildCategoryLayer } = require('./aggregate/category');
 const { COUNT_KEYS, calcRates } = require('./aggregate/funnel');
 const { isoWeekToRangeStr } = require('./week-utils');
+const APP_VERSION = require('../package.json').version;
 
 const RATE_KEYS = ['evaRate', 'orderRate', 'shipRate', 'dealRate'];
 const TREND_KEYS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealCnt', 'gmv'];
 
 /**
  * 将六层聚合结果转换为前端 dashboard v2 契约。
- * v1.4.1 约定：
+ * dashboard v2 约定：
  * - rate delta 为百分点绝对差；
  * - count/GMV 趋势统一放到 trend[key].deltaPct；
  * - 同时保留 v1 dashboard 常用字段，避免旧入口完全断裂。
@@ -31,7 +32,7 @@ function composeDashboard(opts) {
   const kpiCards = buildKpiCards(board, payload.penetration);
 
   const result = {
-    version: '1.4.1',
+    version: APP_VERSION,
     week,
     prevWeek: prevWeek || null,
     weeks,
