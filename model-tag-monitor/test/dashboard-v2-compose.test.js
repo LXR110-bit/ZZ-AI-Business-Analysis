@@ -257,3 +257,15 @@ test('prevWeek 为 null：categories delta 全 null，anomalyScore 全 0', () =>
     assert.equal(c.anomalyScore, 0);
   }
 });
+
+
+test('kpiCards: 无大盘补充数据时不展示空 DAU 卡，估价UV口径文案为日切片品类去重', () => {
+  const result = composeDashboard({ ...baseOpts, boardMetrics: null });
+  const keys = result.kpiCards.map((c) => c.key);
+  assert.equal(keys.includes('appDau'), false);
+  assert.equal(keys.includes('recycleDau'), false);
+  assert.equal(keys.includes('recycleEntranceUv'), false);
+  const evaCard = result.kpiCards.find((c) => c.key === 'evaUv');
+  assert.ok(evaCard);
+  assert.equal(evaCard.note, '日切片品类维度估价UV去重汇总');
+});

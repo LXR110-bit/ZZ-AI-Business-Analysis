@@ -35,22 +35,45 @@ test('normalizeCategoryRecord: 中文字段名映射 + 数字兜底0', () => {
 });
 
 
-test('normalizeCategoryRecord: 真实 category_daily_avg 头映射，估价uv 作为品类去重周日均 evaUv', () => {
+test('normalizeCategoryRecord: 真实 category_daily_avg 头映射，普通指标列按 day_cnt 转周日均', () => {
   const row = normalizeCategoryRecord({
     week_start_date: '2026-07-06',
     品类名称: '手机',
     机况uv: '8888',
     估价uv: '54242',
     下单uv: '1234',
+    发货量: '100',
+    成交量: '80',
     成交gmv: '3,512,396',
     day_cnt: '2',
   });
   assert.equal(row.week, '2026-W28');
   assert.equal(row.category, '手机');
-  assert.equal(row.evaUv, 54242);
-  assert.equal(row.gmv, 3512396);
+  assert.equal(row.jkuv, 4444);
+  assert.equal(row.evaUv, 27121);
+  assert.equal(row.orderUv, 617);
+  assert.equal(row.shipCnt, 50);
+  assert.equal(row.dealCnt, 40);
+  assert.equal(row.gmv, 1756198);
   assert.equal(row.daysReceived, 2);
   assert.equal(row.conditionUv, row.jkuv);
+});
+
+test('normalizeCategoryRecord: 显式日均字段不按 day_cnt 重复除', () => {
+  const row = normalizeCategoryRecord({
+    统计周: '2026-W27',
+    品类名称: '手机',
+    机况UV日均: '8888',
+    估价UV日均: '54242',
+    发货量日均: '100',
+    成交GMV日均: '3,512,396',
+    day_cnt: '7',
+  });
+  assert.equal(row.jkuv, 8888);
+  assert.equal(row.evaUv, 54242);
+  assert.equal(row.shipCnt, 100);
+  assert.equal(row.gmv, 3512396);
+  assert.equal(row.daysReceived, 7);
 });
 
 test('dateToISOWeek: 2026-07-06 属于 2026-W28', () => {

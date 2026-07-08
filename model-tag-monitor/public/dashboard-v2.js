@@ -117,6 +117,7 @@ function renderBoardKpi(payload) {
   var cards = (payload && Array.isArray(payload.kpiCards) && payload.kpiCards.length)
     ? payload.kpiCards
     : buildBoardKpiFromPayload(payload || {});
+  cards = cards.filter(function(item) { return item && item.value !== null && item.value !== undefined && item.value !== ''; });
   $('#dashBoardKpi').innerHTML = cards.map(function(item) {
     var delta = item.deltaPct;
     if (delta === undefined || delta === null) delta = item.deltaRate;
@@ -141,10 +142,10 @@ function buildBoardKpiFromPayload(payload) {
     { key: 'appDau', label: 'APP DAU', value: penetration.appDau, deltaPct: null, note: 'APP 日均 DAU' },
     { key: 'recycleDau', label: '回收DAU', value: penetration.recycleDau, deltaPct: null, note: '回收业务日均 DAU' },
     { key: 'recycleEntranceUv', label: '回收入口UV', value: penetration.recycleEntranceUv, deltaPct: null, note: '回收入口日均 UV' },
-    { key: 'evaUv', label: '估价UV', value: cur.evaUv, deltaPct: null, note: '品类估价UV去重' },
-    { key: 'shipCnt', label: '发货数', value: cur.shipCnt, deltaPct: null, note: '发货订单数' },
-    { key: 'dealCnt', label: '成交订单', value: cur.dealCnt, deltaPct: null, note: '成交订单量' },
-    { key: 'gmv', label: '成交GMV', value: cur.gmv, deltaPct: null, note: '成交订单 GMV' },
+    { key: 'evaUv', label: '估价UV', value: cur.evaUv, deltaPct: null, note: '日切片品类维度估价UV去重汇总' },
+    { key: 'shipCnt', label: '发货数', value: cur.shipCnt, deltaPct: null, note: '发货订单数日均' },
+    { key: 'dealCnt', label: '成交订单', value: cur.dealCnt, deltaPct: null, note: '成交订单量日均' },
+    { key: 'gmv', label: '成交GMV', value: cur.gmv, deltaPct: null, note: '成交订单 GMV 日均' },
     { key: 'avgPrice', label: '客单价', value: avgPrice, deltaPct: null, note: '成交GMV / 成交订单量' },
   ];
 }
@@ -179,11 +180,11 @@ function renderTierSummary(tiers, activeTier, categories) {
   // 机况UV → 估价UV → 下单UV → 发货数 → 成交订单量。
   var items = [
     { key: 'conditionUv', label: '机况UV', value: fmtCountShort(c.conditionUv != null ? c.conditionUv : c.jkuv), note: '进入机况页去重 UV' },
-    { key: 'evaUv', label: '估价UV', value: fmtCountShort(c.evaUv), note: '完成估价去重 UV' },
+    { key: 'evaUv', label: '估价UV', value: fmtCountShort(c.evaUv), note: '日切片品类维度估价UV去重汇总' },
     { key: 'orderUv', label: '下单UV', value: fmtCountShort(c.orderUv), note: '进入下单页去重 UV' },
-    { key: 'shipCnt', label: '发货数', value: fmtCountShort(c.shipCnt), note: '发货订单数' },
-    { key: 'dealCnt', label: '成交订单量', value: fmtCountShort(c.dealCnt), note: '成交订单数/成交量' },
-    { key: 'gmv', label: '成交GMV', value: fmtGmvShort(c.gmv), note: '成交订单 GMV' },
+    { key: 'shipCnt', label: '发货数', value: fmtCountShort(c.shipCnt), note: '发货订单数日均' },
+    { key: 'dealCnt', label: '成交订单量', value: fmtCountShort(c.dealCnt), note: '成交订单量日均' },
+    { key: 'gmv', label: '成交GMV', value: fmtGmvShort(c.gmv), note: '成交订单 GMV 日均' },
   ];
   $('#dashTierSummary').innerHTML = items.map(function(it) {
     return '<div class="dash-ts-item" title="口径：' + escapeAttr(it.note) + '">' +
@@ -291,12 +292,12 @@ var DASH_SECONDARY_COLUMNS = [
   { key: 'name', label: '二级类目', cls: '', note: '品类映射表「二级板块」/ 二级类目' },
   { key: 'categoryCount', label: '品类数', cls: 'num', note: '该二级类目下的品类数量' },
   { key: 'conditionUv', label: '机况UV', cls: 'num', note: '进入机况页去重 UV' },
-  { key: 'evaUv', label: '估价UV', cls: 'num', note: '完成估价去重 UV' },
+  { key: 'evaUv', label: '估价UV', cls: 'num', note: '日切片品类维度估价UV去重汇总' },
   { key: 'evaCompletionRate', label: '估价完成率', cls: 'num', note: '估价UV / 机况UV' },
   { key: 'orderUv', label: '下单UV', cls: 'num', note: '进入下单页去重 UV' },
-  { key: 'shipCnt', label: '发货数', cls: 'num', note: '发货订单数' },
-  { key: 'dealCnt', label: '成交订单量', cls: 'num', note: '成交订单数/成交量' },
-  { key: 'gmv', label: '成交GMV', cls: 'num', note: '成交订单 GMV' },
+  { key: 'shipCnt', label: '发货数', cls: 'num', note: '发货订单数日均' },
+  { key: 'dealCnt', label: '成交订单量', cls: 'num', note: '成交订单量日均' },
+  { key: 'gmv', label: '成交GMV', cls: 'num', note: '成交订单 GMV 日均' },
 ];
 
 function getSecondaryColumnByKey(key) {
@@ -508,11 +509,11 @@ var DASH_CAT_COLUMNS = [
   { key: 'board', label: '二级类目', cls: '', note: '品类映射表「二级板块」' },
   { key: 'category', label: '品类', cls: '', note: '品类映射表「三级品类」/ 明细品类名' },
   { key: 'conditionUv', label: '机况UV', cls: 'num', note: '进入机况页去重 UV' },
-  { key: 'evaUv', label: '估价UV', cls: 'num', note: '完成估价去重 UV' },
+  { key: 'evaUv', label: '估价UV', cls: 'num', note: '日切片品类维度估价UV去重汇总' },
   { key: 'orderUv', label: '下单UV', cls: 'num', note: '进入下单页去重 UV' },
-  { key: 'shipCnt', label: '发货数', cls: 'num', note: '发货订单数' },
-  { key: 'dealCnt', label: '成交订单量', cls: 'num', note: '成交订单数/成交量' },
-  { key: 'gmv', label: '成交GMV', cls: 'num', note: '成交订单 GMV' },
+  { key: 'shipCnt', label: '发货数', cls: 'num', note: '发货订单数日均' },
+  { key: 'dealCnt', label: '成交订单量', cls: 'num', note: '成交订单量日均' },
+  { key: 'gmv', label: '成交GMV', cls: 'num', note: '成交订单 GMV 日均' },
   { key: 'dealRate', label: '成交率', cls: 'num', note: '成交订单量 / 估价UV' },
   { key: 'orderRate', label: '下单率', cls: 'num', note: '下单UV / 估价UV' },
   { key: 'shipRate', label: '发货率', cls: 'num', note: '发货数 / 估价UV' },
