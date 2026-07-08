@@ -2,6 +2,7 @@
 # model-tag-monitor v1.1.0 daily refresh flow
 # 06:30 Asia/Shanghai: local CSV/cache refresh -> dashboard health -> style-2 Lark card.
 set -Eeuo pipefail
+export PATH="/root/.local/bin:/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
 VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
