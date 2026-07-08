@@ -339,6 +339,26 @@ function fallbackSecondaryCategoryInsights(summary) {
   return out;
 }
 
+
+function categoryQualityAction(c) {
+  const anomaly = Number(c && c.anomalyScore) || 0;
+  const gmvDeltaPct = Number(c && c.trend && c.trend.gmv && c.trend.gmv.deltaPct);
+  const orderRateDelta = Number(c && c.delta && c.delta.orderRate);
+  const dealRateDelta = Number(c && c.delta && c.delta.dealRate);
+  const hasRisk = anomaly > 0
+    || (Number.isFinite(gmvDeltaPct) && gmvDeltaPct <= -0.05)
+    || (Number.isFinite(orderRateDelta) && orderRateDelta <= -0.01)
+    || (Number.isFinite(dealRateDelta) && dealRateDelta <= -0.01);
+  const hasOpportunity = (Number.isFinite(gmvDeltaPct) && gmvDeltaPct >= 0.05)
+    || (Number.isFinite(orderRateDelta) && orderRateDelta >= 0.01)
+    || (Number.isFinite(dealRateDelta) && dealRateDelta >= 0.01);
+  const hasUncertainty = !Number.isFinite(gmvDeltaPct) || !Number.isFinite(orderRateDelta);
+  if (hasRisk) return '行动计划：优先下钻异常链路，定位估价、下单、发货、成交中的主要断点。';
+  if (hasOpportunity) return '行动计划：保留当前有效承接，复盘增长来源，确认是否可复制放大。';
+  if (hasUncertainty) return '观察计划：补齐波动口径后再判断，不强行制定动作。';
+  return '当前无显著风险，维持观察，无需额外动作。';
+}
+
 function fallbackCategoryInsights(summary) {
   const out = {};
   for (const c of summary.categories || []) {
@@ -347,7 +367,7 @@ function fallbackCategoryInsights(summary) {
       : formatSignedWan(c.delta && c.delta.gmv);
     const orderRateDelta = formatSignedPct(c.delta && c.delta.orderRate);
     const risk = (c.anomalyScore || 0) >= 2 ? '高' : ((c.anomalyScore || 0) === 1 ? '中' : '低');
-    out[c.category] = `${c.category}（${c.tier || '未分层'} / ${c.secondaryCategory || '未归类'}）成交GMV ${formatWan(c.cur && c.cur.gmv)}，GMV变化 ${gmvDelta}，下单率变化 ${orderRateDelta}，影响风险${risk}；建议复盘估价完成、下单UV、发货与成交链路。`;
+    out[c.category] = `${c.category}（${c.tier || '未分层'} / ${c.secondaryCategory || '未归类'}）成交GMV ${formatWan(c.cur && c.cur.gmv)}，GMV变化 ${gmvDelta}，下单率变化 ${orderRateDelta}，影响风险${risk}；${categoryQualityAction(c)}`;
   }
   return out;
 }
@@ -375,7 +395,7 @@ function fallbackInsights(dashboard, warnings, extraWarning) {
   const topTier = (dashboard.tiers || []).slice().sort((a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0))[0];
   const board = dashboard.board && dashboard.board.cur ? dashboard.board.cur : {};
   return {
-    version: '1.4.0',
+    version: '1.4.1',
     week: dashboard.week,
     prevWeek: dashboard.prevWeek || '',
     generatedAt: new Date().toISOString(),
@@ -420,11 +440,12 @@ function buildPrompt(summary, strategy, warnings) {
     '1. 只输出 JSON，必须符合 output schema。',
     '2. 所有判断只能来自 <dashboard_summary> 里的结构化数据；不要自由查数，不要编造策略、竞对或行情事实。',
     '3. insights.board 是大盘概览，必须覆盖风险等级、链路判断、量价判断、关键拖累/机会。',
-    '4. insights.tiers 必须包含且只按 发展/孵化/种子 三个 key 输出，每个 value 覆盖该层表现、核心问题、建议。',
-    '5. insights.secondaryCategories 是数组，每项为 { name, insight }，name 必须覆盖 dashboard_summary.secondaryCategories[].secondaryCategory；insight 覆盖贡献、波动、拖累、机会、需要下钻的品类。',
-    '6. insights.categories 是数组，每项为 { name, insight }，name 必须覆盖 dashboard_summary.categories[].category；insight 覆盖影响度、异常原因、可解决度、行动建议。',
+    '4. insights.tiers 必须包含且只按 发展/孵化/种子 三个 key 输出，每个 value 覆盖该层表现、核心问题、风险/机会判断；只有存在风险、机会或不确定性时才给计划。',
+    '5. insights.secondaryCategories 是数组，每项为 { name, insight }，name 必须覆盖 dashboard_summary.secondaryCategories[].secondaryCategory；insight 覆盖贡献、波动、拖累、机会和是否需要下钻；无显著风险时写维持观察，不要硬给动作。',
+    '6. insights.categories 是数组，每项为 { name, insight }，name 必须覆盖 dashboard_summary.categories[].category；insight 覆盖影响度、风险/机会原因、可解决度；只有有风险/机会/不确定性时才给建设性计划，无显著风险时明确维持观察或无需额外动作。',
     '7. insights.category 是兼容旧字段，可写全局/当前筛选品类概览；insights.monitor 本期只写监测页总提示或明确空态，不输出机型级 AI 分析。',
-    '8. 如果上周策略为空，warnings 必须包含“未配置上周策略/预判，暂无法检核兑现”。',
+    '8. 建议必须有洞察和计划：说明为什么做、先查哪条链路、预期验证什么；禁止泛泛写“建议复盘”。如果没有风险或机会，不必给建议。',
+    '9. 如果上周策略为空，warnings 必须包含“未配置上周策略/预判，暂无法检核兑现”。',
     '',
     '<last_week_strategies>',
     strategy || '',
@@ -516,7 +537,7 @@ function normalizeAiCache(aiResult, dashboard, summary, warnings) {
   const aiWarnings = Array.isArray(aiResult.warnings) ? aiResult.warnings.filter(Boolean).map(String) : [];
   const mergedWarnings = [...new Set(warnings.concat(aiWarnings))];
   return {
-    version: '1.4.0',
+    version: '1.4.1',
     week: dashboard.week,
     prevWeek: dashboard.prevWeek || '',
     generatedAt: new Date().toISOString(),

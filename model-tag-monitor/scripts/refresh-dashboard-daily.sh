@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# model-tag-monitor v1.4.0 daily refresh flow
+# model-tag-monitor v1.4.1 daily refresh flow
 # 06:30 Asia/Shanghai: local CSV/cache refresh -> dashboard health -> style-2 Lark card.
 set -Eeuo pipefail
 export PATH="/root/.local/bin:/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
-VERSION="1.4.0"
+VERSION="1.4.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONITOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PARENT_DIR="$(cd "$MONITOR_DIR/.." && pwd)"
@@ -87,7 +87,7 @@ const file = process.argv[2];
 const expected = process.argv[3].split(',').filter(Boolean);
 const d = JSON.parse(fs.readFileSync(file, 'utf8'));
 const weeks = d.weeks || d.weekWindow || [];
-if (d.version !== '1.4.0') throw new Error(`dashboard version != 1.4.0: ${d.version}`);
+if (d.version !== '1.4.1') throw new Error(`dashboard version != 1.4.1: ${d.version}`);
 if (JSON.stringify(weeks) !== JSON.stringify(expected)) throw new Error(`dashboard weeks mismatch: ${weeks.join(',')} != ${expected.join(',')}`);
 if (d.week !== expected[expected.length - 1]) throw new Error(`dashboard latest week mismatch: ${d.week}`);
 if (!d.board || !Array.isArray(d.categories) || !d.categories.length) throw new Error('dashboard contract incomplete');

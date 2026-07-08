@@ -63,7 +63,7 @@ function buildCompleteAiResult(summary) {
       })),
       categories: (summary.categories || []).map((c) => ({
         name: c.category,
-        insight: `AI 品类 ${c.category}：影响度、异常原因、可解决度和行动建议已覆盖。`,
+        insight: `AI 品类 ${c.category}：影响度、风险或机会原因、可解决度和必要计划已覆盖；无风险时维持观察。`,
       })),
       category: 'AI 旧字段品类概览兼容。',
       monitor: 'AI 监测页本期为空态，只看结构化明细。',
@@ -688,6 +688,7 @@ test('business overview generator: fixture dry-run writes deterministic warning 
   assert.equal(cache.insights.tiers.种子.length > 0, true);
   assert.equal(typeof cache.insights.secondaryCategories.摄影摄像, 'string');
   assert.equal(typeof cache.insights.categories.无人机, 'string');
+  assert.match(Object.values(cache.insights.categories).join('\n'), /行动计划|观察计划|维持观察/);
   assert.equal(typeof cache.insights.category, 'string');
   assert.equal(typeof cache.insights.monitor, 'string');
   assert.deepEqual(cache.warnings, ['未配置上周策略/预判，暂无法检核兑现']);

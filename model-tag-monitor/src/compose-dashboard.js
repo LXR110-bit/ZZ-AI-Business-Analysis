@@ -10,7 +10,7 @@ const TREND_KEYS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealC
 
 /**
  * 将六层聚合结果转换为前端 dashboard v2 契约。
- * v1.4.0 约定：
+ * v1.4.1 约定：
  * - rate delta 为百分点绝对差；
  * - count/GMV 趋势统一放到 trend[key].deltaPct；
  * - 同时保留 v1 dashboard 常用字段，避免旧入口完全断裂。
@@ -31,7 +31,7 @@ function composeDashboard(opts) {
   const kpiCards = buildKpiCards(board, payload.penetration);
 
   const result = {
-    version: '1.4.0',
+    version: '1.4.1',
     week,
     prevWeek: prevWeek || null,
     weeks,
@@ -273,6 +273,24 @@ function buildSecondaryInsightMap(categories) {
   return out;
 }
 
+
+function deterministicCategoryAction(c) {
+  const anomaly = Number(c && c.anomalyScore) || 0;
+  const trend = (c && c.trend) || {};
+  const delta = (c && c.delta) || {};
+  const gmvDeltaPct = Number((trend.gmv || {}).deltaPct);
+  const orderRateDelta = Number(delta.orderRate);
+  const dealRateDelta = Number(delta.dealRate);
+  if (anomaly > 0 || (Number.isFinite(gmvDeltaPct) && gmvDeltaPct <= -0.05) || (Number.isFinite(orderRateDelta) && orderRateDelta <= -0.01) || (Number.isFinite(dealRateDelta) && dealRateDelta <= -0.01)) {
+    return '行动计划：优先下钻异常链路，定位估价、下单、发货、成交中的主要断点。';
+  }
+  if ((Number.isFinite(gmvDeltaPct) && gmvDeltaPct >= 0.05) || (Number.isFinite(orderRateDelta) && orderRateDelta >= 0.01) || (Number.isFinite(dealRateDelta) && dealRateDelta >= 0.01)) {
+    return '行动计划：保留当前有效承接，复盘增长来源，确认是否可复制放大。';
+  }
+  if (!Number.isFinite(gmvDeltaPct) || !Number.isFinite(orderRateDelta)) return '观察计划：补齐波动口径后再判断，不强行制定动作。';
+  return '当前无显著风险，维持观察，无需额外动作。';
+}
+
 function buildCategoryInsightMap(categories) {
   const out = {};
   for (const c of categories || []) {
@@ -281,7 +299,7 @@ function buildCategoryInsightMap(categories) {
     const delta = c.delta || {};
     const risk = (c.anomalyScore || 0) >= 2 ? '高' : ((c.anomalyScore || 0) === 1 ? '中' : '低');
     const orderRateDelta = delta.orderRate == null ? '待补' : `${delta.orderRate >= 0 ? '+' : ''}${(delta.orderRate * 100).toFixed(1)}pct`;
-    out[c.category] = `${c.category}（${c.tier || '未分层'} / ${c.secondaryCategory || c.board || '未归类'}）成交GMV ${formatWan(cur.gmv)}，下单率变化 ${orderRateDelta}，异常风险${risk}；建议复盘估价完成、下单UV、发货与成交链路。`;
+    out[c.category] = `${c.category}（${c.tier || '未分层'} / ${c.secondaryCategory || c.board || '未归类'}）成交GMV ${formatWan(cur.gmv)}，下单率变化 ${orderRateDelta}，异常风险${risk}；${deterministicCategoryAction(c)}`;
   }
   return out;
 }
