@@ -9,7 +9,6 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from email.header import decode_header
-from email.message import Message
 from pathlib import Path
 
 
@@ -22,8 +21,10 @@ class EmailSummary:
     attachments: list[str]
 
 
-def _decode(s: str | bytes) -> str:
-    """Decode RFC 2047 encoded subject/from headers."""
+def _decode(s: str | bytes | None) -> str:
+    """Decode RFC 2047 encoded subject/from/filename headers."""
+    if s is None:
+        return ""
     if isinstance(s, bytes):
         s = s.decode("utf-8", errors="ignore")
     parts = decode_header(s)
@@ -46,17 +47,34 @@ def _connect() -> imaplib.IMAP4_SSL:
     return imap
 
 
+def _fetch_bytes(imap: imaplib.IMAP4_SSL, uid: bytes | str, query: str) -> bytes:
+    """Fetch a UID-scoped IMAP payload and concatenate tuple/byte parts safely."""
+    uid_b = uid.encode() if isinstance(uid, str) else uid
+    typ, data = imap.uid("FETCH", uid_b, query)
+    if typ != "OK":
+        return b""
+    chunks: list[bytes] = []
+    for part in data:
+        if isinstance(part, tuple):
+            chunks.append(part[1])
+        elif isinstance(part, bytes):
+            chunks.append(part)
+    return b"".join(chunks)
+
+
 def list_emails(
     subject_contains: str | None = None,
     sender: str | None = None,
     since: str | None = None,
     folder: str = "INBOX",
     max_results: int = 20,
+    include_attachments: bool = True,
 ) -> list[EmailSummary]:
     """列邮件，按主题/发件人/日期过滤。
 
     since: 'YYYY-MM-DD' 或 None。
-    返回最新优先。
+    include_attachments: False 时跳过附件扫描，适合只需要先筛邮件的场景。
+    返回最新优先。uid 始终是 IMAP UID，不是易变 sequence number。
     """
     imap = _connect()
     try:
@@ -74,27 +92,25 @@ def list_emails(
                 pass
         if not criteria:
             criteria = ["ALL"]
-        typ, data = imap.search(None, *criteria)
+        typ, data = imap.uid("SEARCH", None, *criteria)
         if typ != "OK":
             return []
         uids = data[0].split()
         uids = uids[-max_results:][::-1]  # 最新优先
         out: list[EmailSummary] = []
         for uid in uids:
-            typ, msg_data = imap.fetch(uid, "(RFC822.HEADER)")
-            if typ != "OK":
+            raw_header = _fetch_bytes(imap, uid, "(RFC822.HEADER)")
+            if not raw_header:
                 continue
-            for part in msg_data:
-                if isinstance(part, tuple):
-                    msg = email.message_from_bytes(part[1])
-                    atts = _list_attachments_meta(imap, uid)
-                    out.append(EmailSummary(
-                        uid=uid.decode(),
-                        subject=_decode(msg.get("Subject", "")),
-                        sender=_decode(msg.get("From", "")),
-                        date=msg.get("Date", ""),
-                        attachments=atts,
-                    ))
+            msg = email.message_from_bytes(raw_header)
+            atts = _list_attachments_meta(imap, uid) if include_attachments else []
+            out.append(EmailSummary(
+                uid=uid.decode(),
+                subject=_decode(msg.get("Subject", "")),
+                sender=_decode(msg.get("From", "")),
+                date=msg.get("Date", ""),
+                attachments=atts,
+            ))
         return out
     finally:
         try:
@@ -103,15 +119,58 @@ def list_emails(
             pass
 
 
-def _list_attachments_meta(imap: imaplib.IMAP4_SSL, uid: bytes) -> list[str]:
-    """Quick scan for attachment filenames without downloading."""
-    typ, data = imap.fetch(uid, "(BODYSTRUCTURE)")
-    if typ != "OK":
+def _looks_like_attachment_name(name: str) -> bool:
+    return bool(re.search(r"\.(xlsx|xls|csv|zip|rar|pdf)$", name, re.I))
+
+
+def _dedupe_names(names: list[str], require_extension: bool = False) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for name in names:
+        decoded = _decode(name).strip()
+        if not decoded or decoded in seen:
+            continue
+        if require_extension and not _looks_like_attachment_name(decoded):
+            continue
+        seen.add(decoded)
+        out.append(decoded)
+    return out
+
+
+def _extract_attachment_names_from_message(msg: email.message.Message) -> list[str]:
+    names: list[str] = []
+    for part in msg.walk():
+        disposition = (part.get_content_disposition() or "").lower()
+        filename = part.get_filename()
+        if disposition == "attachment" or filename:
+            decoded = _decode(filename)
+            if decoded:
+                names.append(decoded)
+    return _dedupe_names(names)
+
+
+def _list_attachments_meta(imap: imaplib.IMAP4_SSL, uid: bytes | str) -> list[str]:
+    """Scan attachment filenames without downloading payloads when possible.
+
+    Some Tencent/Exmail BODYSTRUCTURE responses encode Chinese filenames as
+    RFC 2047 words or otherwise omit the simple quoted NAME/FILENAME pattern.
+    When the quick BODYSTRUCTURE regex misses, fall back to parsing the full
+    RFC822 MIME envelope so daily .zip and .xlsx attachments are not skipped.
+    """
+    raw_bs = _fetch_bytes(imap, uid, "(BODYSTRUCTURE)").decode("utf-8", errors="ignore")
+    names = re.findall(r'"(?:NAME|FILENAME)"\s+"([^"]+)"', raw_bs, re.I)
+    # RFC 2047 encoded filename values may be split across adjacent encoded
+    # words.  Decode contiguous groups, but accept them only when they look like
+    # complete filenames; otherwise continue to the MIME fallback below.
+    names.extend(re.findall(r'(?:=\?[^?]+\?[BbQq]\?[^?]+\?=\s*)+', raw_bs))
+    decoded = _dedupe_names(names, require_extension=True)
+    if decoded:
+        return decoded
+
+    raw_msg = _fetch_bytes(imap, uid, "(RFC822)")
+    if not raw_msg:
         return []
-    # Lazy parse: regex the filename hints. (Robust enough for typical CSVs.)
-    raw = b"".join(p if isinstance(p, bytes) else p[1] for p in data if p).decode("utf-8", errors="ignore")
-    names = re.findall(r'"(?:NAME|FILENAME)"\s+"([^"]+)"', raw, re.I)
-    return list({_decode(n) for n in names})
+    return _extract_attachment_names_from_message(email.message_from_bytes(raw_msg))
 
 
 def download_attachment(uid: str, attachment_name: str, save_dir: str | None = None) -> str:
@@ -121,16 +180,17 @@ def download_attachment(uid: str, attachment_name: str, save_dir: str | None = N
     imap = _connect()
     try:
         imap.select("INBOX")
-        typ, msg_data = imap.fetch(uid.encode() if isinstance(uid, str) else uid, "(RFC822)")
-        if typ != "OK":
+        raw = _fetch_bytes(imap, uid, "(RFC822)")
+        if not raw:
             raise RuntimeError(f"fetch failed for uid={uid}")
-        raw = b"".join(p if isinstance(p, bytes) else p[1] for p in msg_data if p)
         msg = email.message_from_bytes(raw)
+        target = _decode(attachment_name)
         for part in msg.walk():
-            if part.get_content_disposition() != "attachment":
-                continue
+            disposition = (part.get_content_disposition() or "").lower()
             fname = _decode(part.get_filename() or "")
-            if fname == attachment_name:
+            if disposition != "attachment" and not fname:
+                continue
+            if fname == target:
                 path = Path(save_dir) / fname
                 payload = part.get_payload(decode=True)
                 path.write_bytes(payload or b"")

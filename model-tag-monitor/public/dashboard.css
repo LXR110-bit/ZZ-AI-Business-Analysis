@@ -61,7 +61,39 @@
   font-size: 13px;
   letter-spacing: -0.01em;
 }
+.dash-week-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--d-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.dash-week-control select {
+  height: 30px;
+  min-width: 120px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--d-border-2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--d-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
 .dash-meta .dash-meta-sep { color: var(--d-ink-4); }
+.dash-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.26);
+  background: rgba(219, 234, 254, 0.62);
+  color: var(--d-accent-ink);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .dash-meta .dash-meta-cta {
   margin-left: auto;
   display: inline-flex;
@@ -82,6 +114,8 @@
   border-color: var(--d-accent);
 }
 .dash-meta .dash-meta-cta:active { transform: translateY(1px); }
+
+.dash-delta-neutral { color: var(--d-ink-3); }
 
 /* -------------------- KPI 卡片 -------------------- */
 .dash-kpi-row {

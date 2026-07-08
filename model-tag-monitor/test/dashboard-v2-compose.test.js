@@ -21,7 +21,7 @@ const boardBenchmark = parseBenchmarkCsv(fs.readFileSync(path.join(FIX_DIR, 'boa
 
 function parseBoardMetrics(csvStr) {
   const lines = csvStr.trim().split('\n').slice(1);
-  return { rows: lines.map((l) => { const [week, appDau, recycleEntranceUv] = l.split(','); return { week, appDau: Number(appDau), recycleEntranceUv: Number(recycleEntranceUv) }; }) };
+  return { rows: lines.map((l) => { const [week, appDau, recycleDau, recycleEntranceUv] = l.split(','); return { week, appDau: Number(appDau), recycleDau: Number(recycleDau), recycleEntranceUv: Number(recycleEntranceUv) }; }) };
 }
 const boardMetrics = parseBoardMetrics(fs.readFileSync(path.join(FIX_DIR, 'board-metrics.csv'), 'utf8'));
 
@@ -73,6 +73,36 @@ test('board.cur 含漏斗计数字段 + 4 rates', () => {
 test('board.cur.gmv > 0', () => {
   const { board } = composeDashboard(baseOpts);
   assert.ok(board.cur.gmv > 0);
+});
+
+test('大盘漏斗计数字段均由品类维度日均 cache 聚合，不读取大盘补充表', () => {
+  const noisyBoardMetrics = {
+    rows: [
+      {
+        week: '2026-W27',
+        appDau: 5200000,
+        recycleDau: 910000,
+        recycleEntranceUv: 162000,
+        brandPageUv: 999999999,
+        evaUv: 999999999,
+        orderUv: 999999999,
+        shipCnt: 999999999,
+        dealCnt: 999999999,
+        gmv: 999999999,
+      },
+    ],
+  };
+  const { board } = composeDashboard({ ...baseOpts, boardMetrics: noisyBoardMetrics });
+  const expected = {};
+  for (const k of COUNT_KEYS) expected[k] = 0;
+  for (const row of categoryCache.rows.filter((r) => r.week === '2026-W27')) {
+    for (const k of COUNT_KEYS) expected[k] += Number(row[k]) || 0;
+  }
+  if (!expected.conditionUv && expected.jkuv) expected.conditionUv = expected.jkuv;
+
+  for (const k of COUNT_KEYS) {
+    assert.equal(board.cur[k], expected[k], `board.cur.${k} 必须等于 category-cache 当周品类日均求和`);
+  }
 });
 
 test('board.delta 为绝对差（非百分比变化率）', () => {
@@ -172,6 +202,21 @@ test('categories[].anomalyScore 取值 0-3', () => {
   for (const c of categories) {
     assert.ok(c.anomalyScore >= 0 && c.anomalyScore <= 3);
   }
+});
+
+
+test('估价UV口径：board/tier/category 均来自 category-cache，不被 model-cache 明细累加覆盖', () => {
+  const customModelCache = JSON.parse(JSON.stringify(modelCache));
+  for (const row of customModelCache.rows) {
+    if (row.week === '2026-W27') row.evaUv = 9999999;
+  }
+  const result = composeDashboard({ ...baseOpts, modelCache: customModelCache });
+  const expectedBoardEvaUv = categoryCache.rows
+    .filter((r) => r.week === '2026-W27')
+    .reduce((sum, r) => sum + Number(r.evaUv || 0), 0);
+  assert.equal(result.board.cur.evaUv, expectedBoardEvaUv);
+  const drone = result.categories.find((c) => c.category === '无人机');
+  assert.equal(drone.cur.evaUv, 500);
 });
 
 // --- anomalyScore 逻辑验证 ---

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "description": "Example only. Copy to base_targets.json or set MODEL_WEEKLY_BASE_TARGET_MAP to a private file when using mapped Base imports.",
+  "targets": [
+    {
+      "family": "model",
+      "label": "机型维度日均7月",
+      "kind": "daily_avg",
+      "month": "2026-07",
+      "title": "多维机型维度漏斗数据日均表（7月）",
+      "base_token": "REPLACE_WITH_BASE_TOKEN",
+      "wiki_node_token": "REPLACE_WITH_WIKI_NODE_TOKEN",
+      "table_id": "REPLACE_WITH_TABLE_ID",
+      "view_id": "REPLACE_WITH_VIEW_ID",
+      "url": "https://example.feishu.cn/wiki/REPLACE"
+    }
+  ]
+}

@@ -64,7 +64,7 @@ function safeWeekRange(week) {
 function slimCur(cur) {
   const out = {};
   for (const k of COUNT_KEYS) out[k] = cur ? (cur[k] ?? null) : null;
-  if (out.conditionUv == null && out.jkuv != null) out.conditionUv = out.jkuv;
+  if ((out.conditionUv == null || out.conditionUv === 0) && out.jkuv != null) out.conditionUv = out.jkuv;
   for (const k of RATE_KEYS) out[k] = cur ? (cur[k] ?? null) : null;
   return out;
 }
@@ -213,7 +213,9 @@ function buildKpiCards(board, penetration) {
   const prevDeal = trendPrevFromDelta(cur.dealCnt, board, 'dealCnt');
   const prevAvgPrice = prevGmv != null && prevDeal > 0 ? prevGmv / prevDeal : null;
   return [
-    { key: 'appDau', label: 'DAU', value: p.appDau, delta: d.appDau ?? null, deltaPct: pctDelta(p.appDau, p.appDau != null && d.appDau != null ? p.appDau - d.appDau : null), note: 'APP 日均 DAU' },
+    { key: 'appDau', label: 'APP DAU', value: p.appDau, delta: d.appDau ?? null, deltaPct: pctDelta(p.appDau, p.appDau != null && d.appDau != null ? p.appDau - d.appDau : null), note: 'APP 日均 DAU' },
+    { key: 'recycleDau', label: '回收DAU', value: p.recycleDau, delta: d.recycleDau ?? null, deltaPct: pctDelta(p.recycleDau, p.recycleDau != null && d.recycleDau != null ? p.recycleDau - d.recycleDau : null), note: '回收业务日均 DAU' },
+    { key: 'recycleEntranceUv', label: '回收入口UV', value: p.recycleEntranceUv, delta: d.recycleEntranceUv ?? null, deltaPct: pctDelta(p.recycleEntranceUv, p.recycleEntranceUv != null && d.recycleEntranceUv != null ? p.recycleEntranceUv - d.recycleEntranceUv : null), note: '回收入口日均 UV' },
     { key: 'evaUv', label: '估价UV', value: cur.evaUv, deltaPct: trendPctFromBoard(cur.evaUv, board, 'evaUv'), note: '品类估价UV去重' },
     { key: 'shipCnt', label: '发货数', value: cur.shipCnt, deltaPct: trendPctFromBoard(cur.shipCnt, board, 'shipCnt'), note: '发货订单数' },
     { key: 'dealCnt', label: '成交订单', value: cur.dealCnt, deltaPct: trendPctFromBoard(cur.dealCnt, board, 'dealCnt'), note: '成交订单量' },

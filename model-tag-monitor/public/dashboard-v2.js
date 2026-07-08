@@ -68,11 +68,28 @@ function anomalyDots(score) {
 // ---- Meta 行 ----
 function renderDashboardMetaV2(d) {
   var t = d.syncedAt ? new Date(d.syncedAt).toLocaleString('zh-CN') : '-';
+  var weeks = (window.dashboardWeeks || []).slice();
+  if (d.week && weeks.indexOf(d.week) < 0) weeks.push(d.week);
+  weeks = (typeof sortWeekValues === 'function')
+    ? sortWeekValues(weeks, true)
+    : weeks.filter(Boolean).sort().reverse();
+  var options = weeks.map(function(w) {
+    return '<option value="' + escapeAttr(w) + '"' + (w === d.week ? ' selected' : '') + '>' + escapeHtml(w) + '</option>';
+  }).join('');
   $('#dashMeta').innerHTML =
-    '<span class="dash-meta-week">' + escapeHtml(d.week || '-') + '</span>' +
+    '<label class="dash-week-control"><span>目标周</span><select id="dashWeek">' + options + '</select></label>' +
     (d.weekRange ? '<span class="dash-meta-sep">·</span><span>' + escapeHtml(d.weekRange) + '</span>' : '') +
     '<span class="dash-meta-sep">·</span>' +
-    '<span>同步于 ' + escapeHtml(t) + '</span>';
+    '<span>同步于 ' + escapeHtml(t) + '</span>' +
+    '<span class="dash-meta-badge" title="本页周维度经营指标均按周日均展示，不能按周汇总口径解读">口径：周日均，非周汇总</span>';
+  var sel = $('#dashWeek');
+  if (sel) {
+    sel.value = d.week || '';
+    sel.addEventListener('change', function() {
+      writeUrlState({ tab: 'dashboard', week: sel.value || '', secondary: '' });
+      refreshDashboard();
+    });
+  }
 }
 
 // ---- 洞察概览占位（后续由数据分析 Agent 生成） ----
@@ -103,12 +120,13 @@ function renderBoardKpi(payload) {
   $('#dashBoardKpi').innerHTML = cards.map(function(item) {
     var delta = item.deltaPct;
     if (delta === undefined || delta === null) delta = item.deltaRate;
-    var up = Number(delta) >= 0;
+    var hasDelta = delta !== null && delta !== undefined && Number.isFinite(Number(delta));
+    var up = hasDelta && Number(delta) >= 0;
     var value = item.key === 'gmv' ? fmtGmvShort(item.value) : fmtCountFull(item.value);
     return '<div class="dash-kpi">' +
       '<div class="dash-kpi-label">' + escapeHtml(item.label || item.key || '-') + '</div>' +
       '<div class="dash-kpi-value">' + escapeHtml(value) + '</div>' +
-      '<div class="dash-kpi-sub"><span class="' + (up ? 'dash-delta-up' : 'dash-delta-down') + '">环比 ' + escapeHtml(fmtDeltaPlain(delta)) + '</span></div>' +
+      '<div class="dash-kpi-sub"><span class="' + (hasDelta ? (up ? 'dash-delta-up' : 'dash-delta-down') : 'dash-delta-neutral') + '">环比 ' + escapeHtml(fmtDeltaPlain(delta)) + '</span></div>' +
       '<div class="dash-kpi-note">口径：' + escapeHtml(item.note || '-') + '</div>' +
     '</div>';
   }).join('');
@@ -120,7 +138,9 @@ function buildBoardKpiFromPayload(payload) {
   var penetration = payload.penetration || {};
   var avgPrice = cur.dealCnt ? (cur.gmv || 0) / cur.dealCnt : null;
   return [
-    { key: 'appDau', label: 'DAU', value: penetration.appDau, deltaPct: null, note: 'APP 日均 DAU' },
+    { key: 'appDau', label: 'APP DAU', value: penetration.appDau, deltaPct: null, note: 'APP 日均 DAU' },
+    { key: 'recycleDau', label: '回收DAU', value: penetration.recycleDau, deltaPct: null, note: '回收业务日均 DAU' },
+    { key: 'recycleEntranceUv', label: '回收入口UV', value: penetration.recycleEntranceUv, deltaPct: null, note: '回收入口日均 UV' },
     { key: 'evaUv', label: '估价UV', value: cur.evaUv, deltaPct: null, note: '品类估价UV去重' },
     { key: 'shipCnt', label: '发货数', value: cur.shipCnt, deltaPct: null, note: '发货订单数' },
     { key: 'dealCnt', label: '成交订单', value: cur.dealCnt, deltaPct: null, note: '成交订单量' },

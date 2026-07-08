@@ -53,6 +53,13 @@ test('calcRates：正常计算', () => {
   assert.equal(rates.dealRate, 0.1);
 });
 
+
+test('calcRates：有 conditionUv 时估价完成率优先用 conditionUv 作分母', () => {
+  const rates = calcRates({ jkuv: 1000, conditionUv: 800, evaUv: 400, orderUv: 100, shipCnt: 80, dealCnt: 40 });
+  assert.equal(rates.evaRate, 0.5);
+  assert.equal(rates.orderRate, 0.25);
+});
+
 test('calcRates：jkuv 为 0 → evaRate null', () => {
   const sums = { jkuv: 0, evaUv: 0, evaCnt: 0, orderUv: 0, orderCnt: 0, shipCnt: 0, signCnt: 0, qcCnt: 0, dealCnt: 0, returnCnt: 0, gmv: 0 };
   const rates = calcRates(sums);
