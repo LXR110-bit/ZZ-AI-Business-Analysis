@@ -394,8 +394,8 @@ function renderMonitor() {
       <th class="row-status" aria-label="状态"></th>
       ${monitorSortableTh('category', '品类', '', '按品类排序')}
       ${monitorSortableTh('modelName', '机型', '', '按机型名称排序')}
-      ${monitorSortableTh('evaUv', '估价UV<sub class="mut">/日</sub>', 'num', '周汇总 / 已收到天数')}
       ${monitorSortableTh('jkuv', '机况UV<sub class="mut">/日</sub>', 'num', '周日均')}
+      ${monitorSortableTh('evaUv', '估价UV<sub class="mut">/日</sub>', 'num', '周日均')}
       ${monitorSortableTh('orderUv', '下单UV<sub class="mut">/日</sub>', 'num', '周日均')}
       ${monitorSortableTh('shipCnt', '发货<sub class="mut">/日</sub>', 'num', '周日均')}
       ${monitorSortableTh('qcCnt', '质检<sub class="mut">/日</sub>', 'num', '周日均')}
@@ -530,8 +530,8 @@ function renderMonitorRow(row, rates, waveThreshold) {
       <td class="row-status" aria-label="严重度"></td>
       <td class="cat-cell">${escapeHtml(row.category)}</td>
       <td class="model-cell"><strong>${escapeHtml(row.modelName)}</strong></td>
-      <td class="num">${fmtInt(cur.evaUv)}</td>
       <td class="num">${fmtInt(cur.jkuv)}</td>
+      <td class="num">${fmtInt(cur.evaUv)}</td>
       <td class="num">${fmtInt(cur.orderUv)}</td>
       <td class="num">${fmtInt(cur.shipCnt)}</td>
       <td class="num">${fmtInt(cur.qcCnt)}</td>
