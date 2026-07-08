@@ -52,6 +52,29 @@ function fmtDelta(v) {
 
 function keyOf(cat, model) { return `${cat}||${model}`; }
 
+function compareWeekValue(a, b) {
+  const ma = String(a || '').match(/^(\d{4})-W(\d{1,2})$/);
+  const mb = String(b || '').match(/^(\d{4})-W(\d{1,2})$/);
+  if (ma && mb) {
+    const ya = Number(ma[1]);
+    const yb = Number(mb[1]);
+    if (ya !== yb) return ya - yb;
+    return Number(ma[2]) - Number(mb[2]);
+  }
+  return String(a || '').localeCompare(String(b || ''), 'zh-CN', { numeric: true });
+}
+
+function sortWeekValues(weeks, desc = false) {
+  const list = Array.from(new Set((weeks || []).filter(Boolean)));
+  list.sort(compareWeekValue);
+  return desc ? list.reverse() : list;
+}
+
+function latestWeekValue(weeks) {
+  const list = sortWeekValues(weeks || []);
+  return list[list.length - 1] || '';
+}
+
 // ---- 全局状态 ----
 const state = {
   meta: null,
@@ -196,16 +219,19 @@ function updateMetaBar() {
   const m = state.meta;
   if (!m || !m.synced) {
     $('#meta').textContent = '尚未同步数据';
+    window.dashboardWeeks = [];
     return;
   }
   const t = new Date(m.syncedAt);
   const src = m.source?.title ? `${m.source.title} / ${m.source.sheetTitle || ''}`.replace(/\s\/\s$/, '') : '';
   $('#meta').textContent = `${src ? src + ' · ' : ''}${m.rowCount} 行 · ${m.categories.length} 品类 · ${m.weeks.length} 周 · 同步于 ${t.toLocaleString('zh-CN')}`;
+  window.dashboardWeeks = sortWeekValues(m.dashboardWeeks || m.weeks || []);
 
   // 填充 select
   const wSel = $('#monitorWeek');
-  wSel.innerHTML = m.weeks.map((w) => `<option value="${w}">${w}</option>`).join('');
-  wSel.value = m.weeks[m.weeks.length - 1] || '';
+  const weeks = sortWeekValues(m.weeks || []);
+  wSel.innerHTML = weeks.map((w) => `<option value="${escapeAttr(w)}">${escapeHtml(w)}</option>`).join('');
+  wSel.value = latestWeekValue(weeks);
 
   const cSel = $('#monitorCategory');
   cSel.innerHTML = '<option value="">全部品类</option>' + m.categories.map((c) => `<option value="${c}">${c}</option>`).join('');
@@ -839,7 +865,11 @@ async function refreshDashboard() {
       catTbody.innerHTML = '<tr><td colspan="99" class="dash-empty">尚未同步数据 · 请先点顶部「同步数据」</td></tr>';
       return;
     }
-    const d = await api('/api/dashboard');
+    const weeks = sortWeekValues(state.meta.dashboardWeeks || state.meta.weeks || []);
+    const urlWeek = readUrlState().week || '';
+    const selectedWeek = (!urlWeek || weeks.indexOf(urlWeek) >= 0) ? (urlWeek || latestWeekValue(weeks)) : latestWeekValue(weeks);
+    const qs = selectedWeek ? '?week=' + encodeURIComponent(selectedWeek) : '';
+    const d = await api('/api/dashboard' + qs);
     if (!d || !d.board) {
       catTbody.innerHTML = '<tr><td colspan="99" class="dash-empty">数据组装中，请稍后刷新</td></tr>';
       return;

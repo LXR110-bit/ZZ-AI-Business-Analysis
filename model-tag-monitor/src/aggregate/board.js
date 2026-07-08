@@ -21,6 +21,7 @@ function buildBoardLayer(categories, categoriesPrev, boardBenchmark, week) {
   // cur：全量（含已下线）
   const allCurRows = cats.map((c) => c.cur);
   const curSums = sumCounts(allCurRows);
+  if (!curSums.conditionUv && curSums.jkuv) curSums.conditionUv = curSums.jkuv;
   const cur = { ...curSums, ...calcRates(curSums) };
 
   // delta：排除已下线

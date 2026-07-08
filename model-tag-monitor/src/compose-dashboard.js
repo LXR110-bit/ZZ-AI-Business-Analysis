@@ -64,7 +64,7 @@ function safeWeekRange(week) {
 function slimCur(cur) {
   const out = {};
   for (const k of COUNT_KEYS) out[k] = cur ? (cur[k] ?? null) : null;
-  if (out.conditionUv == null && out.jkuv != null) out.conditionUv = out.jkuv;
+  if ((out.conditionUv == null || out.conditionUv === 0) && out.jkuv != null) out.conditionUv = out.jkuv;
   for (const k of RATE_KEYS) out[k] = cur ? (cur[k] ?? null) : null;
   return out;
 }

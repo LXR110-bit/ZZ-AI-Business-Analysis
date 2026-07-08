@@ -38,7 +38,8 @@ function sumCounts(rows) {
  * @returns {{evaRate: number|null, orderRate: number|null, shipRate: number|null, dealRate: number|null}}
  */
 function calcRates(sums) {
-  const jkuv = sums.jkuv || 0;
+  const conditionUv = sums.conditionUv || 0;
+  const jkuv = conditionUv || sums.jkuv || 0;
   const evaUv = sums.evaUv || 0;
   return {
     evaRate: jkuv > 0 ? evaUv / jkuv : null,

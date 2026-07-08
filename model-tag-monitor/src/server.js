@@ -7,6 +7,7 @@ const store = require('./store');
 const { sync } = require('./sync');
 const categorySync = require('./category-sync');
 const taxonomySync = require('./taxonomy-sync');
+const boardSync = require('./board-sync');
 const { monitor, DEFAULT_RULES } = require('./monitor');
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
 const { createProxy } = require('./proxy');
@@ -99,17 +100,53 @@ app.post('/api/sync/taxonomy', async (req, res) => {
   }
 });
 
+
+// ---- 大盘/DAU 补充数据同步（本地 CSV → board-metrics.json） ----
+let syncingBoard = false;
+app.post('/api/sync/board', async (req, res) => {
+  if (syncingBoard) return res.status(409).json({ error: '大盘补充数据正在同步中,请稍候' });
+  syncingBoard = true;
+  const user = getUser(req);
+  try {
+    const result = await boardSync.sync();
+    invalidateDashboardCache();
+    store.appendLog({ action: 'sync-board-manual', user, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[/api/sync/board] 失败:', e);
+    res.status(500).json({ error: e.message });
+  } finally {
+    syncingBoard = false;
+  }
+});
+
 // ---- 元数据 ----
 app.get('/api/meta', (req, res) => {
   const cache = store.readJSON('cache.json', null);
-  if (!cache) return res.json({ synced: false });
+  const categoryCache = store.readJSON('category-cache.json', null);
+  if (!cache && !categoryCache) return res.json({ synced: false });
+
+  const dashboardWeeks = categoryCache
+    ? (categoryCache.weeks && categoryCache.weeks.length
+      ? categoryCache.weeks
+      : [...new Set((categoryCache.rows || []).map((r) => r.week).filter(Boolean))].sort())
+    : [];
+  const dashboardCategories = categoryCache
+    ? (categoryCache.categories && categoryCache.categories.length
+      ? categoryCache.categories
+      : [...new Set((categoryCache.rows || []).map((r) => r.category).filter(Boolean))].sort())
+    : [];
+
   res.json({
     synced: true,
-    syncedAt: cache.syncedAt,
-    categories: cache.categories,
-    weeks: cache.weeks,
-    rowCount: cache.rows.length,
-    source: cache.source,
+    monitorSynced: !!cache,
+    dashboardSynced: !!categoryCache,
+    syncedAt: (cache && cache.syncedAt) || (categoryCache && categoryCache.syncedAt),
+    categories: cache ? cache.categories : dashboardCategories,
+    weeks: cache ? cache.weeks : dashboardWeeks,
+    dashboardWeeks,
+    rowCount: cache ? cache.rows.length : ((categoryCache && categoryCache.rows && categoryCache.rows.length) || 0),
+    source: cache ? cache.source : (categoryCache && categoryCache.source),
   });
 });
 

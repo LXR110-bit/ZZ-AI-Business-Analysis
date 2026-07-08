@@ -19,6 +19,7 @@ function buildTierLayer(categoryLayerCur, categoryLayerPrev) {
     const tierCats = cats.filter((c) => c.tier === tier);
     const curRows = tierCats.map((c) => c.cur);
     const curSums = sumCounts(curRows);
+    if (!curSums.conditionUv && curSums.jkuv) curSums.conditionUv = curSums.jkuv;
     const cur = { ...curSums, ...calcRates(curSums) };
 
     // delta：排除已下线

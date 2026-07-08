@@ -122,8 +122,9 @@ function normalizeCategoryRecord(fields) {
 
 function computeRates(row) {
   const safeDiv = (a, b) => (b > 0 ? a / b : null);
+  const conditionDenominator = row.conditionUv || row.jkuv;
   return {
-    evaRate: safeDiv(row.evaUv, row.jkuv),
+    evaRate: safeDiv(row.evaUv, conditionDenominator),
     orderRate: safeDiv(row.orderUv, row.evaUv),
     shipRate: safeDiv(row.shipCnt, row.evaUv),
     dealRate: safeDiv(row.dealCnt, row.evaUv),
@@ -185,7 +186,13 @@ function sync() {
   const cache = {
     syncedAt: new Date().toISOString(),
     version: '1.1.0',
-    source: { dir: IMPORTS_DIR, prefix: CSV_PREFIX, targetWeeks: [...targetWeeks].sort() },
+    source: {
+      dir: IMPORTS_DIR,
+      prefix: CSV_PREFIX,
+      targetWeeks: [...targetWeeks].sort(),
+      grain: 'category_dedup_daily_avg',
+      evaUv: 'category-level deduplicated weekly daily average',
+    },
     weeks,
     categories,
     rows,

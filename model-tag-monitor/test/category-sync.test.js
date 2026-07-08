@@ -8,6 +8,7 @@ const {
   mergeRows,
   buildExcludedCategorySet,
   filterByExcludedCategories,
+  dateToISOWeek,
 } = require('../src/category-sync');
 
 test('normalizeCategoryRecord: 中文字段名映射 + 数字兜底0', () => {
@@ -33,6 +34,29 @@ test('normalizeCategoryRecord: 中文字段名映射 + 数字兜底0', () => {
   assert.equal(row.gmv, 480000);
 });
 
+
+test('normalizeCategoryRecord: 真实 category_daily_avg 头映射，估价uv 作为品类去重周日均 evaUv', () => {
+  const row = normalizeCategoryRecord({
+    week_start_date: '2026-07-06',
+    品类名称: '手机',
+    机况uv: '8888',
+    估价uv: '54242',
+    下单uv: '1234',
+    成交gmv: '3,512,396',
+    day_cnt: '2',
+  });
+  assert.equal(row.week, '2026-W28');
+  assert.equal(row.category, '手机');
+  assert.equal(row.evaUv, 54242);
+  assert.equal(row.gmv, 3512396);
+  assert.equal(row.daysReceived, 2);
+  assert.equal(row.conditionUv, row.jkuv);
+});
+
+test('dateToISOWeek: 2026-07-06 属于 2026-W28', () => {
+  assert.equal(dateToISOWeek('2026-07-06'), '2026-W28');
+});
+
 test('normalizeCategoryRecord: 缺失数字字段兜底为0，缺失文本字段兜底为空串', () => {
   const row = normalizeCategoryRecord({ 统计周: '2026-W27', 品类名称: '无人机' });
   assert.equal(row.jkuv, 0);
@@ -45,6 +69,13 @@ test('computeRates: 分母>0 正常算比率', () => {
   assert.equal(rates.orderRate, 0.2);
   assert.equal(rates.shipRate, 0.16);
   assert.equal(rates.dealRate, 0.1);
+});
+
+
+test('computeRates: 有 conditionUv 时估价完成率优先用 conditionUv 作分母', () => {
+  const rates = computeRates({ jkuv: 100, conditionUv: 80, evaUv: 40, orderUv: 10, shipCnt: 8, dealCnt: 4 });
+  assert.equal(rates.evaRate, 0.5);
+  assert.equal(rates.orderRate, 0.25);
 });
 
 test('computeRates: 分母为0或缺失 → 该比率为 null（不是0）', () => {

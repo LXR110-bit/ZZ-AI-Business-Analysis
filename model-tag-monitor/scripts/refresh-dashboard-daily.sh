@@ -12,7 +12,7 @@ API_BASE="${API_BASE:-http://127.0.0.1:8848}"
 DASHBOARD_URL="${DASHBOARD_URL:-http://47.84.94.234:8848/?tab=dashboard}"
 REPORT_URL="${REPORT_URL:-$DASHBOARD_URL}"
 IMPORT_DIR="${IMPORT_DIR:-/root/workspace/ZZ-AI-Business-Analysis-base-migration/data/imports}"
-TARGET_WEEKS="${TARGET_WEEKS:-2026-W18,2026-W19,2026-W20,2026-W21,2026-W22,2026-W23,2026-W24,2026-W25,2026-W26,2026-W27}"
+TARGET_WEEKS="${TARGET_WEEKS:-2026-W19,2026-W20,2026-W21,2026-W22,2026-W23,2026-W24,2026-W25,2026-W26,2026-W27,2026-W28}"
 KEEP_WEEKS="${KEEP_WEEKS:-10}"
 LOG_DIR="${LOG_DIR:-$MONITOR_DIR/logs}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -69,6 +69,7 @@ log "model-tag-monitor refresh start version=$VERSION api=$API_BASE import_dir=$
 post_json /api/sync
 post_json /api/sync/taxonomy
 post_json /api/sync/category
+post_json /api/sync/board
 
 DASHBOARD_JSON="$(get_json /api/dashboard)"
 printf '%s' "$DASHBOARD_JSON" > "$LOG_DIR/dashboard-$RUN_ID.json"

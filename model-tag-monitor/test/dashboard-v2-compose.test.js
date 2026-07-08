@@ -174,6 +174,21 @@ test('categories[].anomalyScore 取值 0-3', () => {
   }
 });
 
+
+test('估价UV口径：board/tier/category 均来自 category-cache，不被 model-cache 明细累加覆盖', () => {
+  const customModelCache = JSON.parse(JSON.stringify(modelCache));
+  for (const row of customModelCache.rows) {
+    if (row.week === '2026-W27') row.evaUv = 9999999;
+  }
+  const result = composeDashboard({ ...baseOpts, modelCache: customModelCache });
+  const expectedBoardEvaUv = categoryCache.rows
+    .filter((r) => r.week === '2026-W27')
+    .reduce((sum, r) => sum + Number(r.evaUv || 0), 0);
+  assert.equal(result.board.cur.evaUv, expectedBoardEvaUv);
+  const drone = result.categories.find((c) => c.category === '无人机');
+  assert.equal(drone.cur.evaUv, 500);
+});
+
 // --- anomalyScore 逻辑验证 ---
 
 test('anomalyScore：手动构造下降 > 5 百分点场景', () => {
