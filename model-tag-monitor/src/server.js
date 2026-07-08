@@ -10,6 +10,7 @@ const taxonomySync = require('./taxonomy-sync');
 const { monitor, DEFAULT_RULES } = require('./monitor');
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
 const { createProxy } = require('./proxy');
+const { composeDashboard: composeDashboardV2 } = require('./compose-dashboard');
 
 const app = express();
 const PORT = process.env.PORT || 8848;
@@ -68,6 +69,7 @@ app.post('/api/sync/category', async (req, res) => {
   const user = getUser(req);
   try {
     const result = await categorySync.sync();
+    invalidateDashboardCache();
     store.appendLog({ action: 'sync-category-manual', user, ...result });
     res.json({ ok: true, ...result });
   } catch (e) {
@@ -86,6 +88,7 @@ app.post('/api/sync/taxonomy', async (req, res) => {
   const user = getUser(req);
   try {
     const result = await taxonomySync.sync();
+    invalidateDashboardCache();
     store.appendLog({ action: 'sync-taxonomy-manual', user, ...result });
     res.json({ ok: true, ...result });
   } catch (e) {
@@ -237,12 +240,29 @@ app.get('/api/monitor', (req, res) => {
   res.end(body);
 });
 
-// ---- 概览 ----
+// ---- 概览 v2：真实品类缓存聚合，保留 v1 兼容字段 ----
 app.get('/api/dashboard', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   try {
+    const categoryCache = store.readJSON('category-cache.json', null);
+    const taxonomy = store.readJSON('category-taxonomy.json', null);
+    const boardMetrics = store.readJSON('board-metrics.json', null);
+    if (categoryCache && taxonomy && Array.isArray(categoryCache.rows) && categoryCache.rows.length) {
+      const weeks = (categoryCache.weeks && categoryCache.weeks.length
+        ? categoryCache.weeks
+        : [...new Set(categoryCache.rows.map((r) => r.week).filter(Boolean))]
+      ).slice().sort();
+      const week = String(req.query.week || weeks[weeks.length - 1] || '').trim();
+      const prevWeek = weeks[weeks.indexOf(week) - 1] || null;
+      if (!week) return res.status(503).json({ error: '品类缓存缺少周次' });
+      const result = composeDashboardV2({ categoryCache, taxonomy, boardMetrics, week, prevWeek });
+      return res.json(result);
+    }
+
+    // 上游/旧 dashboard 仅作为调试兜底；生产 v1.1.0 验收必须命中上面的 v2 真实聚合。
     const d = UPSTREAM ? await getDashboardFromUpstream(UPSTREAM) : getDashboard();
     if (!d) return res.status(503).json({ error: '尚未同步数据' });
-    res.json(d);
+    res.json({ ...d, contractFallback: 'v1-dashboard' });
   } catch (e) {
     console.error('[/api/dashboard] failed:', e);
     res.status(502).json({ error: 'dashboard 组装失败', detail: e.message });

@@ -1,9 +1,15 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+  <script>
+    // 本应用必须通过本地服务访问；防止误开 file:// 导致 CSS/JS/API 全部失效。
+    if (location.protocol === 'file:') {
+      location.replace('http://localhost:8848/' + location.search + location.hash);
+    }
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>机型标签监测面板</title>
+  <title>万象AI经营分析</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -11,12 +17,12 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
   />
   <link rel="stylesheet" href="/style.css?v=20250124d" />
-  <link rel="stylesheet" href="/dashboard.css?v=20260705d" />
+  <link rel="stylesheet" href="/dashboard.css?v=20260708g" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="title">机型标签监测</span>
+      <span class="title">万象AI经营分析</span>
       <span class="meta" id="meta"></span>
     </div>
     <div class="actions">
@@ -24,10 +30,10 @@
         我是
         <input id="userName" placeholder="姓名" />
       </label>
-      <button id="btnSync" class="primary">同步飞书数据</button>
-      <button id="btnExport">导出配置</button>
-      <label class="btn-file">
-        导入配置
+      <button id="btnSync" class="primary" title="同步最新经营/监测数据">同步数据</button>
+      <button id="btnExport" title="导出当前标签、标签字典和兜底监测规则，不导出经营数据">导出设置</button>
+      <label class="btn-file" title="导入之前导出的标签、标签字典和兜底监测规则">
+        导入设置
         <input id="fileImport" type="file" accept=".json" hidden />
       </label>
     </div>
@@ -45,38 +51,60 @@
     <!-- 概览 -->
     <section class="page dash-scope" id="page-dashboard">
       <div class="dash-meta" id="dashMeta"></div>
-      <div class="dash-kpi-row" id="dashKpiRow"></div>
-      <div class="dash-chart-row">
-        <div class="dash-card">
-          <div class="dash-card-title">GMV 5 周趋势</div>
-          <div class="dash-card-sub">按最新 5 个周次累计成交 GMV，点圆点跳到该周监测结果</div>
-          <div class="dash-line-wrap" id="dashLineWrap"></div>
+      <!-- 大盘概览：后续由数据分析 Agent 产出本周/上周差异和洞察 -->
+      <div class="dash-insight-overview" id="dashBoardOverview"></div>
+      <!-- 大盘 KPI 卡 -->
+      <div class="dash-board-kpi" id="dashBoardKpi"></div>
+      <!-- 胶囊 Tab：发展/孵化/种子 -->
+      <div class="dash-tier-tabs" id="dashTierTabs">
+        <button class="dash-tier-tab active" data-tier="发展">发展</button>
+        <button class="dash-tier-tab" data-tier="孵化">孵化</button>
+        <button class="dash-tier-tab" data-tier="种子">种子</button>
+      </div>
+      <!-- 分层概览：后续由数据分析 Agent 按发展/孵化/种子产出洞察 -->
+      <div class="dash-insight-overview dash-tier-overview" id="dashTierOverview"></div>
+      <!-- 该层汇总 KPI 条 -->
+      <div class="dash-tier-summary" id="dashTierSummary"></div>
+      <!-- 二级类目汇总与筛选：发展/孵化/种子的下一层 -->
+      <div class="dash-secondary-section" id="dashSecondarySection">
+        <div class="dash-secondary-head">
+          <div>
+            <h3 class="dash-secondary-title">二级类目汇总</h3>
+            <p class="dash-secondary-sub">按二级类目聚合该层品类数据；点击卡片或选择下拉可筛选下方品类明细。</p>
+          </div>
+          <div class="dash-secondary-actions">
+            <label class="dash-secondary-filter">
+              二级类目
+              <select id="dashSecondaryFilter">
+                <option value="">全部二级类目</option>
+              </select>
+            </label>
+            <div class="dash-column-control">
+              <button class="dash-view-toggle" id="dashSecondaryColumnToggle" type="button">指标设置</button>
+              <div class="dash-column-picker hidden" id="dashSecondaryColumnPicker"></div>
+            </div>
+          </div>
         </div>
-        <div class="dash-card">
-          <div class="dash-card-title">品类 GMV 分布（Top 6）</div>
-          <div class="dash-card-sub">按 Top 6 品类 GMV 份额展示，点扇区筛到该品类</div>
-          <div class="dash-donut-wrap" id="dashDonutWrap"></div>
+        <div class="dash-secondary-table-wrap">
+          <table class="dash-secondary-table" id="dashSecondaryTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
-      <div class="dash-top">
-        <div class="dash-top-head">
-          <div>
-            <h3 class="dash-top-title">Top 10 异常机型</h3>
-            <div class="dash-top-sub">按 orderRate 周环比波动幅度倒序，点行下钻到该机型</div>
+      <!-- 品类表格 -->
+      <div class="dash-category-section">
+        <div class="dash-category-head">
+          <h3 class="dash-category-title" id="dashCategoryTitle">品类明细</h3>
+          <div class="dash-column-control">
+            <button class="dash-view-toggle" id="dashViewToggle" type="button">指标设置</button>
+            <div class="dash-column-picker hidden" id="dashColumnPicker"></div>
           </div>
-          <div class="dash-top-hint">点行 → 进入监测详情</div>
         </div>
-        <div class="dash-top-table-wrap">
-          <table class="dash-top-table" id="dashTopTable">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>机型</th>
-                <th style="text-align:right;">orderRate</th>
-                <th style="text-align:right;">周环比</th>
-                <th></th>
-              </tr>
-            </thead>
+        <div class="dash-insight-overview dash-category-overview" id="dashCategoryOverview"></div>
+        <div class="dash-category-table-wrap">
+          <table class="dash-category-table" id="dashCategoryTable">
+            <thead></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -124,6 +152,7 @@
         </div>
         <div class="summary" id="monitorSummary"></div>
       </div>
+      <div class="analysis-overview" id="monitorInsightOverview"></div>
       <div class="table-wrap">
         <table id="monitorTable">
           <thead></thead>
@@ -150,6 +179,7 @@
             <input id="tagsSearch" placeholder="机型关键词，回车应用" />
           </label>
           <button id="btnTagsRun" class="primary">确认</button>
+          <button id="btnBatchTags" type="button">批量编辑标签</button>
           <button id="btnEditVocab">编辑标签字典</button>
         </div>
         <div class="summary" id="tagsSummary"></div>
@@ -165,9 +195,14 @@
     <!-- 规则配置 -->
     <section class="page hidden" id="page-rules">
       <div class="page-header">
-        <h2>全局监测规则</h2>
-        <p class="hint">规则改动会立刻影响"监测结果"页,所有人共享同一份规则。</p>
+        <h2>异动判断规则</h2>
+        <p class="hint">优先关联飞书业务分析文档中的分层判断逻辑；下面这套作为基础兜底规则。</p>
       </div>
+      <div class="analysis-overview rules-analysis-overview">
+        <div class="analysis-title">业务异动判断文档（飞书）</div>
+        <div class="analysis-body">待接入：按大盘 / 发展 / 孵化 / 种子 / 二级类目 / 品类 / 机型分层读取飞书分析文档，优先使用业务定义的异动原因、关注指标和处理建议。</div>
+      </div>
+      <h3 class="rules-form-title">基础兜底规则</h3>
       <form id="rulesForm" class="rules-form">
         <label>
           <span>入池:每个品类取估价 UV TOP N</span>
@@ -275,6 +310,7 @@
     </aside>
   </div>
 
-  <script src="/app.js?v=20260705d"></script>
+  <script src="/dashboard-v2.js?v=20260708g"></script>
+  <script src="/app.js?v=20260708g"></script>
 </body>
 </html>

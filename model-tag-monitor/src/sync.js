@@ -10,8 +10,9 @@ const path = require('node:path');
 const IMPORTS_DIR = getImportsDir();
 const CSV_PREFIX = 'model_daily_avg_';
 
-// 保留最近几周的数据（与一期一致）
-const KEEP_WEEKS = 5;
+// 保留最近几周的数据：v1.1.0 线上完整验证口径固定覆盖 W18~W27（10 周）。
+// 可用 KEEP_WEEKS 环境变量覆盖，便于回归旧 5 周窗口或临时扩大窗口。
+const KEEP_WEEKS = Number.parseInt(process.env.KEEP_WEEKS || '10', 10);
 
 // 表头字段 → 内部字段名映射
 // 官方口径已是"周日均":列名以 "XX日均" 结尾;老表用 "XX汇总" 是周累计,也做兼容(不推荐使用)
@@ -217,6 +218,18 @@ function dateToISOWeek(dateStr) {
   return `${year}-W${String(weekNum).padStart(2, '0')}`;
 }
 
+
+function parseTargetWeeks(value) {
+  const weeks = String(value || '')
+    .split(',')
+    .map((w) => w.trim())
+    .filter(Boolean);
+  if (!weeks.length) return null;
+  const invalid = weeks.filter((w) => !/^\d{4}-W\d{2}$/.test(w));
+  if (invalid.length) throw new Error(`TARGET_WEEKS 格式错误: ${invalid.join(',')}`);
+  return new Set(weeks.sort());
+}
+
 async function sync() {
   console.log('[sync] 开始同步本地 CSV 数据...');
 
@@ -231,9 +244,10 @@ async function sync() {
     return { rows: 0, categories: 0, weeks: 0 };
   }
 
-  // Pass 1: 从最新月份文件开始扫周次，累计够 KEEP_WEEKS 就停下
-  // 单月文件如果自己就包含 >= KEEP_WEEKS 周，只扫这一个文件即可
-  console.log('[sync] Pass 1: 扫描周次（按文件名倒序，短路策略）...');
+  const explicitTargetWeeks = parseTargetWeeks(process.env.TARGET_WEEKS);
+
+  // Pass 1: 扫周次。若设置 TARGET_WEEKS，则扫描所有文件并精确命中；否则按最新 KEEP_WEEKS 短路。
+  console.log(`[sync] Pass 1: 扫描周次（${explicitTargetWeeks ? 'TARGET_WEEKS 精确窗口' : '按文件名倒序短路'}）...`);
   const filesToLoad = [];
   const keepWeeks = new Set();
   const keepDates = new Set();
@@ -246,14 +260,11 @@ async function sync() {
     }
     filesToLoad.push({ file, dates: [...dates], weeks: [...fileWeeks] });
     for (const w of fileWeeks) keepWeeks.add(w);
-    // 一旦累计周次覆盖了最近 KEEP_WEEKS 周，就不再往前扫更老的文件
-    if (keepWeeks.size >= KEEP_WEEKS) break;
+    // 未设置显式窗口时，一旦累计周次覆盖了最近 KEEP_WEEKS 周，就不再往前扫更老的文件
+    if (!explicitTargetWeeks && keepWeeks.size >= KEEP_WEEKS) break;
   }
 
-  // 只保留最新 KEEP_WEEKS 周
-  const sortedWeeks = [...keepWeeks].sort();
-  const finalWeeks = new Set(sortedWeeks.slice(-KEEP_WEEKS));
-  // 只加载那些至少包含一个目标周的文件
+  const finalWeeks = explicitTargetWeeks || new Set([...keepWeeks].sort().slice(-KEEP_WEEKS));
   const targetFiles = filesToLoad.filter((f) => f.weeks.some((w) => finalWeeks.has(w)));
   for (const f of targetFiles) {
     for (const d of f.dates) {
@@ -316,4 +327,4 @@ async function sync() {
   return { rows: rows.length, categories: categories.length, weeks: weeks.length };
 }
 
-module.exports = { sync, computeRates, normalizeRow, normalizeCSVRow, toNum, HEADER_MAP, dateToISOWeek, isModelMainGrainRow, canonicalizeModelId, mergeModelRows };
+module.exports = { sync, computeRates, normalizeRow, normalizeCSVRow, toNum, HEADER_MAP, dateToISOWeek, parseTargetWeeks, isModelMainGrainRow, canonicalizeModelId, mergeModelRows };

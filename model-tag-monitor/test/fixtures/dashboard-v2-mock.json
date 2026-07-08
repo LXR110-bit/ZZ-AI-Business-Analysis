@@ -1,0 +1,38 @@
+{
+  "week": "2026-W28",
+  "weekRange": "2026-07-06 ~ 2026-07-12",
+  "syncedAt": "2026-07-12T10:30:00.000Z",
+  "board": {
+    "cur": { "gmv": 2345600, "evaRate": 0.68, "orderRate": 0.42, "shipRate": 0.38, "dealRate": 0.31 },
+    "delta": { "gmv": 0.032, "evaRate": -0.015, "orderRate": 0.008, "shipRate": -0.003, "dealRate": 0.012 }
+  },
+  "tiers": [
+    {
+      "tier": "发展",
+      "cur": { "gmv": 1826000, "evaRate": 0.72, "orderRate": 0.45, "shipRate": 0.41, "dealRate": 0.34, "categoryCount": 28 },
+      "delta": { "gmv": 0.025, "evaRate": 0.012, "orderRate": -0.005, "shipRate": 0.003, "dealRate": 0.008 }
+    },
+    {
+      "tier": "孵化",
+      "cur": { "gmv": 386000, "evaRate": 0.58, "orderRate": 0.35, "shipRate": 0.30, "dealRate": 0.24, "categoryCount": 12 },
+      "delta": { "gmv": -0.018, "evaRate": -0.022, "orderRate": 0.015, "shipRate": -0.008, "dealRate": -0.012 }
+    },
+    {
+      "tier": "种子",
+      "cur": { "gmv": 133600, "evaRate": 0.45, "orderRate": 0.28, "shipRate": 0.22, "dealRate": 0.18, "categoryCount": 35 },
+      "delta": { "gmv": 0.055, "evaRate": 0.008, "orderRate": -0.003, "shipRate": 0.005, "dealRate": -0.002 }
+    }
+  ],
+  "categories": [
+    { "category": "手机", "tier": "发展", "board": "通讯数码", "status": "在售", "cur": { "gmv": 823000, "evaRate": 0.78, "orderRate": 0.52, "shipRate": 0.48, "dealRate": 0.41 }, "delta": { "gmv": -0.052, "evaRate": -0.065, "orderRate": -0.058, "shipRate": -0.012, "dealRate": 0.003 }, "anomalyScore": 3 },
+    { "category": "笔记本", "tier": "发展", "board": "电脑办公", "status": "在售", "cur": { "gmv": 456000, "evaRate": 0.71, "orderRate": 0.44, "shipRate": 0.40, "dealRate": 0.33 }, "delta": { "gmv": 0.028, "evaRate": 0.005, "orderRate": 0.012, "shipRate": -0.002, "dealRate": 0.008 }, "anomalyScore": 0 },
+    { "category": "平板电脑", "tier": "发展", "board": "电脑办公", "status": "在售", "cur": { "gmv": 312000, "evaRate": 0.69, "orderRate": 0.41, "shipRate": 0.37, "dealRate": 0.30 }, "delta": { "gmv": -0.015, "evaRate": -0.055, "orderRate": 0.003, "shipRate": -0.008, "dealRate": -0.052 }, "anomalyScore": 2 },
+    { "category": "无人机", "tier": "发展", "board": "摄影摄像", "status": "在售", "cur": { "gmv": 185000, "evaRate": 0.62, "orderRate": 0.38, "shipRate": 0.34, "dealRate": 0.28 }, "delta": { "gmv": 0.045, "evaRate": 0.018, "orderRate": 0.022, "shipRate": 0.015, "dealRate": 0.012 }, "anomalyScore": 0 },
+    { "category": "运动相机", "tier": "孵化", "board": "摄影摄像", "status": "在售", "cur": { "gmv": 142000, "evaRate": 0.55, "orderRate": 0.32, "shipRate": 0.28, "dealRate": 0.22 }, "delta": { "gmv": -0.035, "evaRate": -0.062, "orderRate": -0.055, "shipRate": -0.015, "dealRate": 0.005 }, "anomalyScore": 2 },
+    { "category": "智能手表", "tier": "孵化", "board": "穿戴设备", "status": "在售", "cur": { "gmv": 98000, "evaRate": 0.52, "orderRate": 0.30, "shipRate": 0.25, "dealRate": 0.20 }, "delta": { "gmv": 0.022, "evaRate": 0.008, "orderRate": 0.005, "shipRate": 0.003, "dealRate": 0.002 }, "anomalyScore": 0 },
+    { "category": "电子烟", "tier": "种子", "board": "生活电器", "status": "在售", "cur": { "gmv": 45000, "evaRate": 0.40, "orderRate": 0.22, "shipRate": 0.18, "dealRate": 0.14 }, "delta": { "gmv": -0.028, "evaRate": -0.058, "orderRate": -0.062, "shipRate": -0.055, "dealRate": -0.048 }, "anomalyScore": 3 },
+    { "category": "台球杆", "tier": "种子", "board": "运动户外", "status": "在售", "cur": { "gmv": 38000, "evaRate": 0.48, "orderRate": 0.25, "shipRate": 0.20, "dealRate": 0.16 }, "delta": { "gmv": 0.015, "evaRate": 0.005, "orderRate": -0.002, "shipRate": 0.008, "dealRate": 0.003 }, "anomalyScore": 0 },
+    { "category": "VR眼镜", "tier": "种子", "board": "影音数码", "status": "在售", "cur": { "gmv": 28000, "evaRate": 0.38, "orderRate": 0.20, "shipRate": 0.16, "dealRate": 0.12 }, "delta": { "gmv": -0.042, "evaRate": -0.072, "orderRate": -0.058, "shipRate": -0.052, "dealRate": -0.065 }, "anomalyScore": 3 },
+    { "category": "随身WiFi", "tier": "种子", "board": "网络设备", "status": "已下线", "cur": { "gmv": 12000, "evaRate": 0.32, "orderRate": 0.18, "shipRate": 0.14, "dealRate": 0.10 }, "delta": null, "anomalyScore": 0 }
+  ]
+}

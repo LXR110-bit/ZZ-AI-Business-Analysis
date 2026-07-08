@@ -1,0 +1,13 @@
+{
+  "syncedAt": "2026-07-06T00:00:00.000Z",
+  "rows": [
+    { "category": "无人机", "modelName": "DJI Mini 4 Pro", "modelTier": "旗舰" },
+    { "category": "无人机", "modelName": "DJI Air 3", "modelTier": "旗舰" },
+    { "category": "无人机", "modelName": "Pocket 3", "modelTier": "入门" },
+    { "category": "台球杆", "modelName": "LP 星耀", "modelTier": "高端" },
+    { "category": "台球杆", "modelName": "美洲豹 PRO", "modelTier": "中端" },
+    { "category": "显卡", "modelName": "RTX 4090", "modelTier": "高端" },
+    { "category": "显卡", "modelName": "RTX 4060", "modelTier": "中端" },
+    { "category": "显卡", "modelName": "RX 7900 XTX", "modelTier": "高端" }
+  ]
+}
