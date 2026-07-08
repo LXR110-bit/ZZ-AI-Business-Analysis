@@ -55,6 +55,14 @@ function fmtTrendPill(trend) {
 
 var _dashboardInsights = {};
 
+function renderInsightWarnings(insights) {
+  var warnings = insights && Array.isArray(insights.warnings) ? insights.warnings : [];
+  if (!warnings.length) return '';
+  return '<div class="dash-insight-warnings">' + warnings.map(function(w) {
+    return '<div class="dash-insight-warning">⚠️ ' + escapeHtml(w) + '</div>';
+  }).join('') + '</div>';
+}
+
 function anomalyDots(score) {
   var s = Math.min(Math.max(score || 0, 0), 3);
   var html = '<span class="dash-anomaly-dots">';
@@ -86,7 +94,7 @@ function renderDashboardMetaV2(d) {
   if (sel) {
     sel.value = d.week || '';
     sel.addEventListener('change', function() {
-      writeUrlState({ tab: 'dashboard', week: sel.value || '', secondary: '' });
+      writeUrlState({ tab: 'dashboard', week: sel.value || '', secondary: '', category: '' });
       refreshDashboard();
     });
   }
@@ -99,17 +107,26 @@ function renderDashboardOverviewV2(d) {
   _dashboardInsights = (d && d.insights) || {};
   el.innerHTML =
     '<div class="dash-insight-title">大盘概览</div>' +
-    '<div class="dash-insight-body">' + escapeHtml(_dashboardInsights.board || '真实数据已接入，暂无自动洞察。') + '</div>';
+    '<div class="dash-insight-body">' + escapeHtml(_dashboardInsights.board || '真实数据已接入，暂无自动洞察。') + '</div>' +
+    renderInsightWarnings(_dashboardInsights);
 }
 
 function renderTierOverview(tiers, activeTier) {
   var el = $('#dashTierOverview');
   if (!el) return;
-  var tier = activeTier || '发展';
-  var tierInsights = (_dashboardInsights && _dashboardInsights.tiers) || {};
+  var model = buildTierOverviewModel(_dashboardInsights, activeTier);
   el.innerHTML =
-    '<div class="dash-insight-title">' + escapeHtml(tier) + '概览</div>' +
-    '<div class="dash-insight-body">' + escapeHtml(tierInsights[tier] || ('暂无' + tier + '层自动洞察。')) + '</div>';
+    '<div class="dash-insight-title">' + escapeHtml(model.title) + '</div>' +
+    '<div class="dash-insight-body">' + escapeHtml(model.body) + '</div>';
+}
+
+function buildTierOverviewModel(insights, activeTier) {
+  var tier = activeTier || '发展';
+  var tierInsights = (insights && insights.tiers) || {};
+  return {
+    title: tier + '概览',
+    body: tierInsights[tier] || ('暂无' + tier + '层自动洞察。'),
+  };
 }
 
 // ---- 大盘 KPI 卡 ----
@@ -226,6 +243,18 @@ function getActiveSecondaryFilter(categories, activeTier) {
   if (!selected) return '';
   var exists = (categories || []).some(function(c) {
     return c.tier === activeTier && getSecondaryCategoryName(c) === selected;
+  });
+  return exists ? selected : '';
+}
+
+function getActiveCategoryFilter(categories, activeTier, selectedSecondary) {
+  var selected = '';
+  try { selected = readUrlState().category || ''; } catch (e) { selected = ''; }
+  if (!selected) return '';
+  var exists = (categories || []).some(function(c) {
+    return c.tier === activeTier &&
+      (!selectedSecondary || getSecondaryCategoryName(c) === selectedSecondary) &&
+      categoryName(c) === selected;
   });
   return exists ? selected : '';
 }
@@ -375,7 +404,7 @@ function renderSecondaryCategorySummary(categories, activeTier) {
   }).join('');
   select.value = selected;
   select.onchange = function() {
-    writeUrlState({ secondary: select.value || '' });
+    writeUrlState({ secondary: select.value || '', category: '' });
     renderSecondaryCategorySummary(_lastDashCategories, _lastDashTier);
     renderCategoryTable(_lastDashCategories, _lastDashTier);
   };
@@ -421,7 +450,7 @@ function renderSecondaryCategorySummary(categories, activeTier) {
   $$('#dashSecondaryTable tbody tr[data-secondary]').forEach(function(row) {
     row.addEventListener('click', function() {
       var value = row.dataset.secondary || '';
-      writeUrlState({ secondary: value === selected ? '' : value });
+      writeUrlState({ secondary: value === selected ? '' : value, category: '' });
       renderSecondaryCategorySummary(_lastDashCategories, _lastDashTier);
       renderCategoryTable(_lastDashCategories, _lastDashTier);
     });
@@ -467,33 +496,193 @@ function renderCategoryOverview(categories, activeTier) {
   if (!el) return;
   categories = categories || [];
   var selectedSecondary = getActiveSecondaryFilter(categories, activeTier);
-  var list = categories.filter(function(c) {
-    return c.tier === activeTier && (!selectedSecondary || getSecondaryCategoryName(c) === selectedSecondary);
-  });
-  if (!list.length) {
+  var selectedCategory = getActiveCategoryFilter(categories, activeTier, selectedSecondary);
+  var overview = buildCategoryOverviewModel(categories, activeTier, selectedSecondary, _dashboardInsights, selectedCategory);
+  if (overview.empty) {
     el.innerHTML =
-      '<div class="dash-insight-title">品类简述概览</div>' +
-      '<div class="dash-insight-body">该筛选下暂无品类，待数据分析 Agent 输出异动原因和关注建议。</div>';
+      '<div class="dash-insight-title">' + escapeHtml(overview.title) + '</div>' +
+      '<div class="dash-insight-body">' + escapeHtml(overview.body) + '</div>';
     return;
+  }
+  var tagsHtml = overview.showTags === false ? '' : (
+    '<div class="dash-insight-tags">' +
+      '<span>核心观测品类：' + escapeHtml(overview.coreCategories.join('、') || '待筛选') + '</span>' +
+      '<span>波动关注品类：' + escapeHtml(overview.volatileCategories.join('、') || '待筛选') + '</span>' +
+      '<span>建议指标：' + escapeHtml(overview.suggestionMetrics.join('、') || '成交GMV') + '</span>' +
+    '</div>'
+  );
+  el.innerHTML =
+    '<div class="dash-insight-title">' + escapeHtml(overview.title) + '</div>' +
+    '<div class="dash-insight-body">' + escapeHtml(overview.body) + '</div>' +
+    tagsHtml;
+}
+
+function filterCategoryOverviewList(categories, activeTier, selectedSecondary) {
+  var tier = activeTier || '发展';
+  var secondary = selectedSecondary || '';
+  return (categories || []).filter(function(c) {
+    return c.tier === tier && (!secondary || getSecondaryCategoryName(c) === secondary);
+  });
+}
+
+function buildCategoryOverviewModel(categories, activeTier, selectedSecondary, insights, selectedCategory) {
+  var tier = activeTier || '发展';
+  var secondary = selectedSecondary || '';
+  var category = selectedCategory || '';
+  var context = tier + (secondary ? ' / ' + secondary : ' / 全部二级类目');
+  var contextText = tier + (secondary ? ' · ' + secondary : ' · 全部二级类目');
+  var aiOverview = buildAiCategoryOverviewModel(tier, secondary, category, insights);
+  if (aiOverview) return aiOverview;
+  var list = filterCategoryOverviewList(categories, tier, secondary);
+  if (!list.length) {
+    return {
+      empty: true,
+      title: '品类简述概览 · ' + context,
+      body: '当前筛选：' + contextText + '。该筛选下暂无品类，不展示其他层级或二级类目的全局洞察。',
+      coreCategories: [],
+      volatileCategories: [],
+      suggestionMetrics: [],
+      filteredCount: 0,
+      totalGmv: 0,
+    };
   }
   var byGmv = list.slice().sort(function(a, b) { return ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0); });
   var byDeal = list.slice().sort(function(a, b) { return ((b.cur && b.cur.dealCnt) || 0) - ((a.cur && a.cur.dealCnt) || 0); });
-  var core = byGmv.slice(0, 3).map(function(c) { return c.category; }).join('、');
+  var core = byGmv.slice(0, 3).map(categoryName).filter(Boolean);
   var volatile = list
-    .filter(function(c) { return c.anomalyScore > 0; })
-    .sort(function(a, b) { return (b.anomalyScore || 0) - (a.anomalyScore || 0); })
+    .filter(function(c) { return (c.anomalyScore || 0) > 0 || categoryVolatilityScore(c) > 0; })
+    .sort(function(a, b) {
+      var scoreDiff = (b.anomalyScore || 0) - (a.anomalyScore || 0);
+      return scoreDiff || categoryVolatilityScore(b) - categoryVolatilityScore(a);
+    })
     .slice(0, 3)
-    .map(function(c) { return c.category; })
-    .join('、') || byDeal.slice(0, 3).map(function(c) { return c.category; }).join('、');
-  var categoryInsight = (_dashboardInsights && _dashboardInsights.category) || ('按' + (selectedSecondary || activeTier || '当前层') + '识别本周品类异动原因、建议关注指标和需要复盘的核心/波动品类。');
-  el.innerHTML =
-    '<div class="dash-insight-title">品类简述概览</div>' +
-    '<div class="dash-insight-body">' + escapeHtml(categoryInsight) + '</div>' +
-    '<div class="dash-insight-tags">' +
-      '<span>核心观测品类：' + escapeHtml(core || '待筛选') + '</span>' +
-      '<span>波动关注品类：' + escapeHtml(volatile || '待筛选') + '</span>' +
-      '<span>建议指标：估价完成率、下单UV、发货数、成交订单量、成交GMV</span>' +
-    '</div>';
+    .map(categoryName)
+    .filter(Boolean);
+  if (!volatile.length) volatile = byDeal.slice(0, 3).map(categoryName).filter(Boolean);
+  var totalGmv = list.reduce(function(sum, c) { return sum + ((c.cur && Number(c.cur.gmv)) || 0); }, 0);
+  var suggestionMetrics = buildCategorySuggestionMetrics(list);
+  return {
+    empty: false,
+    title: '品类简述概览 · ' + context,
+    body: '当前筛选：' + contextText + '。覆盖 ' + list.length + ' 个品类，成交GMV ' + fmtGmvShort(totalGmv) +
+      '；核心观测品类 ' + (core.join('、') || '待筛选') +
+      '；波动关注品类 ' + (volatile.join('、') || '待筛选') + '。',
+    coreCategories: core,
+    volatileCategories: volatile,
+    suggestionMetrics: suggestionMetrics,
+    filteredCount: list.length,
+    totalGmv: totalGmv,
+  };
+}
+
+function getInsightMap(insights, key) {
+  var map = insights && insights[key];
+  return map && typeof map === 'object' ? map : {};
+}
+
+function buildAiCategoryOverviewModel(tier, secondary, category, insights) {
+  if (!insights || typeof insights !== 'object') return null;
+  var context = tier + (secondary ? ' / ' + secondary : ' / 全部二级类目');
+  if (category) {
+    var categoryMap = getInsightMap(insights, 'categories');
+    var categoryBody = categoryMap[category];
+    return {
+      empty: !categoryBody,
+      title: '品类简述概览 · ' + context + ' / ' + category,
+      body: categoryBody || ('当前筛选：' + tier + ' · ' + (secondary || '全部二级类目') + ' · ' + category + '。该品类暂无自动洞察，不展示其他品类、二级类目或层级的洞察。'),
+      coreCategories: [],
+      volatileCategories: [],
+      suggestionMetrics: [],
+      filteredCount: categoryBody ? 1 : 0,
+      totalGmv: 0,
+      showTags: false,
+      source: categoryBody ? 'ai-category' : 'empty-category',
+    };
+  }
+  if (secondary) {
+    var secondaryMap = getInsightMap(insights, 'secondaryCategories');
+    var secondaryBody = secondaryMap[secondary];
+    return {
+      empty: !secondaryBody,
+      title: '二级类目概览 · ' + tier + ' / ' + secondary,
+      body: secondaryBody || ('当前筛选：' + tier + ' · ' + secondary + '。该二级类目暂无自动洞察，不展示其他二级类目、品类或层级的洞察。'),
+      coreCategories: [],
+      volatileCategories: [],
+      suggestionMetrics: [],
+      filteredCount: 0,
+      totalGmv: 0,
+      showTags: false,
+      source: secondaryBody ? 'ai-secondary' : 'empty-secondary',
+    };
+  }
+  if (typeof insights.category === 'string' && insights.category.trim()) {
+    return {
+      empty: false,
+      title: '品类简述概览 · ' + context,
+      body: insights.category,
+      coreCategories: [],
+      volatileCategories: [],
+      suggestionMetrics: [],
+      filteredCount: 0,
+      totalGmv: 0,
+      showTags: false,
+      source: 'compat-category',
+    };
+  }
+  return null;
+}
+
+function categoryName(c) {
+  return String(c && (c.category || c.name) || '').trim();
+}
+
+function categoryVolatilityScore(c) {
+  var score = 0;
+  var trend = (c && c.trend) || {};
+  var delta = (c && c.delta) || {};
+  ['evaRate', 'orderRate', 'shipRate', 'dealRate', 'gmv'].forEach(function(k) {
+    var d = Number(delta[k]);
+    if (Number.isFinite(d)) score += Math.abs(d);
+    var t = trend[k] || {};
+    var pct = Number(t.deltaPct);
+    if (Number.isFinite(pct)) score += Math.abs(pct);
+  });
+  return score;
+}
+
+function buildCategorySuggestionMetrics(list) {
+  var candidates = [
+    { key: 'evaRate', trendKey: 'evaUv', label: '估价完成率' },
+    { key: 'orderUv', trendKey: 'orderUv', label: '下单UV' },
+    { key: 'shipCnt', trendKey: 'shipCnt', label: '发货数' },
+    { key: 'dealCnt', trendKey: 'dealCnt', label: '成交订单量' },
+    { key: 'gmv', trendKey: 'gmv', label: '成交GMV' },
+  ];
+  var scored = candidates.map(function(m) {
+    var score = 0;
+    var available = false;
+    (list || []).forEach(function(c) {
+      var cur = (c && c.cur) || {};
+      var delta = (c && c.delta) || {};
+      var trend = (c && c.trend) || {};
+      if (cur[m.key] !== undefined || cur[m.trendKey] !== undefined) available = true;
+      var d = Number(delta[m.key]);
+      if (Number.isFinite(d) && d < 0) score += Math.abs(d);
+      var pct = Number((trend[m.trendKey] || {}).deltaPct);
+      if (Number.isFinite(pct) && pct < 0) score += Math.abs(pct);
+    });
+    return { label: m.label, score: score, available: available };
+  });
+  var highlighted = scored
+    .filter(function(m) { return m.score > 0; })
+    .sort(function(a, b) { return b.score - a.score; })
+    .slice(0, 3)
+    .map(function(m) { return m.label; });
+  if (highlighted.length) return highlighted;
+  return scored
+    .filter(function(m) { return m.available; })
+    .slice(0, 3)
+    .map(function(m) { return m.label; });
 }
 
 // ---- 品类表格 ----
@@ -686,5 +875,14 @@ function isCountKey(key) {
 
 // ---- 导出纯函数供 Node 测试 ----
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { fmtGmvShort: fmtGmvShort, fmtCountShort: fmtCountShort, fmtDeltaArrow: fmtDeltaArrow, anomalyDots: anomalyDots };
+  module.exports = {
+    fmtGmvShort: fmtGmvShort,
+    fmtCountShort: fmtCountShort,
+    fmtDeltaArrow: fmtDeltaArrow,
+    anomalyDots: anomalyDots,
+    buildTierOverviewModel: buildTierOverviewModel,
+    buildCategoryOverviewModel: buildCategoryOverviewModel,
+    buildAiCategoryOverviewModel: buildAiCategoryOverviewModel,
+    filterCategoryOverviewList: filterCategoryOverviewList,
+  };
 }

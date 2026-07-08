@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["insights", "warnings"],
+  "properties": {
+    "insights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["board", "tiers", "secondaryCategories", "categories", "category", "monitor"],
+      "properties": {
+        "board": { "type": "string" },
+        "tiers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["发展", "孵化", "种子"],
+          "properties": {
+            "发展": { "type": "string" },
+            "孵化": { "type": "string" },
+            "种子": { "type": "string" }
+          }
+        },
+        "secondaryCategories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "insight"],
+            "properties": {
+              "name": { "type": "string" },
+              "insight": { "type": "string" }
+            }
+          }
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "insight"],
+            "properties": {
+              "name": { "type": "string" },
+              "insight": { "type": "string" }
+            }
+          }
+        },
+        "category": { "type": "string" },
+        "monitor": { "type": "string" }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

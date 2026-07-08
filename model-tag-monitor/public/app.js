@@ -187,7 +187,7 @@ async function init() {
   $$('#dashTierTabs .dash-tier-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
       const tier = btn.dataset.tier;
-      writeUrlState({ tier, secondary: '' });
+      writeUrlState({ tier, secondary: '', category: '' });
       refreshDashboard();
     });
   });
