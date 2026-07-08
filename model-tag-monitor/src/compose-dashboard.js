@@ -10,7 +10,7 @@ const TREND_KEYS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealC
 
 /**
  * 将六层聚合结果转换为前端 dashboard v2 契约。
- * v1.2.3 约定：
+ * v1.3.0 约定：
  * - rate delta 为百分点绝对差；
  * - count/GMV 趋势统一放到 trend[key].deltaPct；
  * - 同时保留 v1 dashboard 常用字段，避免旧入口完全断裂。
@@ -31,7 +31,7 @@ function composeDashboard(opts) {
   const kpiCards = buildKpiCards(board, payload.penetration);
 
   const result = {
-    version: '1.2.3',
+    version: '1.3.0',
     week,
     prevWeek: prevWeek || null,
     weeks,
@@ -253,6 +253,29 @@ function buildInsights({ week, prevWeek, board, tiers, categories }) {
   };
 }
 
+function mergeBusinessOverviewInsights(result, cached) {
+  if (!result || !cached || typeof cached !== 'object') return result;
+  if (cached.week !== result.week) return result;
+  const cachedInsights = cached.insights;
+  if (!cachedInsights || typeof cachedInsights !== 'object') return result;
+
+  const warnings = Array.isArray(cached.warnings)
+    ? cached.warnings.filter(Boolean).map(String)
+    : [];
+  return {
+    ...result,
+    insights: {
+      ...(result.insights || {}),
+      ...cachedInsights,
+      warnings,
+      generatedAt: cached.generatedAt || null,
+      generatedBy: cached.generatedBy || null,
+      mode: cached.mode || 'ai',
+      inputHash: cached.inputHash || null,
+    },
+  };
+}
+
 function formatWan(v) {
   const n = Number(v) || 0;
   if (n >= 100000000) return `${(n / 100000000).toFixed(2)}亿`;
@@ -280,4 +303,4 @@ function attachV1Compatibility(result, categories, categoryCache) {
   };
 }
 
-module.exports = { composeDashboard, buildTrend };
+module.exports = { composeDashboard, buildTrend, mergeBusinessOverviewInsights };

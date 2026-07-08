@@ -1,0 +1,44 @@
+version: 1
+updated_at: "2026-07-08"
+owner: "ai经营分析"
+source_of_truth:
+  github_main: "LXR110-bit/ZZ-AI-Business-Analysis@origin/main"
+  production_dashboard: "/root/model-tag-monitor"
+  note: "This registry is governance metadata only; business logic lives inside each workflow."
+workflows:
+  - id: "model_weekly_data"
+    name: "机型周数据"
+    path: "skills/workflows/机型周数据"
+    status: "production_legacy_registered"
+    owner: "ai经营分析"
+    dimensions: ["model", "category", "fulfillment", "estimate_attr", "qc_attr"]
+    grain: ["model_weekly", "category_weekly"]
+    data_sources:
+      - "IMAP AI小万 zip attachments"
+      - "data/imports/model_daily_avg_*.csv"
+      - "data/imports/category_daily_avg_*.csv"
+    outputs:
+      - "local CSV imports"
+      - "legacy Feishu backup sheets"
+    production:
+      cron: "30 9 * * * /root/workspace/ZZ-AI-Business-Analysis/scripts/机型周数据_cron.sh"
+      boundary: "Phase 1 registers existing production legacy flow only; do not modify cron or sheets in this PR."
+  - id: "business_overview"
+    name: "经营分析概览"
+    path: "skills/workflows/经营分析概览"
+    status: "phase1_migrating"
+    owner: "ai经营分析"
+    dimensions: ["board", "tier", "secondary_category", "category", "model"]
+    grain: ["board_weekly_daily_avg", "tier_weekly_daily_avg", "category_weekly_daily_avg", "model_weekly_optional"]
+    data_sources:
+      - "model-tag-monitor /api/dashboard v1.3.0-compatible payload"
+      - "model-tag-monitor data/category-cache.json"
+      - "model-tag-monitor data/cache.json"
+      - "model-tag-monitor data/board-metrics.json supplement"
+    outputs:
+      - "business-overview-insights.json"
+      - "dashboard insights.board / insights.tiers / insights.category / insights.monitor"
+    production:
+      trigger: "after dashboard refresh health check when deployed by master-control agent"
+      guard: "BUSINESS_OVERVIEW_AI_ENABLED defaults to 0; Codex runs read-only only when explicitly enabled"
+      boundary: "AI is judgment/expression layer only; it must not alter source data or refresh behavior."

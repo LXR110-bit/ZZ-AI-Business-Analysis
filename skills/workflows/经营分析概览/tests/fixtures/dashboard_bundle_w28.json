@@ -1,0 +1,36 @@
+{
+  "current": {
+    "version": "1.3.0",
+    "week": "2026-W28",
+    "prevWeek": "2026-W27",
+    "weeks": ["2026-W24", "2026-W25", "2026-W26", "2026-W27", "2026-W28"],
+    "weekRange": "2026-07-06 ~ 2026-07-12",
+    "syncedAt": "2026-07-08T13:12:25.047Z",
+    "board": {
+      "cur": {"conditionUv": 63310, "evaUv": 52602, "orderUv": 7148, "shipCnt": 4536, "dealCnt": 4883, "gmv": 3358581},
+      "delta": {"conditionUv": 1000, "evaUv": 673, "orderUv": 100, "shipCnt": -151, "dealCnt": 31, "gmv": -143443}
+    },
+    "kpiCards": [
+      {"key": "appDau", "label": "APP DAU", "value": 3702708, "deltaPct": -0.0405},
+      {"key": "recycleEntranceUv", "label": "回收入口UV", "value": 739737, "deltaPct": -0.0250}
+    ],
+    "tiers": [
+      {"tier": "发展", "cur": {"categoryCount": 28, "evaUv": 30000, "orderUv": 5000, "dealCnt": 3500, "gmv": 2970644}},
+      {"tier": "孵化", "cur": {"categoryCount": 9, "evaUv": 12000, "orderUv": 1400, "dealCnt": 900, "gmv": 248426}},
+      {"tier": "种子", "cur": {"categoryCount": 74, "evaUv": 10602, "orderUv": 748, "dealCnt": 483, "gmv": 139511}}
+    ],
+    "categories": [
+      {"category": "组装机", "tier": "发展", "board": "电脑办公", "status": "在售", "cur": {"evaUv": 5539, "orderUv": 1000, "dealCnt": 559, "gmv": 992792}, "trend": {"evaUv": {"prev": 5200}, "orderUv": {"prev": 900}, "dealCnt": {"prev": 530}, "gmv": {"prev": 970000}}, "anomalyScore": 0},
+      {"category": "运动相机", "tier": "发展", "board": "摄影摄像", "status": "在售", "cur": {"evaUv": 6266, "orderUv": 900, "dealCnt": 491, "gmv": 584421}, "trend": {"evaUv": {"prev": 6000}, "orderUv": {"prev": 920}, "dealCnt": {"prev": 500}, "gmv": {"prev": 600000}}, "anomalyScore": 0},
+      {"category": "名酒", "tier": "孵化", "board": "酒水", "status": "在售", "cur": {"evaUv": 1569, "orderUv": 160, "dealCnt": 86, "gmv": 102994}, "trend": {"evaUv": {"prev": 1500}, "orderUv": {"prev": 150}, "dealCnt": {"prev": 80}, "gmv": {"prev": 100000}}, "anomalyScore": 0},
+      {"category": "VR眼镜", "tier": "种子", "board": "影音数码", "status": "在售", "cur": {"evaUv": 900, "orderUv": 60, "dealCnt": 20, "gmv": 30000}, "trend": {"evaUv": {"prev": 1000}, "orderUv": {"prev": 70}, "dealCnt": {"prev": 30}, "gmv": {"prev": 50000}}, "anomalyScore": 2}
+    ],
+    "insights": {"board": "旧大盘洞察", "tiers": {"发展": "旧发展洞察"}, "category": "旧品类洞察", "monitor": "旧监测洞察"}
+  },
+  "history": [
+    {"week": "2026-W24", "syncedAt": "2026-06-14T00:00:00Z", "board": {"cur": {"conditionUv": 60000, "evaUv": 50000, "orderUv": 6800, "shipCnt": 4300, "dealCnt": 4600, "gmv": 3200000}}, "kpiCards": [{"key": "appDau", "value": 3600000}], "tiers": [{"tier": "发展", "cur": {"evaUv": 28000, "orderUv": 4700, "dealCnt": 3300, "gmv": 2800000}}, {"tier": "孵化", "cur": {"evaUv": 11000, "orderUv": 1300, "dealCnt": 850, "gmv": 240000}}, {"tier": "种子", "cur": {"evaUv": 10000, "orderUv": 700, "dealCnt": 450, "gmv": 130000}}]},
+    {"week": "2026-W25", "syncedAt": "2026-06-21T00:00:00Z", "board": {"cur": {"conditionUv": 61000, "evaUv": 51000, "orderUv": 6900, "shipCnt": 4400, "dealCnt": 4700, "gmv": 3300000}}, "kpiCards": [{"key": "appDau", "value": 3650000}], "tiers": [{"tier": "发展", "cur": {"evaUv": 29000, "orderUv": 4800, "dealCnt": 3400, "gmv": 2850000}}, {"tier": "孵化", "cur": {"evaUv": 11500, "orderUv": 1320, "dealCnt": 860, "gmv": 245000}}, {"tier": "种子", "cur": {"evaUv": 10100, "orderUv": 710, "dealCnt": 460, "gmv": 135000}}]},
+    {"week": "2026-W26", "syncedAt": "2026-06-28T00:00:00Z", "board": {"cur": {"conditionUv": 62000, "evaUv": 52000, "orderUv": 7000, "shipCnt": 4500, "dealCnt": 4800, "gmv": 3450000}}, "kpiCards": [{"key": "appDau", "value": 3800000}], "tiers": [{"tier": "发展", "cur": {"evaUv": 29500, "orderUv": 4900, "dealCnt": 3450, "gmv": 2900000}}, {"tier": "孵化", "cur": {"evaUv": 11800, "orderUv": 1360, "dealCnt": 880, "gmv": 246000}}, {"tier": "种子", "cur": {"evaUv": 10300, "orderUv": 730, "dealCnt": 470, "gmv": 138000}}]},
+    {"week": "2026-W27", "syncedAt": "2026-07-05T00:00:00Z", "board": {"cur": {"conditionUv": 62310, "evaUv": 51929, "orderUv": 7048, "shipCnt": 4687, "dealCnt": 4852, "gmv": 3502024}}, "kpiCards": [{"key": "appDau", "value": 3859036}, {"key": "recycleEntranceUv", "value": 758687}], "tiers": [{"tier": "发展", "cur": {"evaUv": 29800, "orderUv": 4950, "dealCnt": 3470, "gmv": 2920000}}, {"tier": "孵化", "cur": {"evaUv": 11900, "orderUv": 1380, "dealCnt": 890, "gmv": 247000}}, {"tier": "种子", "cur": {"evaUv": 10400, "orderUv": 740, "dealCnt": 475, "gmv": 139000}}]}
+  ]
+}

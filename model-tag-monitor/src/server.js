@@ -11,7 +11,7 @@ const boardSync = require('./board-sync');
 const { monitor, DEFAULT_RULES } = require('./monitor');
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
 const { createProxy } = require('./proxy');
-const { composeDashboard: composeDashboardV2 } = require('./compose-dashboard');
+const { composeDashboard: composeDashboardV2, mergeBusinessOverviewInsights } = require('./compose-dashboard');
 
 const app = express();
 const PORT = process.env.PORT || 8848;
@@ -291,11 +291,15 @@ app.get('/api/dashboard', async (req, res) => {
       const week = String(req.query.week || weeks[weeks.length - 1] || '').trim();
       const prevWeek = weeks[weeks.indexOf(week) - 1] || null;
       if (!week) return res.status(503).json({ error: '品类缓存缺少周次' });
-      const result = composeDashboardV2({ categoryCache, taxonomy, boardMetrics, week, prevWeek });
+      const businessOverviewInsights = store.readJSON('business-overview-insights.json', null);
+      const result = mergeBusinessOverviewInsights(
+        composeDashboardV2({ categoryCache, taxonomy, boardMetrics, week, prevWeek }),
+        businessOverviewInsights
+      );
       return res.json(result);
     }
 
-    // 上游/旧 dashboard 仅作为调试兜底；生产 v1.2.3 验收必须命中上面的 v2 真实聚合。
+    // 上游/旧 dashboard 仅作为调试兜底；生产 v1.3.0 验收必须命中上面的 v2 真实聚合。
     const d = UPSTREAM ? await getDashboardFromUpstream(UPSTREAM) : getDashboard();
     if (!d) return res.status(503).json({ error: '尚未同步数据' });
     res.json({ ...d, contractFallback: 'v1-dashboard' });

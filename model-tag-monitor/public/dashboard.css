@@ -217,6 +217,20 @@
   line-height: 1.55;
   color: var(--d-ink-2);
 }
+.dash-insight-warnings {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+.dash-insight-warning {
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  background: rgba(254, 243, 199, 0.72);
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .dash-insight-tags,
 .analysis-tags {
   display: flex;

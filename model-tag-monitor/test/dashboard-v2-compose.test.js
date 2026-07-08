@@ -3,8 +3,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const { composeDashboard } = require('../src/compose-dashboard');
+const { spawnSync } = require('node:child_process');
+const { composeDashboard, mergeBusinessOverviewInsights } = require('../src/compose-dashboard');
 const { COUNT_KEYS, RATE_KEYS } = require('../src/aggregate/funnel');
 
 const FIX_DIR = path.join(__dirname, 'fixtures');
@@ -238,6 +240,77 @@ test('reconciliation 透传', () => {
   const { reconciliation } = composeDashboard(baseOpts);
   assert.ok('benchmarkAvailable' in reconciliation);
   assert.ok('alert' in reconciliation);
+});
+
+// --- business overview insights cache ---
+
+test('business overview cache: week 匹配时覆盖 insights 并附加 metadata/warnings', () => {
+  const result = composeDashboard(baseOpts);
+  const merged = mergeBusinessOverviewInsights(result, {
+    version: '1.3.0',
+    week: '2026-W27',
+    prevWeek: '2026-W26',
+    generatedAt: '2026-07-08T12:00:00.000Z',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'abc123',
+    insights: {
+      board: 'AI 大盘洞察',
+      tiers: { 发展: 'AI 发展洞察', 孵化: 'AI 孵化洞察', 种子: 'AI 种子洞察' },
+      category: 'AI 品类洞察',
+      monitor: 'AI 监测洞察',
+    },
+    warnings: ['未配置上周策略/预判，暂无法检核兑现'],
+  });
+
+  assert.equal(merged.insights.board, 'AI 大盘洞察');
+  assert.equal(merged.insights.tiers.发展, 'AI 发展洞察');
+  assert.equal(merged.insights.mode, 'ai');
+  assert.equal(merged.insights.generatedBy, 'codex-cli-read-only');
+  assert.deepEqual(merged.insights.warnings, ['未配置上周策略/预判，暂无法检核兑现']);
+});
+
+test('business overview cache: week 不匹配或坏结构时保持原 insights', () => {
+  const result = composeDashboard(baseOpts);
+  const original = result.insights.board;
+
+  const mismatch = mergeBusinessOverviewInsights(result, {
+    week: '2026-W26',
+    insights: { board: '不应生效' },
+  });
+  assert.equal(mismatch.insights.board, original);
+
+  const bad = mergeBusinessOverviewInsights(result, {
+    week: '2026-W27',
+    insights: null,
+  });
+  assert.equal(bad.insights.board, original);
+});
+
+test('business overview generator: fixture dry-run writes deterministic warning cache', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-test-'));
+  const dashboardFile = path.join(tmp, 'dashboard.json');
+  fs.writeFileSync(dashboardFile, JSON.stringify(composeDashboard(baseOpts)), 'utf8');
+
+  const proc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
+    '--dashboard-file', dashboardFile,
+    '--out-name', 'business-overview-insights.json',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, BUSINESS_OVERVIEW_AI_ENABLED: '0' },
+    encoding: 'utf8',
+  });
+  assert.equal(proc.status, 0, proc.stderr || proc.stdout);
+
+  const cache = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights.json'), 'utf8'));
+  assert.equal(cache.week, '2026-W27');
+  assert.equal(cache.mode, 'deterministic');
+  assert.equal(cache.generatedBy, 'business_overview_deterministic');
+  assert.equal(cache.insights.tiers.发展.length > 0, true);
+  assert.equal(cache.insights.tiers.孵化.length > 0, true);
+  assert.equal(cache.insights.tiers.种子.length > 0, true);
+  assert.deepEqual(cache.warnings, ['未配置上周策略/预判，暂无法检核兑现']);
 });
 
 // --- prevWeek 为 null ---
