@@ -242,6 +242,28 @@ function buildCodexEnv(source = process.env) {
   return out;
 }
 
+
+
+function summarizeErrorMessage(error, maxLen = 240) {
+  const raw = String((error && error.message) || error || '').replace(/\u001b\[[0-9;]*m/g, '');
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith('user'))
+    .filter((line) => !line.startsWith('<dashboard_summary>'))
+    .filter((line) => !line.startsWith('{'))
+    .filter((line) => !line.startsWith('"'));
+  let msg = lines.find((line) => line.includes('invalid_json_schema'))
+    || lines.find((line) => line.startsWith('ERROR:'))
+    || lines.find((line) => line.includes('codex exec failed'))
+    || lines[0]
+    || raw;
+  msg = msg.replace(/\s+/g, ' ').trim();
+  if (msg.length > maxLen) msg = `${msg.slice(0, maxLen - 1)}…`;
+  return msg || 'unknown error';
+}
+
 function runCodex(prompt) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-'));
   const lastMessage = path.join(dir, 'last-message.json');
@@ -286,7 +308,7 @@ async function main() {
     const aiResult = runCodex(buildPrompt(summary, strategy, warnings));
     cache = normalizeAiCache(aiResult, dashboard, summary, warnings);
   } catch (e) {
-    cache = fallbackInsights(dashboard, warnings, `AI生成失败，已降级为确定性洞察：${e.message}`);
+    cache = fallbackInsights(dashboard, warnings, `AI生成失败，已降级为确定性洞察：${summarizeErrorMessage(e)}`);
   }
   store.writeJSON(outName, cache);
   console.log(JSON.stringify({ ok: true, mode: cache.mode, out: store.filePath(outName), week: cache.week, warnings: cache.warnings }, null, 2));
@@ -304,4 +326,5 @@ module.exports = {
   fallbackInsights,
   isGeneratedInsight,
   summarizeDashboard,
+  summarizeErrorMessage,
 };

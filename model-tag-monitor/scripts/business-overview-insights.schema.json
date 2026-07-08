@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["insights"],
+  "required": ["insights", "warnings"],
   "properties": {
     "insights": {
       "type": "object",
@@ -12,8 +12,13 @@
         "board": { "type": "string" },
         "tiers": {
           "type": "object",
+          "additionalProperties": false,
           "required": ["发展", "孵化", "种子"],
-          "additionalProperties": { "type": "string" }
+          "properties": {
+            "发展": { "type": "string" },
+            "孵化": { "type": "string" },
+            "种子": { "type": "string" }
+          }
         },
         "category": { "type": "string" },
         "monitor": { "type": "string" }

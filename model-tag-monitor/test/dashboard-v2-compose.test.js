@@ -331,6 +331,24 @@ test('business overview generator: deterministic fallback does not reuse stale g
   assert.notEqual(cache.insights.tiers.发展, '旧 AI 发展');
 });
 
+test('business overview generator: AI error warnings are sanitized and capped', () => {
+  const { summarizeErrorMessage } = require('../scripts/generate-business-overview-insights');
+  const err = new Error([
+    'codex exec failed rc=1: OpenAI Codex v0.142.3',
+    '--------',
+    'user',
+    '这里是完整 prompt，不应该进入 warning',
+    '<dashboard_summary>',
+    JSON.stringify({ categories: new Array(100).fill({ category: '敏感长数据' }) }),
+    'ERROR: { "type": "invalid_request_error", "code": "invalid_json_schema", "message": "Invalid schema" }',
+  ].join('\n'));
+  const msg = summarizeErrorMessage(err, 120);
+  assert.equal(msg.length <= 120, true);
+  assert.equal(msg.includes('完整 prompt'), false);
+  assert.equal(msg.includes('敏感长数据'), false);
+  assert.equal(msg.includes('invalid_json_schema'), true);
+});
+
 test('business overview generator: fixture dry-run writes deterministic warning cache', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-test-'));
   const dashboardFile = path.join(tmp, 'dashboard.json');
