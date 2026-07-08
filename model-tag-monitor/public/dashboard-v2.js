@@ -138,7 +138,9 @@ function buildBoardKpiFromPayload(payload) {
   var penetration = payload.penetration || {};
   var avgPrice = cur.dealCnt ? (cur.gmv || 0) / cur.dealCnt : null;
   return [
-    { key: 'appDau', label: 'DAU', value: penetration.appDau, deltaPct: null, note: 'APP 日均 DAU' },
+    { key: 'appDau', label: 'APP DAU', value: penetration.appDau, deltaPct: null, note: 'APP 日均 DAU' },
+    { key: 'recycleDau', label: '回收DAU', value: penetration.recycleDau, deltaPct: null, note: '回收业务日均 DAU' },
+    { key: 'recycleEntranceUv', label: '回收入口UV', value: penetration.recycleEntranceUv, deltaPct: null, note: '回收入口日均 UV' },
     { key: 'evaUv', label: '估价UV', value: cur.evaUv, deltaPct: null, note: '品类估价UV去重' },
     { key: 'shipCnt', label: '发货数', value: cur.shipCnt, deltaPct: null, note: '发货订单数' },
     { key: 'dealCnt', label: '成交订单', value: cur.dealCnt, deltaPct: null, note: '成交订单量' },

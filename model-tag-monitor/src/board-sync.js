@@ -1,4 +1,4 @@
-// 大盘/DAU 补充数据同步：本地 CSV → data/board-metrics.json
+// 大盘/DAU/入口补充数据同步：本地 CSV → data/board-metrics.json
 // 数据源边界：飞书只作为备份/补充；服务端运行时只读取已落地本地 CSV/JSON。
 'use strict';
 
@@ -20,20 +20,28 @@ const HEADER_MAP = {
   开始日期: 'startDate',
   APP日均DAU: 'appDau',
   'APP日均 DAU': 'appDau',
+  'APP DAU': 'appDau',
+  大盘DAU: 'appDau',
+  大盘日均DAU: 'appDau',
   appDau: 'appDau',
+  回收DAU: 'recycleDau',
+  '回收 DAU': 'recycleDau',
+  回收日均DAU: 'recycleDau',
+  '回收日均 DAU': 'recycleDau',
+  回收业务DAU: 'recycleDau',
+  回收业务日均DAU: 'recycleDau',
+  回收大盘DAU: 'recycleDau',
+  recycleDau: 'recycleDau',
   回收入口UV: 'recycleEntranceUv',
   '回收入口 UV': 'recycleEntranceUv',
   recycleEntranceUv: 'recycleEntranceUv',
-  日均品牌页UV: 'brandPageUv',
-  '日均品牌页 UV': 'brandPageUv',
-  brandPageUv: 'brandPageUv',
   聚合回收渗透率: 'penetrationRate',
   penetrationRate: 'penetrationRate',
   聚合回收真实渗透率: 'realPenetrationRate',
   realPenetrationRate: 'realPenetrationRate',
 };
 
-const NUMBER_FIELDS = ['appDau', 'recycleEntranceUv', 'brandPageUv'];
+const NUMBER_FIELDS = ['appDau', 'recycleDau', 'recycleEntranceUv'];
 const RATE_FIELDS = ['penetrationRate', 'realPenetrationRate'];
 
 function getField(fields, header) {
@@ -137,7 +145,7 @@ function mergeRows(rows) {
 
 function sync(opts = {}) {
   const importsDir = opts.importsDir || getImportsDir();
-  console.log('[board-sync] 开始同步大盘/DAU 补充数据...');
+  console.log('[board-sync] 开始同步大盘/DAU/入口补充数据...');
   const rawRows = readRawRows(importsDir);
   if (!rawRows.length) {
     console.warn(`[board-sync] 未找到匹配文件: ${importsDir}/board_metrics*.csv`);

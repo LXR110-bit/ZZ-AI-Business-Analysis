@@ -21,7 +21,7 @@ const boardBenchmark = parseBenchmarkCsv(fs.readFileSync(path.join(FIX_DIR, 'boa
 
 function parseBoardMetrics(csvStr) {
   const lines = csvStr.trim().split('\n').slice(1);
-  return { rows: lines.map((l) => { const [week, appDau, recycleEntranceUv] = l.split(','); return { week, appDau: Number(appDau), recycleEntranceUv: Number(recycleEntranceUv) }; }) };
+  return { rows: lines.map((l) => { const [week, appDau, recycleDau, recycleEntranceUv] = l.split(','); return { week, appDau: Number(appDau), recycleDau: Number(recycleDau), recycleEntranceUv: Number(recycleEntranceUv) }; }) };
 }
 const boardMetrics = parseBoardMetrics(fs.readFileSync(path.join(FIX_DIR, 'board-metrics.csv'), 'utf8'));
 
@@ -81,6 +81,7 @@ test('大盘漏斗计数字段均由品类维度日均 cache 聚合，不读取�
       {
         week: '2026-W27',
         appDau: 5200000,
+        recycleDau: 910000,
         recycleEntranceUv: 162000,
         brandPageUv: 999999999,
         evaUv: 999999999,

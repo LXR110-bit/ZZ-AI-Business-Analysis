@@ -6,15 +6,15 @@ const { buildBoardPenetrationLayer } = require('../src/aggregate/board-penetrati
 
 const boardMetrics = {
   rows: [
-    { week: '2026-W26', appDau: 5000000, recycleEntranceUv: 150000, brandPageUv: 48000, penetrationRate: 0.0300, realPenetrationRate: 0.0200 },
-    { week: '2026-W27', appDau: 5200000, recycleEntranceUv: 162000, brandPageUv: 51000, penetrationRate: 0.0312, realPenetrationRate: 0.0210 },
+    { week: '2026-W26', appDau: 5000000, recycleDau: 860000, recycleEntranceUv: 150000, penetrationRate: 0.0300, realPenetrationRate: 0.0200 },
+    { week: '2026-W27', appDau: 5200000, recycleDau: 910000, recycleEntranceUv: 162000, penetrationRate: 0.0312, realPenetrationRate: 0.0210 },
   ],
 };
 
 const NULL_DELTA = {
   appDau: null,
+  recycleDau: null,
   recycleEntranceUv: null,
-  brandPageUv: null,
   penetrationRate: null,
   realPenetrationRate: null,
 };
@@ -23,8 +23,8 @@ test('正常计算渗透率和真实渗透率', () => {
   const boardCur = { orderUv: 513 };
   const result = buildBoardPenetrationLayer(boardMetrics, '2026-W27', '2026-W26', boardCur);
   assert.equal(result.appDau, 5200000);
+  assert.equal(result.recycleDau, 910000);
   assert.equal(result.recycleEntranceUv, 162000);
-  assert.equal(result.brandPageUv, 51000);
   // 周会 Excel 已提供渗透率时优先使用原始值，不用 recycleEntranceUv/appDau 重算。
   assert.equal(result.penetrationRate, 0.0312);
   assert.equal(result.realPenetrationRate, 0.0210);
@@ -33,8 +33,8 @@ test('正常计算渗透率和真实渗透率', () => {
 test('penetrationRate delta 用百分点绝对差', () => {
   const result = buildBoardPenetrationLayer(boardMetrics, '2026-W27', '2026-W26', null);
   assert.equal(result.delta.appDau, 200000);
+  assert.equal(result.delta.recycleDau, 50000);
   assert.equal(result.delta.recycleEntranceUv, 12000);
-  assert.equal(result.delta.brandPageUv, 3000);
   assert.ok(Math.abs(result.delta.penetrationRate - 0.0012) < 1e-10);
   assert.ok(Math.abs(result.delta.realPenetrationRate - 0.0010) < 1e-10);
 });
@@ -42,8 +42,8 @@ test('penetrationRate delta 用百分点绝对差', () => {
 test('boardMetrics 为 null → 全部返回 null', () => {
   const result = buildBoardPenetrationLayer(null, '2026-W27', '2026-W26', { orderUv: 100 });
   assert.equal(result.appDau, null);
+  assert.equal(result.recycleDau, null);
   assert.equal(result.recycleEntranceUv, null);
-  assert.equal(result.brandPageUv, null);
   assert.equal(result.penetrationRate, null);
   assert.equal(result.realPenetrationRate, null);
   assert.deepEqual(result.delta, NULL_DELTA);
