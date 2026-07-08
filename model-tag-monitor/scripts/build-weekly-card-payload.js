@@ -103,7 +103,7 @@ function formatWan(v) {
   const top = monitor ? anomalyFromMonitor(monitor) : anomalyFromDashboard(dashboard);
 
   const payload = {
-    version: dashboard.version || '1.1.0',
+    version: dashboard.version || '1.2.0',
     week: dashboard.week,
     prev_week: dashboard.prevWeek || '',
     week_range: dashboard.weekRange || '',

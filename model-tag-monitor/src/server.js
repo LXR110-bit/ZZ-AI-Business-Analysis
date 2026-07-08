@@ -295,7 +295,7 @@ app.get('/api/dashboard', async (req, res) => {
       return res.json(result);
     }
 
-    // 上游/旧 dashboard 仅作为调试兜底；生产 v1.1.0 验收必须命中上面的 v2 真实聚合。
+    // 上游/旧 dashboard 仅作为调试兜底；生产 v1.2.0 验收必须命中上面的 v2 真实聚合。
     const d = UPSTREAM ? await getDashboardFromUpstream(UPSTREAM) : getDashboard();
     if (!d) return res.status(503).json({ error: '尚未同步数据' });
     res.json({ ...d, contractFallback: 'v1-dashboard' });
