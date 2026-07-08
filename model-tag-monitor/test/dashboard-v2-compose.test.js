@@ -353,7 +353,7 @@ test('business overview generator: AI disabled preserves existing AI cache', () 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-preserve-test-'));
   const dashboardFile = path.join(tmp, 'dashboard.json');
   fs.writeFileSync(dashboardFile, JSON.stringify(composeDashboard(baseOpts)), 'utf8');
-  const cacheFile = path.join(tmp, 'business-overview-insights.json');
+  const cacheFile = path.join(tmp, 'business-overview-insights-2026-W27.json');
   fs.writeFileSync(cacheFile, JSON.stringify({
     version: '1.3.0',
     week: '2026-W27',
@@ -381,11 +381,78 @@ test('business overview generator: AI disabled preserves existing AI cache', () 
   assert.equal(proc.status, 0, proc.stderr || proc.stdout);
   const stdout = JSON.parse(proc.stdout);
   assert.equal(stdout.preserved, true);
+  assert.equal(stdout.out.endsWith('business-overview-insights-2026-W27.json'), true);
 
   const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
   assert.equal(cache.mode, 'ai');
   assert.equal(cache.generatedBy, 'codex-cli-read-only');
   assert.equal(cache.insights.board, '已有 AI 大盘洞察');
+});
+
+test('business overview generator: writes week-specific frozen cache and latest cache', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-week-cache-test-'));
+  const dashboardFile = path.join(tmp, 'dashboard.json');
+  fs.writeFileSync(dashboardFile, JSON.stringify(composeDashboard(baseOpts)), 'utf8');
+
+  const proc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
+    '--dashboard-file', dashboardFile,
+    '--out-name', 'business-overview-insights.json',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, BUSINESS_OVERVIEW_AI_ENABLED: '0' },
+    encoding: 'utf8',
+  });
+  assert.equal(proc.status, 0, proc.stderr || proc.stdout);
+  const stdout = JSON.parse(proc.stdout);
+  assert.equal(stdout.preserved, false);
+  assert.deepEqual(stdout.out.map((x) => path.basename(x)).sort(), [
+    'business-overview-insights-2026-W27.json',
+    'business-overview-insights.json',
+  ]);
+
+  const weekly = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), 'utf8'));
+  const latest = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights.json'), 'utf8'));
+  assert.equal(weekly.week, '2026-W27');
+  assert.deepEqual(latest, weekly);
+});
+
+test('business overview generator: AI disabled does not preserve latest cache from a different week', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-cross-week-test-'));
+  const dashboardFile = path.join(tmp, 'dashboard.json');
+  const w28 = composeDashboard({ ...baseOpts, week: '2026-W28', prevWeek: '2026-W27' });
+  fs.writeFileSync(dashboardFile, JSON.stringify(w28), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights.json'), JSON.stringify({
+    version: '1.3.0',
+    week: '2026-W27',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    insights: {
+      board: 'W27 AI should not be reused for W28',
+      tiers: { 发展: 'W27', 孵化: 'W27', 种子: 'W27' },
+      category: 'W27',
+      monitor: 'W27',
+    },
+    warnings: [],
+  }), 'utf8');
+
+  const proc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
+    '--dashboard-file', dashboardFile,
+    '--out-name', 'business-overview-insights.json',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, BUSINESS_OVERVIEW_AI_ENABLED: '0' },
+    encoding: 'utf8',
+  });
+  assert.equal(proc.status, 0, proc.stderr || proc.stdout);
+  const stdout = JSON.parse(proc.stdout);
+  assert.equal(stdout.preserved, false);
+
+  const w28Cache = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights-2026-W28.json'), 'utf8'));
+  assert.equal(w28Cache.week, '2026-W28');
+  assert.equal(w28Cache.mode, 'deterministic');
+  assert.notEqual(w28Cache.insights.board, 'W27 AI should not be reused for W28');
 });
 
 test('business overview generator: fixture dry-run writes deterministic warning cache', () => {

@@ -37,6 +37,17 @@ if (proxy) {
 }
 
 // 简单的用户识别:从 header 拿 X-User,前端设置一次存 localStorage
+
+function businessOverviewCacheName(week) {
+  const safeWeek = String(week || '').trim().replace(/[^0-9A-Za-z_-]/g, '_');
+  return safeWeek ? `business-overview-insights-${safeWeek}.json` : 'business-overview-insights.json';
+}
+
+function readBusinessOverviewInsights(week) {
+  return store.readJSON(businessOverviewCacheName(week), null)
+    || store.readJSON('business-overview-insights.json', null);
+}
+
 function getUser(req) {
   return String(req.headers['x-user'] || 'anonymous').slice(0, 32);
 }
@@ -291,7 +302,7 @@ app.get('/api/dashboard', async (req, res) => {
       const week = String(req.query.week || weeks[weeks.length - 1] || '').trim();
       const prevWeek = weeks[weeks.indexOf(week) - 1] || null;
       if (!week) return res.status(503).json({ error: '品类缓存缺少周次' });
-      const businessOverviewInsights = store.readJSON('business-overview-insights.json', null);
+      const businessOverviewInsights = readBusinessOverviewInsights(week);
       const result = mergeBusinessOverviewInsights(
         composeDashboardV2({ categoryCache, taxonomy, boardMetrics, week, prevWeek }),
         businessOverviewInsights

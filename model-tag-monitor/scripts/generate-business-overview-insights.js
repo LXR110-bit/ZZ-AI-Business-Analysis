@@ -125,6 +125,31 @@ function summarizeDashboard(dashboard) {
   };
 }
 
+
+function businessOverviewCacheName(week) {
+  const safeWeek = String(week || '').trim().replace(/[^0-9A-Za-z_-]/g, '_');
+  return safeWeek ? `business-overview-insights-${safeWeek}.json` : 'business-overview-insights.json';
+}
+
+function cacheNamesForWeek(week, primaryName = outName) {
+  const weekName = businessOverviewCacheName(week);
+  return [...new Set([weekName, primaryName].filter(Boolean))];
+}
+
+function readExistingAiCacheForWeek(week, primaryName = outName) {
+  for (const name of cacheNamesForWeek(week, primaryName)) {
+    const cache = store.readJSON(name, null);
+    if (isReusableAiCache(cache, week)) return { name, cache };
+  }
+  return null;
+}
+
+function writeCacheForWeek(cache, primaryName = outName) {
+  const names = cacheNamesForWeek(cache && cache.week, primaryName);
+  for (const name of names) store.writeJSON(name, cache);
+  return names;
+}
+
 function fallbackInsights(dashboard, warnings, extraWarning) {
   const rawExisting = dashboard.insights && typeof dashboard.insights === 'object' ? dashboard.insights : {};
   // `/api/dashboard` may already contain a cached AI insight for the same week.
@@ -156,11 +181,12 @@ function fallbackInsights(dashboard, warnings, extraWarning) {
 }
 
 
-function isReusableAiCache(cache) {
+function isReusableAiCache(cache, expectedWeek = null) {
   return Boolean(
     cache
     && typeof cache === 'object'
     && cache.week
+    && (!expectedWeek || cache.week === expectedWeek)
     && cache.mode === 'ai'
     && cache.generatedBy === 'codex-cli-read-only'
     && cache.insights
@@ -311,23 +337,23 @@ async function main() {
 
   let cache;
   if (!aiEnabled) {
-    const existingCache = store.readJSON(outName, null);
-    if (isReusableAiCache(existingCache)) {
+    const existing = readExistingAiCacheForWeek(dashboard.week);
+    if (existing) {
       console.log(JSON.stringify({
         ok: true,
-        mode: existingCache.mode,
+        mode: existing.cache.mode,
         aiEnabled: false,
         preserved: true,
-        out: store.filePath(outName),
-        week: existingCache.week,
+        out: store.filePath(existing.name),
+        week: existing.cache.week,
         dashboardWeek: dashboard.week,
-        warnings: existingCache.warnings || [],
+        warnings: existing.cache.warnings || [],
       }, null, 2));
       return;
     }
     cache = fallbackInsights(dashboard, warnings);
-    store.writeJSON(outName, cache);
-    console.log(JSON.stringify({ ok: true, mode: cache.mode, aiEnabled: false, preserved: false, out: store.filePath(outName), week: cache.week, warnings: cache.warnings }, null, 2));
+    const written = writeCacheForWeek(cache);
+    console.log(JSON.stringify({ ok: true, mode: cache.mode, aiEnabled: false, preserved: false, out: written.map((name) => store.filePath(name)), week: cache.week, warnings: cache.warnings }, null, 2));
     return;
   }
 
@@ -337,8 +363,8 @@ async function main() {
   } catch (e) {
     cache = fallbackInsights(dashboard, warnings, `AI生成失败，已降级为确定性洞察：${summarizeErrorMessage(e)}`);
   }
-  store.writeJSON(outName, cache);
-  console.log(JSON.stringify({ ok: true, mode: cache.mode, out: store.filePath(outName), week: cache.week, warnings: cache.warnings }, null, 2));
+  const written = writeCacheForWeek(cache);
+  console.log(JSON.stringify({ ok: true, mode: cache.mode, out: written.map((name) => store.filePath(name)), week: cache.week, warnings: cache.warnings }, null, 2));
 }
 
 if (require.main === module) {
@@ -349,10 +375,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  businessOverviewCacheName,
   buildCodexEnv,
   fallbackInsights,
   isGeneratedInsight,
   isReusableAiCache,
+  readExistingAiCacheForWeek,
   summarizeDashboard,
   summarizeErrorMessage,
 };
