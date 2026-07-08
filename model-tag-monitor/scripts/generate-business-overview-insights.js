@@ -8,6 +8,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const store = require('../src/store');
+const APP_VERSION = require('../package.json').version;
 
 function arg(name, fallback) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -395,7 +396,7 @@ function fallbackInsights(dashboard, warnings, extraWarning) {
   const topTier = (dashboard.tiers || []).slice().sort((a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0))[0];
   const board = dashboard.board && dashboard.board.cur ? dashboard.board.cur : {};
   return {
-    version: '1.4.1',
+    version: APP_VERSION,
     week: dashboard.week,
     prevWeek: dashboard.prevWeek || '',
     generatedAt: new Date().toISOString(),
@@ -537,7 +538,7 @@ function normalizeAiCache(aiResult, dashboard, summary, warnings) {
   const aiWarnings = Array.isArray(aiResult.warnings) ? aiResult.warnings.filter(Boolean).map(String) : [];
   const mergedWarnings = [...new Set(warnings.concat(aiWarnings))];
   return {
-    version: '1.4.1',
+    version: APP_VERSION,
     week: dashboard.week,
     prevWeek: dashboard.prevWeek || '',
     generatedAt: new Date().toISOString(),
