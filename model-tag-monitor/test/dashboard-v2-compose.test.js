@@ -415,6 +415,36 @@ test('business overview cache: week 不匹配或坏结构时保持原 insights',
   assert.equal(bad.insights.board, original);
 });
 
+
+test('business overview cache: cached AI technical metric names are localized for API', () => {
+  const result = composeDashboard(baseOpts);
+  const merged = mergeBusinessOverviewInsights(result, {
+    week: '2026-W27',
+    mode: 'ai',
+    generatedBy: 'codex-cli-read-only',
+    insights: {
+      board: '断点在 orderRate -0.70pct、shipRate -0.40pct、dealRate +0.10pp、evaRate +1pct。',
+      tiers: { 发展: 'conditionUv/evaUv 到 orderUv。' },
+      secondaryCategories: { 摄影摄像: 'shipCnt 和 dealCnt 承接。' },
+      categories: { 无人机: 'orderRate 下降。' },
+      category: 'returnRate 上升。',
+      monitor: 'jkuv 观察。',
+    },
+  });
+
+  assert.equal(merged.insights.board.includes('orderRate'), false);
+  assert.equal(merged.insights.board.includes('shipRate'), false);
+  assert.match(merged.insights.board, /下单率 -0\.70个百分点/);
+  assert.match(merged.insights.board, /发货率 -0\.40个百分点/);
+  assert.match(merged.insights.board, /成交率 \+0\.10个百分点/);
+  assert.match(merged.insights.board, /估价完成率 \+1个百分点/);
+  assert.match(merged.insights.tiers.发展, /机况UV\/估价UV 到 下单UV/);
+  assert.match(merged.insights.secondaryCategories.摄影摄像, /发货数 和 成交订单/);
+  assert.match(merged.insights.categories.无人机, /下单率 下降/);
+  assert.match(merged.insights.category, /退回率 上升/);
+  assert.match(merged.insights.monitor, /机况UV 观察/);
+});
+
 test('business overview generator: schema and normalize require AI insight maps', () => {
   const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'business-overview-insights.schema.json'), 'utf8'));
   assert.deepEqual(schema.properties.insights.required, [
@@ -443,6 +473,21 @@ test('business overview generator: schema and normalize require AI insight maps'
     summary,
     ['未配置上周策略/预判，暂无法检核兑现']
   );
+
+  const technical = buildCompleteAiResult(summary);
+  technical.insights.board = 'AI 发现 orderRate -0.70pct、shipRate -0.40pct、dealRate +0.10pp、evaRate +1pct。';
+  technical.insights.tiers.发展 = 'conditionUv/evaUv 到 orderUv。';
+  technical.insights.secondaryCategories[0].insight = 'shipCnt 和 dealCnt 承接。';
+  technical.insights.categories[0].insight = 'returnRate 上升。';
+  const localized = normalizeAiCache(technical, dashboard, summary, []);
+  assert.match(localized.insights.board, /下单率 -0\.70个百分点/);
+  assert.match(localized.insights.board, /发货率 -0\.40个百分点/);
+  assert.match(localized.insights.board, /成交率 \+0\.10个百分点/);
+  assert.match(localized.insights.board, /估价完成率 \+1个百分点/);
+  assert.equal(/orderRate|shipRate|dealRate|evaRate|pct|pp/.test(localized.insights.board), false);
+  assert.match(localized.insights.tiers.发展, /机况UV\/估价UV 到 下单UV/);
+  assert.match(Object.values(localized.insights.secondaryCategories)[0], /发货数 和 成交订单/);
+  assert.match(Object.values(localized.insights.categories)[0], /退回率 上升/);
 
   assert.equal(normalized.mode, 'ai');
   assert.equal(normalized.generatedBy, 'codex-cli-read-only');
