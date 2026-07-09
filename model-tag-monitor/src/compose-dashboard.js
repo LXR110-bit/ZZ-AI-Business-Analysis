@@ -3,7 +3,7 @@
 const { buildSixLayerPayload } = require('./aggregate/index');
 const { buildCategoryLayer } = require('./aggregate/category');
 const { COUNT_KEYS, calcRates } = require('./aggregate/funnel');
-const { isoWeekToRangeStr } = require('./week-utils');
+const { isoWeekToRange, isoWeekToRangeStr } = require('./week-utils');
 const APP_VERSION = require('../package.json').version;
 
 const RATE_KEYS = ['evaRate', 'orderRate', 'shipRate', 'dealRate'];
@@ -40,6 +40,11 @@ function composeDashboard(opts) {
     weekRange: safeWeekRange(week),
     syncedAt: (categoryCache && categoryCache.syncedAt) || null,
     source: (categoryCache && categoryCache.source) || null,
+    analysisStatus: buildAnalysisStatus({
+      week,
+      syncedAt: (categoryCache && categoryCache.syncedAt) || null,
+      now: opts.analysisNow || opts.now,
+    }),
     board,
     kpiCards,
     penetration: payload.penetration,
@@ -60,6 +65,59 @@ function getWeeks(categoryCache) {
 
 function safeWeekRange(week) {
   try { return isoWeekToRangeStr(week); } catch (e) { return ''; }
+}
+
+function toShanghaiDateString(now) {
+  const d = now ? new Date(now) : new Date();
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const byType = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  if (!byType.year || !byType.month || !byType.day) return null;
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function buildAnalysisStatus({ week, syncedAt = null, now = null } = {}) {
+  const asOfDate = toShanghaiDateString(now);
+  let weekStart = null;
+  let weekEnd = null;
+  try {
+    const range = isoWeekToRange(week);
+    weekStart = range.monday;
+    weekEnd = range.sunday;
+  } catch (e) {
+    return {
+      state: 'unknown',
+      label: '分析状态待确认',
+      cadence: '待确认',
+      description: '当前周次格式异常，暂无法判断是否为滚动分析。',
+      isRolling: false,
+      weekStart,
+      weekEnd,
+      asOfDate,
+      timezone: 'Asia/Shanghai',
+      syncedAt,
+    };
+  }
+  const isRolling = Boolean(asOfDate && weekEnd && asOfDate <= weekEnd);
+  return {
+    state: isRolling ? 'rolling' : 'final',
+    label: isRolling ? '滚动分析' : '周结冻结',
+    cadence: isRolling ? '每日06:30更新' : '已结束周固定结论',
+    description: isRolling
+      ? `${week} 尚未完整结束，当前展示截至已同步数据的滚动经营分析；每日 06:30 刷新后更新。`
+      : `${week} 已完整结束，经营分析按周冻结，不会被后续周次覆盖。`,
+    isRolling,
+    weekStart,
+    weekEnd,
+    asOfDate,
+    timezone: 'Asia/Shanghai',
+    syncedAt,
+  };
 }
 
 function slimCur(cur) {
@@ -245,15 +303,30 @@ function trendPctFromBoard(curValue, board, key) {
 function buildInsights({ week, prevWeek, board, tiers, categories }) {
   const topTier = tiers.slice().sort((a, b) => (b.cur.gmv || 0) - (a.cur.gmv || 0))[0];
   const alertCats = categories.filter((c) => (c.anomalyScore || 0) > 0).sort((a, b) => (b.anomalyScore || 0) - (a.anomalyScore || 0)).slice(0, 3);
-  const gmv = board.cur && board.cur.gmv;
+  const cur = board.cur || {};
   return {
-    board: `${week}${prevWeek ? ` 较 ${prevWeek}` : ''}：成交GMV ${formatWan(gmv)}，${topTier ? `${topTier.tier}层贡献最高` : '分层数据待补齐'}，异常品类 ${alertCats.length} 个。`,
+    board: `${week}${prevWeek ? ` 较 ${prevWeek}` : ''}：成交GMV ${formatWan(cur.gmv)}${formatBoardDeltaPct(board, 'gmv')}，估价UV ${formatCount(cur.evaUv)}${formatBoardDeltaPct(board, 'evaUv')}，成交订单 ${formatCount(cur.dealCnt)}${formatBoardDeltaPct(board, 'dealCnt')}；${topTier ? `${topTier.tier}层贡献最高` : '分层数据待补齐'}，异常品类 ${alertCats.length} 个。`,
     tiers: Object.fromEntries(tiers.map((t) => [t.tier, `${t.tier}层覆盖 ${t.cur.categoryCount || 0} 个在售品类，成交GMV ${formatWan(t.cur.gmv)}。`])),
     secondaryCategories: buildSecondaryInsightMap(categories),
     categories: buildCategoryInsightMap(categories),
     category: alertCats.length ? `重点关注：${alertCats.map((c) => c.category).join('、')}。` : '当前筛选下暂无显著异常品类。',
     monitor: alertCats.length ? `建议优先复盘 ${alertCats[0].category} 等品类的估价完成率、下单UV、发货数与成交GMV。` : '监测页本期不生成机型级 AI 分析，可继续查看结构化异动明细。',
   };
+}
+
+function formatCount(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '-';
+  return Math.round(n).toLocaleString('zh-CN');
+}
+
+function formatBoardDeltaPct(board, key) {
+  if (!board || !board.delta || board.delta[key] == null || !board.cur || board.cur[key] == null) return '';
+  const cur = Number(board.cur[key]);
+  const prev = cur - Number(board.delta[key]);
+  const pct = pctDelta(cur, prev);
+  if (pct == null) return '';
+  return `（环比${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(1)}%）`;
 }
 
 function buildSecondaryInsightMap(categories) {
@@ -335,6 +408,28 @@ function mergeBusinessOverviewInsights(result, cached) {
   return {
     ...result,
     insights: mergedInsights,
+    analysisStatus: mergeAnalysisStatus(result.analysisStatus, cached),
+  };
+}
+
+function mergeAnalysisStatus(status, cached) {
+  const base = status && typeof status === 'object' ? status : {};
+  const cachedStatus = cached && cached.analysisStatus && typeof cached.analysisStatus === 'object'
+    ? cached.analysisStatus
+    : {};
+  return {
+    ...base,
+    // rolling/final 是时间相关状态，必须按当前请求时间重新计算；
+    // 缓存文件只补生成元数据，不能让旧的 W28 rolling 状态在周结后继续覆盖。
+    state: base.state || cachedStatus.state || null,
+    label: base.label || cachedStatus.label || null,
+    cadence: base.cadence || cachedStatus.cadence || null,
+    description: base.description || cachedStatus.description || null,
+    isRolling: base.isRolling != null ? Boolean(base.isRolling) : Boolean(cachedStatus.isRolling),
+    generatedAt: cached.generatedAt || cachedStatus.generatedAt || base.generatedAt || null,
+    generatedBy: cached.generatedBy || cachedStatus.generatedBy || base.generatedBy || null,
+    mode: cached.mode || cachedStatus.mode || base.mode || null,
+    inputHash: cached.inputHash || cachedStatus.inputHash || base.inputHash || null,
   };
 }
 
@@ -365,4 +460,4 @@ function attachV1Compatibility(result, categories, categoryCache) {
   };
 }
 
-module.exports = { composeDashboard, buildTrend, mergeBusinessOverviewInsights };
+module.exports = { composeDashboard, buildAnalysisStatus, buildTrend, mergeBusinessOverviewInsights };

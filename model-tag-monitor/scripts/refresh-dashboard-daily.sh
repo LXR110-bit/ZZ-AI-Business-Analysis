@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# model-tag-monitor v1.4.2 daily refresh flow
+# model-tag-monitor v1.4.3 daily refresh flow
 # 06:30 Asia/Shanghai: local CSV/cache refresh -> dashboard health -> style-2 Lark card.
 set -Eeuo pipefail
 export PATH="/root/.local/bin:/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
-VERSION="1.4.2"
+VERSION="1.4.3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONITOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PARENT_DIR="$(cd "$MONITOR_DIR/.." && pwd)"
@@ -81,21 +81,23 @@ post_json /api/sync/board
 
 DASHBOARD_JSON="$(get_json /api/dashboard)"
 printf '%s' "$DASHBOARD_JSON" > "$LOG_DIR/dashboard-$RUN_ID.json"
-node - <<'NODE' "$LOG_DIR/dashboard-$RUN_ID.json" "$TARGET_WEEKS"
+node - <<'NODE' "$LOG_DIR/dashboard-$RUN_ID.json" "$TARGET_WEEKS" "$VERSION"
 const fs = require('fs');
 const file = process.argv[2];
 const expected = process.argv[3].split(',').filter(Boolean);
+const version = process.argv[4];
 const d = JSON.parse(fs.readFileSync(file, 'utf8'));
 const weeks = d.weeks || d.weekWindow || [];
-if (d.version !== '1.4.2') throw new Error(`dashboard version != 1.4.2: ${d.version}`);
+if (d.version !== version) throw new Error(`dashboard version != ${version}: ${d.version}`);
 if (JSON.stringify(weeks) !== JSON.stringify(expected)) throw new Error(`dashboard weeks mismatch: ${weeks.join(',')} != ${expected.join(',')}`);
 if (d.week !== expected[expected.length - 1]) throw new Error(`dashboard latest week mismatch: ${d.week}`);
 if (!d.board || !Array.isArray(d.categories) || !d.categories.length) throw new Error('dashboard contract incomplete');
 console.log(`[health] dashboard ok version=${d.version} week=${d.week} weeks=${weeks.join(',')} categories=${d.categories.length}`);
 NODE
 
-log "generate business overview insights cache (Codex guarded by BUSINESS_OVERVIEW_AI_ENABLED)"
-if node "$SCRIPT_DIR/generate-business-overview-insights.js" --api-base "$API_BASE" | tee -a "$LOG_FILE"; then
+log "generate business overview insights cache (rolling week uses daily Codex AI; completed weeks stay frozen unless explicitly allowed)"
+if BUSINESS_OVERVIEW_AI_ENABLED="${BUSINESS_OVERVIEW_AI_ENABLED:-1}" \
+  node "$SCRIPT_DIR/generate-business-overview-insights.js" --api-base "$API_BASE" | tee -a "$LOG_FILE"; then
   log "business overview insights cache generated"
 else
   log "WARN: business overview insights generation failed; dashboard will keep deterministic built-in insights"

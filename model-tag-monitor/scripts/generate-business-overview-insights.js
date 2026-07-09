@@ -16,12 +16,18 @@ function arg(name, fallback) {
   return fallback;
 }
 
+function flag(name, envName) {
+  const key = envName || name.replace(/-/g, '_').toUpperCase();
+  return process.argv.includes(`--${name}`) || process.env[key] === '1';
+}
+
 const apiBase = String(arg('api-base', process.env.API_BASE || 'http://127.0.0.1:8848')).replace(/\/+$/, '');
 const dashboardFile = arg('dashboard-file', process.env.BUSINESS_OVERVIEW_DASHBOARD_FILE || '');
 const outName = arg('out-name', process.env.BUSINESS_OVERVIEW_CACHE_NAME || 'business-overview-insights.json');
 const strategyFile = arg('strategy-file', process.env.BUSINESS_OVERVIEW_STRATEGY_FILE || '');
 const timeoutMs = Number(arg('timeout-ms', process.env.BUSINESS_OVERVIEW_AI_TIMEOUT_MS || '240000'));
 const aiEnabled = process.env.BUSINESS_OVERVIEW_AI_ENABLED === '1';
+const allowFinalRefresh = flag('allow-final-refresh', 'BUSINESS_OVERVIEW_ALLOW_FINAL_REFRESH');
 const repoRoot = path.resolve(__dirname, '..', '..');
 const schemaPath = path.join(__dirname, 'business-overview-insights.schema.json');
 const STRATEGY_WARNING = '未配置上周策略/预判，暂无法检核兑现';
@@ -273,12 +279,49 @@ function summarizeDashboard(dashboard) {
     prevWeek: dashboard.prevWeek || '',
     weekRange: dashboard.weekRange || '',
     syncedAt: dashboard.syncedAt || '',
+    analysisStatus: normalizeAnalysisStatus(dashboard.analysisStatus),
     board: dashboard.board || {},
     kpiCards: dashboard.kpiCards || [],
     tiers,
     secondaryCategories,
     categories,
     topCategories: categories.slice(0, 20),
+  };
+}
+
+function normalizeAnalysisStatus(status) {
+  if (!status || typeof status !== 'object') return null;
+  return {
+    state: status.state || null,
+    label: status.label || null,
+    cadence: status.cadence || null,
+    description: status.description || null,
+    isRolling: status.isRolling === true || status.state === 'rolling',
+    weekStart: status.weekStart || null,
+    weekEnd: status.weekEnd || null,
+    asOfDate: status.asOfDate || null,
+    timezone: status.timezone || 'Asia/Shanghai',
+    syncedAt: status.syncedAt || null,
+  };
+}
+
+function isRollingDashboard(dashboard) {
+  const status = normalizeAnalysisStatus(dashboard && dashboard.analysisStatus);
+  return Boolean(status && (status.isRolling || status.state === 'rolling'));
+}
+
+function attachCacheAnalysisStatus(cache, dashboard) {
+  const status = normalizeAnalysisStatus(dashboard && dashboard.analysisStatus);
+  if (!status) return cache;
+  return {
+    ...cache,
+    analysisStatus: {
+      ...status,
+      generatedAt: cache.generatedAt || null,
+      generatedBy: cache.generatedBy || null,
+      mode: cache.mode || null,
+      inputHash: cache.inputHash || null,
+    },
   };
 }
 
@@ -395,7 +438,7 @@ function fallbackInsights(dashboard, warnings, extraWarning) {
   };
   const topTier = (dashboard.tiers || []).slice().sort((a, b) => ((b.cur && b.cur.gmv) || 0) - ((a.cur && a.cur.gmv) || 0))[0];
   const board = dashboard.board && dashboard.board.cur ? dashboard.board.cur : {};
-  return {
+  const cache = {
     version: APP_VERSION,
     week: dashboard.week,
     prevWeek: dashboard.prevWeek || '',
@@ -413,6 +456,7 @@ function fallbackInsights(dashboard, warnings, extraWarning) {
     },
     warnings: extraWarning ? warnings.concat(extraWarning) : warnings,
   };
+  return attachCacheAnalysisStatus(cache, dashboard);
 }
 
 
@@ -447,6 +491,8 @@ function buildPrompt(summary, strategy, warnings) {
     '7. insights.category 是兼容旧字段，可写全局/当前筛选品类概览；insights.monitor 本期只写监测页总提示或明确空态，不输出机型级 AI 分析。',
     '8. 建议必须有洞察和计划：说明为什么做、先查哪条链路、预期验证什么；禁止泛泛写“建议复盘”。如果没有风险或机会，不必给建议。',
     '9. 如果上周策略为空，warnings 必须包含“未配置上周策略/预判，暂无法检核兑现”。',
+    '10. 如果 dashboard_summary.analysisStatus.state=rolling，必须明确这是未结束周的滚动分析，结论按当前已同步数据判断；不要写成周结冻结。',
+    '11. 如果 dashboard_summary.analysisStatus.state=final，必须按已结束周固定结论表达，不要提示每日滚动更新。',
     '',
     '<last_week_strategies>',
     strategy || '',
@@ -537,7 +583,7 @@ function normalizeAiCache(aiResult, dashboard, summary, warnings) {
   };
   const aiWarnings = Array.isArray(aiResult.warnings) ? aiResult.warnings.filter(Boolean).map(String) : [];
   const mergedWarnings = [...new Set(warnings.concat(aiWarnings))];
-  return {
+  const cache = {
     version: APP_VERSION,
     week: dashboard.week,
     prevWeek: dashboard.prevWeek || '',
@@ -548,6 +594,7 @@ function normalizeAiCache(aiResult, dashboard, summary, warnings) {
     insights: normalizedInsights,
     warnings: mergedWarnings,
   };
+  return attachCacheAnalysisStatus(cache, dashboard);
 }
 
 function buildCodexEnv(source = process.env) {
@@ -620,26 +667,31 @@ async function main() {
   const strategy = readStrategy();
   const warnings = strategy ? [] : [STRATEGY_WARNING];
   const summary = summarizeDashboard(dashboard);
+  const rolling = isRollingDashboard(dashboard);
+  const existing = readExistingAiCacheForWeek(dashboard.week);
+
+  // 已结束周的 AI 结论默认冻结：即使生产脚本打开 AI，也不覆盖 W27 这类周结文件。
+  // 当前未结束周（如 W28）则按每日刷新滚动重算。
+  if (existing && !rolling && !allowFinalRefresh) {
+    console.log(JSON.stringify({
+      ok: true,
+      mode: existing.cache.mode,
+      aiEnabled,
+      preserved: true,
+      out: store.filePath(existing.name),
+      week: existing.cache.week,
+      dashboardWeek: dashboard.week,
+      analysisState: (summary.analysisStatus && summary.analysisStatus.state) || null,
+      warnings: existing.cache.warnings || [],
+    }, null, 2));
+    return;
+  }
 
   let cache;
   if (!aiEnabled) {
-    const existing = readExistingAiCacheForWeek(dashboard.week);
-    if (existing) {
-      console.log(JSON.stringify({
-        ok: true,
-        mode: existing.cache.mode,
-        aiEnabled: false,
-        preserved: true,
-        out: store.filePath(existing.name),
-        week: existing.cache.week,
-        dashboardWeek: dashboard.week,
-        warnings: existing.cache.warnings || [],
-      }, null, 2));
-      return;
-    }
     cache = fallbackInsights(dashboard, warnings);
     const written = writeCacheForWeek(cache);
-    console.log(JSON.stringify({ ok: true, mode: cache.mode, aiEnabled: false, preserved: false, out: written.map((name) => store.filePath(name)), week: cache.week, warnings: cache.warnings }, null, 2));
+    console.log(JSON.stringify({ ok: true, mode: cache.mode, aiEnabled: false, preserved: false, out: written.map((name) => store.filePath(name)), week: cache.week, analysisState: (cache.analysisStatus && cache.analysisStatus.state) || null, warnings: cache.warnings }, null, 2));
     return;
   }
 
@@ -650,7 +702,7 @@ async function main() {
     cache = fallbackInsights(dashboard, warnings, `AI生成失败，已降级为确定性洞察：${summarizeErrorMessage(e)}`);
   }
   const written = writeCacheForWeek(cache);
-  console.log(JSON.stringify({ ok: true, mode: cache.mode, out: written.map((name) => store.filePath(name)), week: cache.week, warnings: cache.warnings }, null, 2));
+  console.log(JSON.stringify({ ok: true, mode: cache.mode, out: written.map((name) => store.filePath(name)), week: cache.week, analysisState: (cache.analysisStatus && cache.analysisStatus.state) || null, warnings: cache.warnings }, null, 2));
 }
 
 if (require.main === module) {
@@ -667,6 +719,7 @@ module.exports = {
   fallbackInsights,
   isGeneratedInsight,
   isReusableAiCache,
+  isRollingDashboard,
   normalizeAiCache,
   readExistingAiCacheForWeek,
   summarizeDashboard,

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
-const { composeDashboard, mergeBusinessOverviewInsights } = require('../src/compose-dashboard');
+const { composeDashboard, buildAnalysisStatus, mergeBusinessOverviewInsights } = require('../src/compose-dashboard');
 const { COUNT_KEYS, RATE_KEYS } = require('../src/aggregate/funnel');
 
 const FIX_DIR = path.join(__dirname, 'fixtures');
@@ -84,6 +84,7 @@ test('顶层结构包含所有契约字段', () => {
   assert.ok('tiers' in result);
   assert.ok('categories' in result);
   assert.ok('reconciliation' in result);
+  assert.ok('analysisStatus' in result);
 });
 
 test('week 透传', () => {
@@ -99,6 +100,32 @@ test('weekRange 格式正确', () => {
 test('syncedAt 来自 categoryCache', () => {
   const result = composeDashboard(baseOpts);
   assert.equal(result.syncedAt, categoryCache.syncedAt);
+});
+
+test('analysisStatus: 当前未结束周标记为 rolling，每日 06:30 更新', () => {
+  const result = composeDashboard({
+    ...baseOpts,
+    week: '2026-W28',
+    prevWeek: '2026-W27',
+    analysisNow: '2026-07-09T02:30:00.000Z',
+  });
+  assert.equal(result.analysisStatus.state, 'rolling');
+  assert.equal(result.analysisStatus.isRolling, true);
+  assert.equal(result.analysisStatus.label, '滚动分析');
+  assert.equal(result.analysisStatus.cadence, '每日06:30更新');
+  assert.equal(result.analysisStatus.weekStart, '2026-07-06');
+  assert.equal(result.analysisStatus.weekEnd, '2026-07-12');
+});
+
+test('analysisStatus: 已结束周标记为 final/周结冻结', () => {
+  const status = buildAnalysisStatus({
+    week: '2026-W27',
+    now: '2026-07-09T02:30:00.000Z',
+  });
+  assert.equal(status.state, 'final');
+  assert.equal(status.isRolling, false);
+  assert.equal(status.label, '周结冻结');
+  assert.equal(status.cadence, '已结束周固定结论');
 });
 
 // --- board ---
@@ -312,6 +339,9 @@ test('business overview cache: week 匹配时覆盖 insights 并附加 metadata/
   assert.equal(merged.insights.mode, 'ai');
   assert.equal(merged.insights.generatedBy, 'codex-cli-read-only');
   assert.deepEqual(merged.insights.warnings, ['未配置上周策略/预判，暂无法检核兑现']);
+  assert.equal(merged.analysisStatus.generatedBy, 'codex-cli-read-only');
+  assert.equal(merged.analysisStatus.mode, 'ai');
+  assert.equal(merged.analysisStatus.inputHash, 'abc123');
 });
 
 test('business overview cache: old v1.3.0 cache keeps compatibility while base maps remain available', () => {
@@ -335,6 +365,37 @@ test('business overview cache: old v1.3.0 cache keeps compatibility while base m
   assert.equal(merged.insights.monitor, '旧 AI 监测字段');
   assert.equal(typeof merged.insights.secondaryCategories.摄影摄像, 'string');
   assert.equal(typeof merged.insights.categories.无人机, 'string');
+});
+
+test('business overview cache: cached rolling metadata does not override request-time final status', () => {
+  const result = composeDashboard({ ...baseOpts, analysisNow: '2026-07-13T02:30:00.000Z' });
+  const merged = mergeBusinessOverviewInsights(result, {
+    version: '1.4.3',
+    week: '2026-W27',
+    generatedAt: '2026-07-08T12:00:00.000Z',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'cached-hash',
+    analysisStatus: {
+      state: 'rolling',
+      label: '滚动分析',
+      cadence: '每日06:30更新',
+      isRolling: true,
+    },
+    insights: {
+      board: 'AI 大盘洞察',
+      tiers: { 发展: 'AI 发展', 孵化: 'AI 孵化', 种子: 'AI 种子' },
+      category: 'AI 品类',
+      monitor: 'AI 监测',
+    },
+    warnings: [],
+  });
+
+  assert.equal(merged.analysisStatus.state, 'final');
+  assert.equal(merged.analysisStatus.label, '周结冻结');
+  assert.equal(merged.analysisStatus.isRolling, false);
+  assert.equal(merged.analysisStatus.generatedBy, 'codex-cli-read-only');
+  assert.equal(merged.analysisStatus.inputHash, 'cached-hash');
 });
 
 test('business overview cache: week 不匹配或坏结构时保持原 insights', () => {
@@ -515,6 +576,94 @@ test('business overview generator: AI disabled preserves existing AI cache', () 
   assert.equal(cache.mode, 'ai');
   assert.equal(cache.generatedBy, 'codex-cli-read-only');
   assert.equal(cache.insights.board, '已有 AI 大盘洞察');
+});
+
+test('business overview generator: rolling week refreshes daily instead of preserving same-week AI cache', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-rolling-refresh-test-'));
+  const dashboardFile = path.join(tmp, 'dashboard.json');
+  const w28 = composeDashboard({
+    ...baseOpts,
+    week: '2026-W28',
+    prevWeek: '2026-W27',
+    analysisNow: '2026-07-09T02:30:00.000Z',
+  });
+  fs.writeFileSync(dashboardFile, JSON.stringify(w28), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights-2026-W28.json'), JSON.stringify({
+    version: '1.4.2',
+    week: '2026-W28',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'yesterday-w28-ai',
+    insights: {
+      board: '昨日 W28 AI 不应冻结复用',
+      tiers: { 发展: '昨日发展', 孵化: '昨日孵化', 种子: '昨日种子' },
+      category: '昨日品类',
+      monitor: '昨日监测',
+    },
+    warnings: [],
+  }), 'utf8');
+
+  const proc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
+    '--dashboard-file', dashboardFile,
+    '--out-name', 'business-overview-insights.json',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, BUSINESS_OVERVIEW_AI_ENABLED: '0' },
+    encoding: 'utf8',
+  });
+  assert.equal(proc.status, 0, proc.stderr || proc.stdout);
+  const stdout = JSON.parse(proc.stdout);
+  assert.equal(stdout.preserved, false);
+  assert.equal(stdout.analysisState, 'rolling');
+
+  const cache = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights-2026-W28.json'), 'utf8'));
+  assert.equal(cache.week, '2026-W28');
+  assert.equal(cache.mode, 'deterministic');
+  assert.equal(cache.analysisStatus.state, 'rolling');
+  assert.notEqual(cache.insights.board, '昨日 W28 AI 不应冻结复用');
+});
+
+test('business overview generator: completed week preserves frozen AI even when AI is enabled', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-final-freeze-test-'));
+  const dashboardFile = path.join(tmp, 'dashboard.json');
+  fs.writeFileSync(dashboardFile, JSON.stringify(composeDashboard({
+    ...baseOpts,
+    analysisNow: '2026-07-09T02:30:00.000Z',
+  })), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), JSON.stringify({
+    version: '1.4.2',
+    week: '2026-W27',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: 'frozen-w27-ai',
+    insights: {
+      board: 'W27 frozen AI must not be regenerated',
+      tiers: { 发展: 'W27 frozen', 孵化: 'W27 frozen', 种子: 'W27 frozen' },
+      category: 'W27 frozen category',
+      monitor: 'W27 frozen monitor',
+    },
+    warnings: [],
+  }), 'utf8');
+
+  const proc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
+    '--dashboard-file', dashboardFile,
+    '--out-name', 'business-overview-insights.json',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, BUSINESS_OVERVIEW_AI_ENABLED: '1' },
+    encoding: 'utf8',
+  });
+  assert.equal(proc.status, 0, proc.stderr || proc.stdout);
+  const stdout = JSON.parse(proc.stdout);
+  assert.equal(stdout.preserved, true);
+  assert.equal(stdout.aiEnabled, true);
+  assert.equal(stdout.analysisState, 'final');
+  assert.equal(stdout.out.endsWith('business-overview-insights-2026-W27.json'), true);
+
+  const cache = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), 'utf8'));
+  assert.equal(cache.insights.board, 'W27 frozen AI must not be regenerated');
 });
 
 test('api dashboard: W27 weekly frozen cache has priority over latest cache and returns new maps', async () => {
