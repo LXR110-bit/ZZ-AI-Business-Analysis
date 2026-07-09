@@ -20,15 +20,22 @@
 Host zz-server
     HostName 47.84.94.234
     User admin
-    Port 443
+    Port 22
     IdentityFile ~/.ssh/id_ed25519
     StrictHostKeyChecking accept-new
-    ServerAliveInterval 60
-    ServerAliveCountMax 3
+    TCPKeepAlive yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 5
 ```
 
 **关键坑**:
-- Port 是 **443**(不是 22),被网络管制的地方比标准 22 好通
+
+**2026-07-09 SSH/rsync 更新**:
+- 本机 `zz-server` alias 已切到 `Port 22`，公网 SSH 22 已验证可登录。
+- 服务端 `/etc/ssh/sshd_config.d/zz-ports.conf` 监听 22/443/2222，含 `ClientAliveInterval 15`、`ClientAliveCountMax 5`、`MaxStartups 50:30:200`。
+- `2222` 在服务器本机 `127.0.0.1:2222` 可返回 OpenSSH banner，但公网 `ssh -p 2222` 会提前 close，暂不作为主通道。
+- 大文件/生产同步统一用 `rsync -avP -e ssh ... zz-server:/tmp/`，必要时显式加 `-o ServerAliveInterval=15 -o ServerAliveCountMax=5`。
+- Port 当前主用 **22**；2026-07-09 从 443 切回 22，并配置 TCPKeepAlive/15 秒心跳。服务端也监听 443/2222，但 2222 公网入口仍需验证。
 - User 是 `admin`,不是 root,但可以 sudo(所有生产操作都用 `sudo` 前缀)
 - 私钥 `~/.ssh/id_ed25519` 只在用户 Mac 上,别 agent 想用 SSH 只能:
   - 让用户在自己 Mac 上跑命令(用户会 copy/paste)
