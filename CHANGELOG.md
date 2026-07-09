@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Fixed
+- **model-tag-monitor v1.4.5 日滚动链路修复**：06:30 刷新改为先跑 local-imports 并校验本次 run/目标周 `day_cnt` 覆盖，校验通过后才同步页面、生成 AI、推送卡片；失败时发送飞书预警并保留上一成功页面数据。
+- **生产邮件导入稳健性**：兼容腾讯企业邮箱附件名重复拼接、IMAP 大附件正文偶发空响应；附件下载增加 fetch retry 和重连 retry。
+- **local-import 最新周过滤**：模型 zip 分片中同时包含上周/本周时，按源表最新 `week_start_date` 过滤后再归月写入，避免模型维度 W28 数据因首行 W27 被误判到 6 月。
+
 ### Changed
 - **knowledge_base MCP 实接飞书 base**（不再读本地 stub）：`query_metric/query_field/query_dim_value/query_table` 4 个工具直查 4 张表（base_token N6OVb2qz5aKxf9sY9kRc7y6onYd）。bot 身份调用，已实测可读。git 里 `knowledge/metrics_dictionary.md` 弃用（飞书是 source of truth）。
 - `get_baseline` 仍是 stub（飞书 base 暂未建品类基线表）。

@@ -12,6 +12,10 @@ def _write_xlsx(path, row: dict) -> None:
     pd.DataFrame([row]).to_excel(path, index=False)
 
 
+def _write_xlsx_rows(path, rows: list[dict]) -> None:
+    pd.DataFrame(rows).to_excel(path, index=False)
+
+
 def _row_for_source(source_key: str) -> dict:
     base = {
         "week_start_date": "2026-07-06",
@@ -70,3 +74,55 @@ def test_local_imports_accepts_zip_and_xlsx_week_start_snapshots(tmp_path, monke
     assert str(model.loc[0, "week_start_date"]) == "2026-07-06"
     assert int(model.loc[0, "day_cnt"]) == 2
     assert int(category.loc[0, "day_cnt"]) == 2
+
+
+def test_local_imports_keeps_latest_week_when_source_contains_previous_week(tmp_path, monkeypatch):
+    source_files = {}
+    for source in required_sources():
+        previous = _row_for_source(source.source_key)
+        previous["week_start_date"] = "2026-06-29"
+        previous["day_cnt"] = 7
+        previous["成交量"] = 999
+        latest = _row_for_source(source.source_key)
+        latest["week_start_date"] = "2026-07-06"
+        latest["day_cnt"] = 3
+        latest["成交量"] = 1
+
+        xlsx = tmp_path / f"{source.source_key}.xlsx"
+        _write_xlsx_rows(xlsx, [previous, latest])
+        if source.source_key in {"model_summary", "model_daily_avg"}:
+            zpath = tmp_path / f"{source.source_key}.zip"
+            with zipfile.ZipFile(zpath, "w") as zf:
+                zf.write(xlsx, arcname="1.out.xlsx")
+            source_files[source.source_key] = [zpath]
+        else:
+            source_files[source.source_key] = [xlsx]
+
+    def fake_fetch(lookback_days=14):
+        return source_files, {
+            "since": "2026-07-09",
+            "sources": {key: [{"attachment": paths[0].name}] for key, paths in source_files.items()},
+            "mail_count": len(source_files),
+        }
+
+    monkeypatch.setattr(pipeline, "fetch_recent_zips_by_subject", fake_fetch)
+
+    output_root = tmp_path / "imports"
+    result = pipeline.run_local_imports_pipeline(
+        target_months={"2026-07"},
+        output_root=output_root,
+        run_id="unit_test_20260709",
+    )
+
+    assert result["status"] == "ok"
+    assert result["months"] == ["2026-07"]
+    expected = {source.output_filename("2026-07") for source in required_sources()}
+    assert {path.name for path in output_root.glob("*.csv")} == expected
+
+    for source in required_sources():
+        out = pd.read_csv(output_root / source.output_filename("2026-07"))
+        assert out["week_start_date"].astype(str).unique().tolist() == ["2026-07-06"]
+        assert len(out) == 1
+        assert int(out.loc[0, "成交量"]) == 1
+        if "day_cnt" in out.columns:
+            assert int(out.loc[0, "day_cnt"]) == 3
