@@ -74,6 +74,32 @@ function anomalyDots(score) {
 }
 
 // ---- Meta 行 ----
+function renderAnalysisStatusBadges(d) {
+  var status = (d && d.analysisStatus) || {};
+  var insights = (d && d.insights) || {};
+  var state = status.state || (status.isRolling ? 'rolling' : '');
+  var label = status.label || (state === 'rolling' ? '滚动分析' : (state === 'final' ? '周结冻结' : '分析状态待确认'));
+  var cadence = status.cadence || '';
+  var desc = status.description || '';
+  var statusCls = state === 'rolling' ? ' rolling' : (state === 'final' ? ' final' : '');
+  var html = '<span class="dash-meta-badge dash-meta-status' + statusCls + '" title="' + escapeAttr(desc) + '">' +
+    escapeHtml(label + (cadence ? ' · ' + cadence : '')) +
+  '</span>';
+
+  var mode = status.mode || insights.mode || '';
+  if (mode) {
+    var generatedAt = status.generatedAt || insights.generatedAt || '';
+    var generatedBy = status.generatedBy || insights.generatedBy || '';
+    var modeLabel = mode === 'ai' ? 'AI分析' : (mode === 'deterministic' ? '规则兜底' : mode);
+    var modeCls = mode === 'ai' ? ' ai' : (mode === 'deterministic' ? ' deterministic' : '');
+    var modeTitle = [generatedBy, generatedAt ? new Date(generatedAt).toLocaleString('zh-CN') : ''].filter(Boolean).join(' · ');
+    html += '<span class="dash-meta-badge dash-meta-mode' + modeCls + '" title="' + escapeAttr(modeTitle) + '">' +
+      escapeHtml(modeLabel) +
+    '</span>';
+  }
+  return html;
+}
+
 function renderDashboardMetaV2(d) {
   var t = d.syncedAt ? new Date(d.syncedAt).toLocaleString('zh-CN') : '-';
   var weeks = (window.dashboardWeeks || []).slice();
@@ -89,6 +115,7 @@ function renderDashboardMetaV2(d) {
     (d.weekRange ? '<span class="dash-meta-sep">·</span><span>' + escapeHtml(d.weekRange) + '</span>' : '') +
     '<span class="dash-meta-sep">·</span>' +
     '<span>同步于 ' + escapeHtml(t) + '</span>' +
+    renderAnalysisStatusBadges(d) +
     '<span class="dash-meta-badge" title="本页周维度经营指标均按周日均展示，不能按周汇总口径解读">口径：周日均，非周汇总</span>';
   var sel = $('#dashWeek');
   if (sel) {
@@ -105,9 +132,14 @@ function renderDashboardOverviewV2(d) {
   var el = $('#dashBoardOverview');
   if (!el) return;
   _dashboardInsights = (d && d.insights) || {};
+  var status = (d && d.analysisStatus) || {};
+  var statusText = status.description
+    ? '<div class="dash-insight-meta">' + escapeHtml(status.description) + '</div>'
+    : '';
   el.innerHTML =
     '<div class="dash-insight-title">大盘概览</div>' +
     '<div class="dash-insight-body">' + escapeHtml(_dashboardInsights.board || '真实数据已接入，暂无自动洞察。') + '</div>' +
+    statusText +
     renderInsightWarnings(_dashboardInsights);
 }
 
@@ -879,6 +911,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fmtGmvShort: fmtGmvShort,
     fmtCountShort: fmtCountShort,
     fmtDeltaArrow: fmtDeltaArrow,
+    renderAnalysisStatusBadges: renderAnalysisStatusBadges,
     anomalyDots: anomalyDots,
     buildTierOverviewModel: buildTierOverviewModel,
     buildCategoryOverviewModel: buildCategoryOverviewModel,

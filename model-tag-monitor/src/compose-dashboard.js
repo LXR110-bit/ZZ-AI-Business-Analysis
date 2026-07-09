@@ -3,7 +3,7 @@
 const { buildSixLayerPayload } = require('./aggregate/index');
 const { buildCategoryLayer } = require('./aggregate/category');
 const { COUNT_KEYS, calcRates } = require('./aggregate/funnel');
-const { isoWeekToRangeStr } = require('./week-utils');
+const { isoWeekToRange, isoWeekToRangeStr } = require('./week-utils');
 const APP_VERSION = require('../package.json').version;
 
 const RATE_KEYS = ['evaRate', 'orderRate', 'shipRate', 'dealRate'];
@@ -40,6 +40,11 @@ function composeDashboard(opts) {
     weekRange: safeWeekRange(week),
     syncedAt: (categoryCache && categoryCache.syncedAt) || null,
     source: (categoryCache && categoryCache.source) || null,
+    analysisStatus: buildAnalysisStatus({
+      week,
+      syncedAt: (categoryCache && categoryCache.syncedAt) || null,
+      now: opts.analysisNow || opts.now,
+    }),
     board,
     kpiCards,
     penetration: payload.penetration,
@@ -60,6 +65,59 @@ function getWeeks(categoryCache) {
 
 function safeWeekRange(week) {
   try { return isoWeekToRangeStr(week); } catch (e) { return ''; }
+}
+
+function toShanghaiDateString(now) {
+  const d = now ? new Date(now) : new Date();
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const byType = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  if (!byType.year || !byType.month || !byType.day) return null;
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function buildAnalysisStatus({ week, syncedAt = null, now = null } = {}) {
+  const asOfDate = toShanghaiDateString(now);
+  let weekStart = null;
+  let weekEnd = null;
+  try {
+    const range = isoWeekToRange(week);
+    weekStart = range.monday;
+    weekEnd = range.sunday;
+  } catch (e) {
+    return {
+      state: 'unknown',
+      label: '分析状态待确认',
+      cadence: '待确认',
+      description: '当前周次格式异常，暂无法判断是否为滚动分析。',
+      isRolling: false,
+      weekStart,
+      weekEnd,
+      asOfDate,
+      timezone: 'Asia/Shanghai',
+      syncedAt,
+    };
+  }
+  const isRolling = Boolean(asOfDate && weekEnd && asOfDate <= weekEnd);
+  return {
+    state: isRolling ? 'rolling' : 'final',
+    label: isRolling ? '滚动分析' : '周结冻结',
+    cadence: isRolling ? '每日06:30更新' : '已结束周固定结论',
+    description: isRolling
+      ? `${week} 尚未完整结束，当前展示截至已同步数据的滚动经营分析；每日 06:30 刷新后更新。`
+      : `${week} 已完整结束，经营分析按周冻结，不会被后续周次覆盖。`,
+    isRolling,
+    weekStart,
+    weekEnd,
+    asOfDate,
+    timezone: 'Asia/Shanghai',
+    syncedAt,
+  };
 }
 
 function slimCur(cur) {
@@ -335,6 +393,28 @@ function mergeBusinessOverviewInsights(result, cached) {
   return {
     ...result,
     insights: mergedInsights,
+    analysisStatus: mergeAnalysisStatus(result.analysisStatus, cached),
+  };
+}
+
+function mergeAnalysisStatus(status, cached) {
+  const base = status && typeof status === 'object' ? status : {};
+  const cachedStatus = cached && cached.analysisStatus && typeof cached.analysisStatus === 'object'
+    ? cached.analysisStatus
+    : {};
+  return {
+    ...base,
+    // rolling/final 是时间相关状态，必须按当前请求时间重新计算；
+    // 缓存文件只补生成元数据，不能让旧的 W28 rolling 状态在周结后继续覆盖。
+    state: base.state || cachedStatus.state || null,
+    label: base.label || cachedStatus.label || null,
+    cadence: base.cadence || cachedStatus.cadence || null,
+    description: base.description || cachedStatus.description || null,
+    isRolling: base.isRolling != null ? Boolean(base.isRolling) : Boolean(cachedStatus.isRolling),
+    generatedAt: cached.generatedAt || cachedStatus.generatedAt || base.generatedAt || null,
+    generatedBy: cached.generatedBy || cachedStatus.generatedBy || base.generatedBy || null,
+    mode: cached.mode || cachedStatus.mode || base.mode || null,
+    inputHash: cached.inputHash || cachedStatus.inputHash || base.inputHash || null,
   };
 }
 
@@ -365,4 +445,4 @@ function attachV1Compatibility(result, categories, categoryCache) {
   };
 }
 
-module.exports = { composeDashboard, buildTrend, mergeBusinessOverviewInsights };
+module.exports = { composeDashboard, buildAnalysisStatus, buildTrend, mergeBusinessOverviewInsights };

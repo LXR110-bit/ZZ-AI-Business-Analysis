@@ -4,7 +4,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const EXPECTED_VERSION = process.env.EXPECTED_VERSION || '1.4.2';
+const PACKAGE_VERSION = require('../package.json').version;
+const EXPECTED_VERSION = process.env.EXPECTED_VERSION || PACKAGE_VERSION;
 const EXPECTED_WEEKS = (process.env.TARGET_WEEKS || '2026-W19,2026-W20,2026-W21,2026-W22,2026-W23,2026-W24,2026-W25,2026-W26,2026-W27,2026-W28')
   .split(',')
   .map((w) => w.trim())
@@ -62,6 +63,7 @@ function validateDashboard(label, d) {
   assertTruthy(`${label}.tiers`, Array.isArray(d.tiers) && d.tiers.length);
   assertTruthy(`${label}.categories`, Array.isArray(d.categories) && d.categories.length);
   assertTruthy(`${label}.kpiCards`, Array.isArray(d.kpiCards) && d.kpiCards.length >= 6);
+  assertTruthy(`${label}.analysisStatus`, d.analysisStatus && d.analysisStatus.state);
   const kpiKeys = new Set((d.kpiCards || []).map((c) => c.key));
   for (const key of ['evaUv', 'shipCnt', 'dealCnt', 'gmv']) {
     if (!kpiKeys.has(key)) fail(`${label}.kpiCards missing key=${key}`);
