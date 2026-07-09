@@ -299,6 +299,7 @@ async function refreshMonitor() {
     const qs = w ? `?week=${encodeURIComponent(w)}` : '';
     const t0 = Date.now();
     state.monitor = await api('/api/monitor' + qs);
+    if (state.monitor && state.monitor.error) throw new Error(state.monitor.error);
     state.monitorCache[cacheKey] = state.monitor;
     console.log('[monitor] 加载耗时', Date.now() - t0, 'ms');
   } catch (e) {

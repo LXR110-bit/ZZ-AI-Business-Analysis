@@ -303,15 +303,30 @@ function trendPctFromBoard(curValue, board, key) {
 function buildInsights({ week, prevWeek, board, tiers, categories }) {
   const topTier = tiers.slice().sort((a, b) => (b.cur.gmv || 0) - (a.cur.gmv || 0))[0];
   const alertCats = categories.filter((c) => (c.anomalyScore || 0) > 0).sort((a, b) => (b.anomalyScore || 0) - (a.anomalyScore || 0)).slice(0, 3);
-  const gmv = board.cur && board.cur.gmv;
+  const cur = board.cur || {};
   return {
-    board: `${week}${prevWeek ? ` 较 ${prevWeek}` : ''}：成交GMV ${formatWan(gmv)}，${topTier ? `${topTier.tier}层贡献最高` : '分层数据待补齐'}，异常品类 ${alertCats.length} 个。`,
+    board: `${week}${prevWeek ? ` 较 ${prevWeek}` : ''}：成交GMV ${formatWan(cur.gmv)}${formatBoardDeltaPct(board, 'gmv')}，估价UV ${formatCount(cur.evaUv)}${formatBoardDeltaPct(board, 'evaUv')}，成交订单 ${formatCount(cur.dealCnt)}${formatBoardDeltaPct(board, 'dealCnt')}；${topTier ? `${topTier.tier}层贡献最高` : '分层数据待补齐'}，异常品类 ${alertCats.length} 个。`,
     tiers: Object.fromEntries(tiers.map((t) => [t.tier, `${t.tier}层覆盖 ${t.cur.categoryCount || 0} 个在售品类，成交GMV ${formatWan(t.cur.gmv)}。`])),
     secondaryCategories: buildSecondaryInsightMap(categories),
     categories: buildCategoryInsightMap(categories),
     category: alertCats.length ? `重点关注：${alertCats.map((c) => c.category).join('、')}。` : '当前筛选下暂无显著异常品类。',
     monitor: alertCats.length ? `建议优先复盘 ${alertCats[0].category} 等品类的估价完成率、下单UV、发货数与成交GMV。` : '监测页本期不生成机型级 AI 分析，可继续查看结构化异动明细。',
   };
+}
+
+function formatCount(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '-';
+  return Math.round(n).toLocaleString('zh-CN');
+}
+
+function formatBoardDeltaPct(board, key) {
+  if (!board || !board.delta || board.delta[key] == null || !board.cur || board.cur[key] == null) return '';
+  const cur = Number(board.cur[key]);
+  const prev = cur - Number(board.delta[key]);
+  const pct = pctDelta(cur, prev);
+  if (pct == null) return '';
+  return `（环比${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(1)}%）`;
 }
 
 function buildSecondaryInsightMap(categories) {

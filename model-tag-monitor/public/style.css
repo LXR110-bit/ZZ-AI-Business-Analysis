@@ -217,6 +217,26 @@ main { padding: 20px 24px 32px; }
   margin: 4px 0 0;
 }
 
+#page-monitor .page-header {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 12px;
+}
+#page-monitor .filters {
+  align-items: flex-end;
+}
+#page-monitor .filters label {
+  min-width: 148px;
+}
+#page-monitor .filters select {
+  min-width: 146px;
+}
+#monitorSummary {
+  width: 100%;
+  min-width: 0;
+}
+
 /* ---- 表格 ---- */
 .table-wrap {
   overflow: auto;
@@ -548,6 +568,10 @@ td button.edit-tag:hover {
   gap: 12px;
   margin-bottom: 16px;
 }
+#monitorSummary .kpi-row {
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  margin: 0;
+}
 .kpi {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -584,6 +608,13 @@ td button.edit-tag:hover {
 }
 .kpi-value.mono { font-family: var(--f-mono); }
 .kpi-sub { font-size: 11px; color: var(--c-text-3); }
+#monitorSummary .kpi {
+  min-height: 98px;
+  justify-content: center;
+}
+#monitorSummary .kpi-value {
+  font-size: clamp(20px, 3vw, 30px);
+}
 
 /* 表头里的次要单位标注 "/日" */
 th sub.mut {

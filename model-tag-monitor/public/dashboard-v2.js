@@ -73,6 +73,62 @@ function anomalyDots(score) {
   return html;
 }
 
+function dashEscapeHtml(value) {
+  if (typeof escapeHtml === 'function') return escapeHtml(value);
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function pushInsightToken(tokens, html) {
+  var id = tokens.length;
+  tokens.push(html);
+  return '__DASH_INSIGHT_TOKEN_' + new Array(id + 2).join('A') + '__';
+}
+
+function renderRichInsightInline(text) {
+  var tokens = [];
+  var raw = String(text || '');
+  raw = raw.replace(/([+↑]\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|pct|pp|个百分点|万|亿)?)/g, function(m) {
+    return pushInsightToken(tokens, '<span class="dash-insight-trend up">' + dashEscapeHtml(m) + '</span>');
+  });
+  raw = raw.replace(/([\-−↓]\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|pct|pp|个百分点|万|亿)?)/g, function(m) {
+    return pushInsightToken(tokens, '<span class="dash-insight-trend down">' + dashEscapeHtml(m) + '</span>');
+  });
+  raw = raw.replace(/(风险等级|中等风险|高风险|低风险|风险|链路判断|量价判断|量跌价升|量升价稳|量价双升|关键拖累|关键机会|行动计划|观察计划|计划|核心问题|核心观测|波动关注|大盘概览|GMV日均|成交GMV|估价UV|APP DAU|入口UV|回收入口UV|成交订单|成交量|发货数|客单价|估价率|下单率|发货率|成交率|异常品类|发展层|孵化层|种子层|滚动分析|周结冻结|拖累|机会|建议)([:：]?)/g, function(m, key, colon) {
+    return pushInsightToken(tokens, '<strong class="dash-insight-key">' + dashEscapeHtml(key + (colon || '')) + '</strong>');
+  });
+  raw = raw.replace(/(\d+(?:,\d{3})*(?:\.\d+)?\s*(?:万|亿|%|pct|pp|个百分点)?)/g, function(m) {
+    return pushInsightToken(tokens, '<span class="dash-insight-num">' + dashEscapeHtml(m) + '</span>');
+  });
+  var html = dashEscapeHtml(raw);
+  tokens.forEach(function(tokenHtml, i) {
+    html = html.replace(new RegExp('__DASH_INSIGHT_TOKEN_' + new Array(i + 2).join('A') + '__', 'g'), tokenHtml);
+  });
+  return html;
+}
+
+function splitInsightText(text) {
+  var raw = String(text || '').trim();
+  if (!raw) return [];
+  return raw
+    .replace(/([。；;])\s*/g, '$1\n')
+    .split(/\n+/)
+    .map(function(x) { return x.trim(); })
+    .filter(Boolean);
+}
+
+function renderRichInsightHtml(text) {
+  var parts = splitInsightText(text);
+  if (!parts.length) return '<div class="dash-insight-rich"><p>暂无自动洞察。</p></div>';
+  return '<div class="dash-insight-rich">' + parts.map(function(part) {
+    return '<p>' + renderRichInsightInline(part) + '</p>';
+  }).join('') + '</div>';
+}
+
 // ---- Meta 行 ----
 function renderAnalysisStatusBadges(d) {
   var status = (d && d.analysisStatus) || {};
@@ -138,7 +194,7 @@ function renderDashboardOverviewV2(d) {
     : '';
   el.innerHTML =
     '<div class="dash-insight-title">大盘概览</div>' +
-    '<div class="dash-insight-body">' + escapeHtml(_dashboardInsights.board || '真实数据已接入，暂无自动洞察。') + '</div>' +
+    '<div class="dash-insight-body">' + renderRichInsightHtml(_dashboardInsights.board || '真实数据已接入，暂无自动洞察。') + '</div>' +
     statusText +
     renderInsightWarnings(_dashboardInsights);
 }
@@ -149,7 +205,7 @@ function renderTierOverview(tiers, activeTier) {
   var model = buildTierOverviewModel(_dashboardInsights, activeTier);
   el.innerHTML =
     '<div class="dash-insight-title">' + escapeHtml(model.title) + '</div>' +
-    '<div class="dash-insight-body">' + escapeHtml(model.body) + '</div>';
+    '<div class="dash-insight-body">' + renderRichInsightHtml(model.body) + '</div>';
 }
 
 function buildTierOverviewModel(insights, activeTier) {
@@ -533,7 +589,7 @@ function renderCategoryOverview(categories, activeTier) {
   if (overview.empty) {
     el.innerHTML =
       '<div class="dash-insight-title">' + escapeHtml(overview.title) + '</div>' +
-      '<div class="dash-insight-body">' + escapeHtml(overview.body) + '</div>';
+      '<div class="dash-insight-body">' + renderRichInsightHtml(overview.body) + '</div>';
     return;
   }
   var tagsHtml = overview.showTags === false ? '' : (
@@ -545,7 +601,7 @@ function renderCategoryOverview(categories, activeTier) {
   );
   el.innerHTML =
     '<div class="dash-insight-title">' + escapeHtml(overview.title) + '</div>' +
-    '<div class="dash-insight-body">' + escapeHtml(overview.body) + '</div>' +
+    '<div class="dash-insight-body">' + renderRichInsightHtml(overview.body) + '</div>' +
     tagsHtml;
 }
 
@@ -912,6 +968,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fmtCountShort: fmtCountShort,
     fmtDeltaArrow: fmtDeltaArrow,
     renderAnalysisStatusBadges: renderAnalysisStatusBadges,
+    renderRichInsightHtml: renderRichInsightHtml,
     anomalyDots: anomalyDots,
     buildTierOverviewModel: buildTierOverviewModel,
     buildCategoryOverviewModel: buildCategoryOverviewModel,
