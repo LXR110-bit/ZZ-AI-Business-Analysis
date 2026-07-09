@@ -9,6 +9,52 @@ const APP_VERSION = require('../package.json').version;
 const RATE_KEYS = ['evaRate', 'orderRate', 'shipRate', 'dealRate'];
 const TREND_KEYS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealCnt', 'gmv'];
 
+const INSIGHT_METRIC_LABEL_REPLACEMENTS = [
+  [/\bconditionUv\b/g, '机况UV'],
+  [/\bjkuv\b/g, '机况UV'],
+  [/\bevaUv\b/g, '估价UV'],
+  [/\borderUv\b/g, '下单UV'],
+  [/\bshipCnt\b/g, '发货数'],
+  [/\bdealCnt\b/g, '成交订单'],
+  [/\bgmv\b/g, '成交GMV'],
+  [/\bevaRate\b/g, '估价完成率'],
+  [/\borderRate\b/g, '下单率'],
+  [/\bshipRate\b/g, '发货率'],
+  [/\bdealRate\b/g, '成交率'],
+  [/\breturnRate\b/g, '退回率'],
+];
+
+function localizeInsightMetricLabels(text) {
+  let out = String(text || '');
+  for (const [pattern, label] of INSIGHT_METRIC_LABEL_REPLACEMENTS) out = out.replace(pattern, label);
+  return out.replace(/([+\-−]?\s*\d+(?:\.\d+)?)\s*(?:pct|pp)\b/gi, '$1个百分点');
+}
+
+function localizeInsightTextMap(map) {
+  const out = {};
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return out;
+  for (const [key, value] of Object.entries(map)) {
+    const k = String(key || '').trim();
+    const v = localizeInsightMetricLabels(value).trim();
+    if (k && v) out[k] = v;
+  }
+  return out;
+}
+
+function localizeInsightPayload(insights) {
+  if (!insights || typeof insights !== 'object') return insights;
+  return {
+    ...insights,
+    board: insights.board == null ? insights.board : localizeInsightMetricLabels(insights.board),
+    tiers: localizeInsightTextMap(insights.tiers),
+    secondaryCategories: localizeInsightTextMap(insights.secondaryCategories),
+    categories: localizeInsightTextMap(insights.categories),
+    category: insights.category == null ? insights.category : localizeInsightMetricLabels(insights.category),
+    monitor: insights.monitor == null ? insights.monitor : localizeInsightMetricLabels(insights.monitor),
+  };
+}
+
+
 /**
  * 将六层聚合结果转换为前端 dashboard v2 契约。
  * dashboard v2 约定：
@@ -381,7 +427,7 @@ function buildCategoryInsightMap(categories) {
 function mergeBusinessOverviewInsights(result, cached) {
   if (!result || !cached || typeof cached !== 'object') return result;
   if (cached.week !== result.week) return result;
-  const cachedInsights = cached.insights;
+  const cachedInsights = localizeInsightPayload(cached.insights);
   if (!cachedInsights || typeof cachedInsights !== 'object') return result;
 
   const warnings = Array.isArray(cached.warnings)
@@ -460,4 +506,4 @@ function attachV1Compatibility(result, categories, categoryCache) {
   };
 }
 
-module.exports = { composeDashboard, buildAnalysisStatus, buildTrend, mergeBusinessOverviewInsights };
+module.exports = { composeDashboard, buildAnalysisStatus, buildTrend, mergeBusinessOverviewInsights, localizeInsightMetricLabels };

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# model-tag-monitor v1.4.3 daily refresh flow
+# model-tag-monitor v1.4.4 daily refresh flow
 # 06:30 Asia/Shanghai: local CSV/cache refresh -> dashboard health -> style-2 Lark card.
 set -Eeuo pipefail
 export PATH="/root/.local/bin:/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
-VERSION="1.4.3"
+VERSION="1.4.4"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONITOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PARENT_DIR="$(cd "$MONITOR_DIR/.." && pwd)"

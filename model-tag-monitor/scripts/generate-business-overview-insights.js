@@ -34,6 +34,40 @@ const STRATEGY_WARNING = '未配置上周策略/预判，暂无法检核兑现';
 const REQUIRED_TIERS = ['发展', '孵化', '种子'];
 const COUNT_FIELDS = ['conditionUv', 'jkuv', 'evaUv', 'orderUv', 'shipCnt', 'dealCnt', 'gmv'];
 const RATE_FIELDS = ['evaRate', 'orderRate', 'shipRate', 'dealRate'];
+
+const AI_METRIC_LABEL_REPLACEMENTS = [
+  [/\bconditionUv\b/g, '机况UV'],
+  [/\bjkuv\b/g, '机况UV'],
+  [/\bevaUv\b/g, '估价UV'],
+  [/\borderUv\b/g, '下单UV'],
+  [/\bshipCnt\b/g, '发货数'],
+  [/\bdealCnt\b/g, '成交订单'],
+  [/\bgmv\b/g, '成交GMV'],
+  [/\bevaRate\b/g, '估价完成率'],
+  [/\borderRate\b/g, '下单率'],
+  [/\bshipRate\b/g, '发货率'],
+  [/\bdealRate\b/g, '成交率'],
+  [/\breturnRate\b/g, '退回率'],
+];
+
+function localizeMetricLabels(text) {
+  let out = String(text || '');
+  for (const [pattern, label] of AI_METRIC_LABEL_REPLACEMENTS) out = out.replace(pattern, label);
+  out = out.replace(/([+\-−]?\s*\d+(?:\.\d+)?)\s*(?:pct|pp)\b/gi, '$1个百分点');
+  return out;
+}
+
+function localizeInsightMap(map) {
+  const out = {};
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return out;
+  for (const [key, value] of Object.entries(map)) {
+    const k = String(key || '').trim();
+    const v = localizeMetricLabels(value).trim();
+    if (k && v) out[k] = v;
+  }
+  return out;
+}
+
 const DEFAULT_CODEX_ENV_ALLOWLIST = [
   'PATH',
   'HOME',
@@ -355,7 +389,7 @@ function cleanInsightMap(map) {
   if (!map || typeof map !== 'object' || Array.isArray(map)) return out;
   for (const [key, value] of Object.entries(map)) {
     const k = String(key || '').trim();
-    const v = String(value || '').trim();
+    const v = localizeMetricLabels(value).trim();
     if (k && v) out[k] = v;
   }
   return out;
@@ -493,6 +527,7 @@ function buildPrompt(summary, strategy, warnings) {
     '9. 如果上周策略为空，warnings 必须包含“未配置上周策略/预判，暂无法检核兑现”。',
     '10. 如果 dashboard_summary.analysisStatus.state=rolling，必须明确这是未结束周的滚动分析，结论按当前已同步数据判断；不要写成周结冻结。',
     '11. 如果 dashboard_summary.analysisStatus.state=final，必须按已结束周固定结论表达，不要提示每日滚动更新。',
+    '12. 对外展示必须使用中文业务指标名，禁止输出结构化字段名：orderRate 写作下单率，shipRate 写作发货率，dealRate 写作成交率，evaRate 写作估价完成率，conditionUv/jkuv 写作机况UV，evaUv 写作估价UV；pct/pp 写作百分点。',
     '',
     '<last_week_strategies>',
     strategy || '',
@@ -534,7 +569,7 @@ function cleanInsightArray(items) {
   for (const item of items) {
     if (!item || typeof item !== 'object') continue;
     const k = String(item.name || item.key || item.secondaryCategory || item.category || '').trim();
-    const v = String(item.insight || item.value || item.text || '').trim();
+    const v = localizeMetricLabels(item.insight || item.value || item.text).trim();
     if (k && v) out[k] = v;
   }
   return out;
@@ -574,12 +609,12 @@ function normalizeAiCache(aiResult, dashboard, summary, warnings) {
   const secondaryCategories = validateInsightMap(insights, 'secondaryCategories', expectedInsightKeys(summary, 'secondaryCategories'));
   const categories = validateInsightMap(insights, 'categories', expectedInsightKeys(summary, 'categories'));
   const normalizedInsights = {
-    board: insights.board.trim(),
-    tiers: Object.fromEntries(REQUIRED_TIERS.map((tier) => [tier, insights.tiers[tier].trim()])),
-    secondaryCategories,
-    categories,
-    category: insights.category.trim(),
-    monitor: insights.monitor.trim(),
+    board: localizeMetricLabels(insights.board).trim(),
+    tiers: Object.fromEntries(REQUIRED_TIERS.map((tier) => [tier, localizeMetricLabels(insights.tiers[tier]).trim()])),
+    secondaryCategories: localizeInsightMap(secondaryCategories),
+    categories: localizeInsightMap(categories),
+    category: localizeMetricLabels(insights.category).trim(),
+    monitor: localizeMetricLabels(insights.monitor).trim(),
   };
   const aiWarnings = Array.isArray(aiResult.warnings) ? aiResult.warnings.filter(Boolean).map(String) : [];
   const mergedWarnings = [...new Set(warnings.concat(aiWarnings))];
@@ -720,6 +755,7 @@ module.exports = {
   isGeneratedInsight,
   isReusableAiCache,
   isRollingDashboard,
+  localizeMetricLabels,
   normalizeAiCache,
   readExistingAiCacheForWeek,
   summarizeDashboard,

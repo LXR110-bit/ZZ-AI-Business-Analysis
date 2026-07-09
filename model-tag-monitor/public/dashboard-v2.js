@@ -83,6 +83,30 @@ function dashEscapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+
+var DASH_INSIGHT_METRIC_LABELS = [
+  [/\bconditionUv\b/g, '机况UV'],
+  [/\bjkuv\b/g, '机况UV'],
+  [/\bevaUv\b/g, '估价UV'],
+  [/\borderUv\b/g, '下单UV'],
+  [/\bshipCnt\b/g, '发货数'],
+  [/\bdealCnt\b/g, '成交订单'],
+  [/\bgmv\b/g, '成交GMV'],
+  [/\bevaRate\b/g, '估价完成率'],
+  [/\borderRate\b/g, '下单率'],
+  [/\bshipRate\b/g, '发货率'],
+  [/\bdealRate\b/g, '成交率'],
+  [/\breturnRate\b/g, '退回率']
+];
+
+function localizeDashInsightMetricLabels(text) {
+  var out = String(text || '');
+  DASH_INSIGHT_METRIC_LABELS.forEach(function(pair) {
+    out = out.replace(pair[0], pair[1]);
+  });
+  return out.replace(/([+\-−]?\s*\d+(?:\.\d+)?)\s*(?:pct|pp)\b/gi, '$1个百分点');
+}
+
 function pushInsightToken(tokens, html) {
   var id = tokens.length;
   tokens.push(html);
@@ -91,7 +115,7 @@ function pushInsightToken(tokens, html) {
 
 function renderRichInsightInline(text) {
   var tokens = [];
-  var raw = String(text || '');
+  var raw = localizeDashInsightMetricLabels(text);
   raw = raw.replace(/([+↑]\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|pct|pp|个百分点|万|亿)?)/g, function(m) {
     return pushInsightToken(tokens, '<span class="dash-insight-trend up">' + dashEscapeHtml(m) + '</span>');
   });
@@ -112,7 +136,7 @@ function renderRichInsightInline(text) {
 }
 
 function splitInsightText(text) {
-  var raw = String(text || '').trim();
+  var raw = localizeDashInsightMetricLabels(text).trim();
   if (!raw) return [];
   return raw
     .replace(/([。；;])\s*/g, '$1\n')
@@ -969,6 +993,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fmtDeltaArrow: fmtDeltaArrow,
     renderAnalysisStatusBadges: renderAnalysisStatusBadges,
     renderRichInsightHtml: renderRichInsightHtml,
+    localizeDashInsightMetricLabels: localizeDashInsightMetricLabels,
     anomalyDots: anomalyDots,
     buildTierOverviewModel: buildTierOverviewModel,
     buildCategoryOverviewModel: buildCategoryOverviewModel,

@@ -216,6 +216,19 @@ test('rich insight renderer highlights keys, numbers and trend direction safely'
   assert.doesNotMatch(html, /<script>/);
 });
 
+
+test('rich insight renderer localizes technical metric names before display', () => {
+  const html = renderRichInsightHtml('断点在 orderRate -0.70pct、shipRate -0.40pct、dealRate +0.10pp、evaRate +1pct，conditionUv/evaUv 继续观察。');
+  assert.doesNotMatch(html, /orderRate|shipRate|dealRate|evaRate|conditionUv|evaUv|pct|pp/);
+  assert.match(html, /下单率/);
+  assert.match(html, /发货率/);
+  assert.match(html, /成交率/);
+  assert.match(html, /估价完成率/);
+  assert.match(html, /机况UV/);
+  assert.match(html, /估价UV/);
+  assert.match(html, /个百分点/);
+});
+
 test('rich insight renderer handles production-like AI paragraph without extra KPI cards', () => {
   const prodLike = '2026-W27大盘为中等风险：GMV日均350.2万，环比-2.0%，成交订单-4.4%、发货-3.2%，入口UV基本持平但APP DAU-1.8%、估价UV-2.5%，说明风险主要在回收链路内的流量承接与后段履约/成交。链路上估价率基本持平、下单率小幅提升，但发货率和成交率下滑，量价判断为量跌价升：成交量下滑拖累GMV，客单价+2.4%部分对冲。计划：优先下钻发展层。';
   const html = renderRichInsightHtml(prodLike);
