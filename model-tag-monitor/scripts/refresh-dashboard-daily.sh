@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# model-tag-monitor v1.4.5 daily refresh flow
-# 06:30 Asia/Shanghai: local imports -> coverage gate -> cache sync -> AI -> style-2 Lark card.
+# model-tag-monitor v1.4.6 daily refresh flow
+# 06:50 Asia/Shanghai: local imports with readiness retries -> coverage gate -> cache sync -> AI -> style-2 Lark card.
 set -Eeuo pipefail
 export PATH="/root/.local/bin:/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
-VERSION="1.4.5"
+VERSION="1.4.6"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONITOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PARENT_DIR="$(cd "$MONITOR_DIR/.." && pwd)"
@@ -17,6 +17,8 @@ KEEP_WEEKS="${KEEP_WEEKS:-10}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-14}"
 LOG_DIR="${LOG_DIR:-$MONITOR_DIR/logs}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+DATA_READY_MAX_ATTEMPTS="${DATA_READY_MAX_ATTEMPTS:-3}"
+DATA_READY_RETRY_SECONDS="${DATA_READY_RETRY_SECONDS:-600}"
 mkdir -p "$LOG_DIR"
 
 SCRIPT_STARTED_AT="$(date -Iseconds)"
@@ -159,31 +161,85 @@ fail_stage() {
   exit "$code"
 }
 
-log "model-tag-monitor refresh start version=$VERSION api=$API_BASE import_dir=$IMPORT_DIR staging_import_dir=$STAGING_IMPORT_DIR target_weeks=$TARGET_WEEKS feishu_repo=${FEISHU_REPO_DIR:-<not-found>} run_id=$RUN_ID target_week=$TARGET_WEEK target_month=$TARGET_MONTH"
+log "model-tag-monitor refresh start version=$VERSION api=$API_BASE import_dir=$IMPORT_DIR staging_import_dir=$STAGING_IMPORT_DIR target_weeks=$TARGET_WEEKS feishu_repo=${FEISHU_REPO_DIR:-<not-found>} run_id=$RUN_ID target_week=$TARGET_WEEK target_month=$TARGET_MONTH data_ready_attempts=$DATA_READY_MAX_ATTEMPTS retry_seconds=$DATA_READY_RETRY_SECONDS"
 
 if [[ -z "${FEISHU_REPO_DIR:-}" || ! -d "$FEISHU_REPO_DIR/skills/workflows/机型周数据" ]]; then
   fail_stage "data-import" "data workflow repo not found; cannot run local-imports" "" 2
 fi
 
-log "run local-imports into staging dir"
-if ! (cd "$FEISHU_REPO_DIR" && "$PYTHON_BIN" -m skills.workflows.机型周数据 \
-  --local-imports \
-  --lookback-days "$LOOKBACK_DAYS" \
-  --months "$TARGET_MONTH" \
-  --local-output-dir "$STAGING_IMPORT_DIR" \
-  --local-run-id "$RUN_ID" \
-  --skip-notify) 2>&1 | tee -a "$LOG_FILE"; then
-  fail_stage "data-import" "local-imports failed; dashboard cache was not touched" "" 10
-fi
+DATA_READY_MAX_ATTEMPTS="$(node -e 'const n=Number(process.argv[1]); if (!Number.isInteger(n) || n < 1) process.exit(1); process.stdout.write(String(n));' "$DATA_READY_MAX_ATTEMPTS")" || fail_stage "config" "DATA_READY_MAX_ATTEMPTS must be a positive integer" "" 3
+DATA_READY_RETRY_SECONDS="$(node -e 'const n=Number(process.argv[1]); if (!Number.isFinite(n) || n < 0) process.exit(1); process.stdout.write(String(Math.floor(n)));' "$DATA_READY_RETRY_SECONDS")" || fail_stage "config" "DATA_READY_RETRY_SECONDS must be a non-negative number" "" 3
 
-log "validate staged import coverage"
-if ! node "$SCRIPT_DIR/validate-daily-import-coverage.js" \
-  --import-dir "$STAGING_IMPORT_DIR" \
-  --target-weeks "$TARGET_WEEKS" \
-  --run-id "$RUN_ID" \
-  --started-at "$SCRIPT_STARTED_AT" \
-  --out "$COVERAGE_FILE" | tee -a "$LOG_FILE"; then
-  fail_stage "coverage" "staged import coverage validation failed; dashboard cache was not touched" "$COVERAGE_FILE" 11
+LAST_READY_STAGE="data-import"
+LAST_READY_MESSAGE="local-imports failed; dashboard cache was not touched"
+LAST_READY_DETAIL_FILE=""
+LAST_READY_CODE=10
+
+run_data_ready_attempt() {
+  local attempt="$1"
+  local attempt_dir="$2"
+  local attempt_coverage_file="$3"
+
+  log "run local-imports into staging dir attempt=$attempt/$DATA_READY_MAX_ATTEMPTS dir=$attempt_dir"
+  rm -rf "$attempt_dir"
+  if ! (cd "$FEISHU_REPO_DIR" && "$PYTHON_BIN" -m skills.workflows.机型周数据 \
+    --local-imports \
+    --lookback-days "$LOOKBACK_DAYS" \
+    --months "$TARGET_MONTH" \
+    --local-output-dir "$attempt_dir" \
+    --local-run-id "$RUN_ID" \
+    --skip-notify) 2>&1 | tee -a "$LOG_FILE"; then
+    LAST_READY_STAGE="data-import"
+    LAST_READY_MESSAGE="local-imports failed on attempt $attempt/$DATA_READY_MAX_ATTEMPTS; dashboard cache was not touched"
+    LAST_READY_DETAIL_FILE=""
+    LAST_READY_CODE=10
+    return 10
+  fi
+
+  log "validate staged import coverage attempt=$attempt/$DATA_READY_MAX_ATTEMPTS"
+  if ! node "$SCRIPT_DIR/validate-daily-import-coverage.js" \
+    --import-dir "$attempt_dir" \
+    --target-weeks "$TARGET_WEEKS" \
+    --run-id "$RUN_ID" \
+    --started-at "$SCRIPT_STARTED_AT" \
+    --out "$attempt_coverage_file" | tee -a "$LOG_FILE"; then
+    LAST_READY_STAGE="coverage"
+    LAST_READY_MESSAGE="staged import coverage validation failed on attempt $attempt/$DATA_READY_MAX_ATTEMPTS; dashboard cache was not touched"
+    LAST_READY_DETAIL_FILE="$attempt_coverage_file"
+    LAST_READY_CODE=11
+    return 11
+  fi
+
+  STAGING_IMPORT_DIR="$attempt_dir"
+  cp "$attempt_coverage_file" "$COVERAGE_FILE"
+  return 0
+}
+
+DATA_READY_OK=0
+for attempt in $(seq 1 "$DATA_READY_MAX_ATTEMPTS"); do
+  ATTEMPT_STAGING_IMPORT_DIR="$STAGING_IMPORT_DIR"
+  ATTEMPT_COVERAGE_FILE="$COVERAGE_FILE"
+  if [[ "$DATA_READY_MAX_ATTEMPTS" != "1" ]]; then
+    ATTEMPT_STAGING_IMPORT_DIR="$LOG_DIR/local-imports-$RUN_ID-attempt-$attempt"
+    ATTEMPT_COVERAGE_FILE="$LOG_DIR/daily-import-coverage-$RUN_ID-attempt-$attempt.json"
+  fi
+
+  if run_data_ready_attempt "$attempt" "$ATTEMPT_STAGING_IMPORT_DIR" "$ATTEMPT_COVERAGE_FILE"; then
+    DATA_READY_OK=1
+    if [[ "$attempt" != "1" ]]; then
+      log "data readiness succeeded after retry attempt=$attempt/$DATA_READY_MAX_ATTEMPTS"
+    fi
+    break
+  fi
+
+  if [[ "$attempt" -lt "$DATA_READY_MAX_ATTEMPTS" ]]; then
+    log "data readiness failed attempt=$attempt/$DATA_READY_MAX_ATTEMPTS stage=$LAST_READY_STAGE; retry after ${DATA_READY_RETRY_SECONDS}s"
+    sleep "$DATA_READY_RETRY_SECONDS"
+  fi
+done
+
+if [[ "$DATA_READY_OK" != "1" ]]; then
+  fail_stage "$LAST_READY_STAGE" "$LAST_READY_MESSAGE" "$LAST_READY_DETAIL_FILE" "$LAST_READY_CODE"
 fi
 
 log "promote staged imports into production import dir"

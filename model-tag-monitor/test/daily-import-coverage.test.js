@@ -12,9 +12,9 @@ const {
 } = require('../scripts/validate-daily-import-coverage');
 
 const TARGET_WEEKS = '2026-W27,2026-W28';
-const RUN_ID = 'unit_20260709T063000+0800';
-const STARTED_AT = '2026-07-09T06:30:00+08:00';
-const GENERATED_AT = '2026-07-09T06:31:00+08:00';
+const RUN_ID = 'unit_20260709T065000+0800';
+const STARTED_AT = '2026-07-09T06:50:00+08:00';
+const GENERATED_AT = '2026-07-09T06:51:00+08:00';
 const NOW = '2026-07-09T08:00:00+08:00';
 
 function writeImportFixture({ dayCnt = 3, includeTargetRows = true, runId = RUN_ID, generatedAt = GENERATED_AT } = {}) {

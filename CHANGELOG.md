@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-07-10
+
+- **model-tag-monitor v1.4.6 日更时点与重试保护**：生产日更改为 06:50 执行；数据准备阶段新增 `DATA_READY_MAX_ATTEMPTS` / `DATA_READY_RETRY_SECONDS`，local-import 或覆盖校验失败时先重试，所有尝试失败后才发送飞书预警，仍保持不覆盖页面、不生成 AI、不推送经营卡片。
+
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 版本号遵循 [SemVer](VERSIONING.md)。
 

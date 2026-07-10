@@ -102,7 +102,7 @@ test('syncedAt 来自 categoryCache', () => {
   assert.equal(result.syncedAt, categoryCache.syncedAt);
 });
 
-test('analysisStatus: 当前未结束周标记为 rolling，每日 06:30 更新', () => {
+test('analysisStatus: 当前未结束周标记为 rolling，每日 06:50 更新', () => {
   const result = composeDashboard({
     ...baseOpts,
     week: '2026-W28',
@@ -112,7 +112,7 @@ test('analysisStatus: 当前未结束周标记为 rolling，每日 06:30 更新'
   assert.equal(result.analysisStatus.state, 'rolling');
   assert.equal(result.analysisStatus.isRolling, true);
   assert.equal(result.analysisStatus.label, '滚动分析');
-  assert.equal(result.analysisStatus.cadence, '每日06:30更新');
+  assert.equal(result.analysisStatus.cadence, '每日06:50更新');
   assert.equal(result.analysisStatus.weekStart, '2026-07-06');
   assert.equal(result.analysisStatus.weekEnd, '2026-07-12');
 });
@@ -379,7 +379,7 @@ test('business overview cache: cached rolling metadata does not override request
     analysisStatus: {
       state: 'rolling',
       label: '滚动分析',
-      cadence: '每日06:30更新',
+      cadence: '每日06:50更新',
       isRolling: true,
     },
     insights: {
