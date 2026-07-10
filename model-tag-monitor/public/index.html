@@ -131,9 +131,7 @@
             <select id="monitorWeek"></select>
           </label>
           <label>品类
-            <select id="monitorCategory">
-              <option value="">全部品类</option>
-            </select>
+            <input id="monitorCategory" list="categorySuggest" placeholder="搜索/全部品类" autocomplete="off" />
           </label>
           <label>视图
             <select id="monitorView">
@@ -149,6 +147,7 @@
             </select>
           </label>
           <button id="btnMonitorRun" class="primary">确认</button>
+          <button id="btnMonitorMetrics" type="button">指标设置</button>
         </div>
         <div class="summary" id="monitorSummary"></div>
       </div>
@@ -286,6 +285,20 @@
       <div class="actions">
         <button id="btnModalCancel">取消</button>
         <button id="btnModalSave" class="primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monitor 指标设置弹层 -->
+  <div class="modal hidden" id="modalMonitorMetrics">
+    <div class="modal-body">
+      <h3>监测指标设置</h3>
+      <p class="hint">选择下方机型明细表展示的关键转化率列；标签维度聚合仍保留核心漏斗指标。</p>
+      <div class="metric-options" id="monitorMetricOptions"></div>
+      <div class="actions">
+        <button id="btnMonitorMetricsReset" type="button">恢复默认</button>
+        <button id="btnMonitorMetricsCancel" type="button">取消</button>
+        <button id="btnMonitorMetricsSave" type="button" class="primary">保存</button>
       </div>
     </div>
   </div>

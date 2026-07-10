@@ -84,6 +84,7 @@ const BASE_TAG_DIMENSIONS = [
   { key: 'price', label: '价格段' },
 ];
 const TAG_SUMMARY_METRICS = ['jkuv', 'evaUv', 'orderUv', 'shipCnt', 'qcCnt', 'dealCnt', 'gmv', 'returnCnt'];
+const MONITOR_METRICS_STORAGE_KEY = 'monitorVisibleRateMetricsV1';
 
 function uniqStrings(list) {
   const seen = new Set();
@@ -156,6 +157,19 @@ function renderCategoryDatalist() {
   dl.innerHTML = getKnownCategories().map((c) => `<option value="${escapeAttr(c)}"></option>`).join('');
 }
 
+function resolveMonitorCategory(opts = {}) {
+  const input = $('#monitorCategory');
+  const value = String((input && input.value) || '').trim();
+  if (!value) return '';
+  const cats = getKnownCategories();
+  if (cats.length && !cats.includes(value)) {
+    if (opts.toastOnInvalid) toast('请从品类搜索建议中选择一个已有品类，或清空为全部品类');
+    if (input) input.value = '';
+    return '';
+  }
+  return value;
+}
+
 function buildDimensionDefsForCategory(category) {
   const vocab = normalizeVocab(state.vocab || {});
   const defs = BASE_TAG_DIMENSIONS.map((d) => ({ ...d, options: vocab[d.key] || [] }));
@@ -179,19 +193,18 @@ function resolveMonitorRequestDimension(category) {
     : BASE_TAG_DIMENSIONS.map((d) => ({ ...d, categoryScoped: false }));
   if (validDims.some((d) => d.key === requested)) return requested;
   state.monitorTagDimension = 'core';
-  state.monitorTagGroupValue = null;
+  clearMonitorTagFilters();
   return 'core';
 }
 
 function buildMonitorRequestParams() {
   const params = new URLSearchParams();
   const week = ($('#monitorWeek') && $('#monitorWeek').value) || '';
-  const category = ($('#monitorCategory') && $('#monitorCategory').value) || '';
+  const category = resolveMonitorCategory();
   const tagDimension = resolveMonitorRequestDimension(category);
   if (week) params.set('week', week);
   if (category) params.set('category', category);
   if (tagDimension) params.set('tagDimension', tagDimension);
-  if (state.monitorTagGroupValue) params.set('tagValue', normalizeGroupValue(state.monitorTagGroupValue));
   return params;
 }
 
@@ -283,6 +296,85 @@ function flattenDimensionValues(dimensions) {
   return Object.values(normalizeDimensions(dimensions));
 }
 
+function clearMonitorTagFilters() {
+  state.monitorTagFilters = {};
+  state.monitorTagGroupValue = null;
+}
+
+function getActiveMonitorTagFilters() {
+  const filters = state.monitorTagFilters || {};
+  return Object.entries(filters)
+    .map(([dimension, value]) => ({ dimension, value: normalizeGroupValue(value) }))
+    .filter((x) => x.dimension && x.value);
+}
+
+function currentMonitorTagFilterValue(dimensionKey) {
+  const value = state.monitorTagFilters && state.monitorTagFilters[dimensionKey];
+  return value ? normalizeGroupValue(value) : '';
+}
+
+function setCurrentMonitorTagFilter(dimensionKey, value) {
+  if (!dimensionKey) return;
+  const filters = { ...(state.monitorTagFilters || {}) };
+  const normalized = normalizeGroupValue(value);
+  if (filters[dimensionKey] && normalizeGroupValue(filters[dimensionKey]) === normalized) {
+    delete filters[dimensionKey];
+  } else {
+    filters[dimensionKey] = normalized;
+  }
+  state.monitorTagFilters = filters;
+  state.monitorTagGroupValue = filters[dimensionKey] || null;
+}
+
+function applyMonitorTagFilters(rows, opts = {}) {
+  const excludeDimension = opts.excludeDimension || '';
+  const filters = getActiveMonitorTagFilters().filter((f) => f.dimension !== excludeDimension);
+  if (!filters.length) return Array.isArray(rows) ? rows.slice() : [];
+  return (rows || []).filter((row) => filters.every((f) => normalizeGroupValue(dimensionValueForRow(row, f.dimension)) === f.value));
+}
+
+function getMonitorDimensionLabel(dimensionKey) {
+  const dims = getMonitorTagDimensions();
+  const hit = dims.find((d) => d.key === dimensionKey);
+  if (hit) return hit.label || hit.key;
+  return dimensionKey;
+}
+
+function monitorRateList(rules) {
+  return Array.isArray(rules && rules.rates) ? rules.rates : [
+    { key: 'evaRate', name: '估价完成率' },
+    { key: 'orderRate', name: '估价下单率' },
+    { key: 'shipRate', name: '估价发货率' },
+    { key: 'dealRate', name: '估价成交率' },
+    { key: 'returnRate', name: '质检退回率' },
+  ];
+}
+
+function loadMonitorMetricKeys(allRates) {
+  if (state.monitorMetricKeys !== null) return state.monitorMetricKeys;
+  let keys = [];
+  try {
+    keys = JSON.parse(localStorage.getItem(MONITOR_METRICS_STORAGE_KEY) || '[]');
+  } catch {
+    keys = [];
+  }
+  const allowed = new Set((allRates || []).map((r) => r.key));
+  state.monitorMetricKeys = Array.isArray(keys) ? keys.filter((k) => allowed.has(k)) : [];
+  if (!state.monitorMetricKeys.length) state.monitorMetricKeys = (allRates || []).map((r) => r.key);
+  return state.monitorMetricKeys;
+}
+
+function getVisibleMonitorRates(allRates) {
+  const selected = new Set(loadMonitorMetricKeys(allRates));
+  const visible = (allRates || []).filter((r) => selected.has(r.key));
+  return visible.length ? visible : (allRates || []);
+}
+
+function saveMonitorMetricKeys(keys) {
+  state.monitorMetricKeys = keys;
+  localStorage.setItem(MONITOR_METRICS_STORAGE_KEY, JSON.stringify(keys));
+}
+
 function renderTagChips(category, modelName, row, opts = {}) {
   const entry = getModelTagEntry(category, modelName, row);
   const dims = getEntryDimensions(entry, category);
@@ -325,6 +417,8 @@ const state = {
   monitorCache: {},
   monitorTagDimension: 'core',
   monitorTagGroupValue: null,
+  monitorTagFilters: {},
+  monitorMetricKeys: null,
 };
 
 let _monitorSortKey = '';
@@ -364,6 +458,7 @@ async function init() {
   // 手改任一 filter 都会断掉 dashboard 传下来的 highlight/from
   const applyMonitor = () => {
     clearDashboardContext();
+    resolveMonitorCategory({ toastOnInvalid: true });
     markFilterApplied('monitor');
     refreshMonitor();
     writeUrlState({
@@ -375,12 +470,24 @@ async function init() {
     });
   };
   $('#btnMonitorRun').addEventListener('click', applyMonitor);
-  ['monitorCategory', 'monitorWeek'].forEach((id) => {
-    const el = $('#' + id);
-    if (el) el.addEventListener('change', (ev) => {
-      state.monitorTagGroupValue = null;
+  const monitorCategory = $('#monitorCategory');
+  if (monitorCategory) {
+    monitorCategory.addEventListener('input', () => markFilterDirty('monitor'));
+    monitorCategory.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        clearMonitorTagFilters();
+        applyMonitor(ev);
+      }
+    });
+    monitorCategory.addEventListener('change', (ev) => {
+      clearMonitorTagFilters();
       applyMonitor(ev);
     });
+  }
+  const monitorWeek = $('#monitorWeek');
+  if (monitorWeek) monitorWeek.addEventListener('change', (ev) => {
+    clearMonitorTagFilters();
+    applyMonitor(ev);
   });
   ['monitorView', 'monitorTrend'].forEach((id) => {
     const el = $('#' + id);
@@ -390,10 +497,14 @@ async function init() {
   if (monitorTagDimension) {
     monitorTagDimension.addEventListener('change', () => {
       state.monitorTagDimension = monitorTagDimension.value || 'core';
-      state.monitorTagGroupValue = null;
+      state.monitorTagGroupValue = currentMonitorTagFilterValue(state.monitorTagDimension) || null;
       refreshMonitor();
     });
   }
+  $('#btnMonitorMetrics').addEventListener('click', openMonitorMetricsModal);
+  $('#btnMonitorMetricsCancel').addEventListener('click', () => $('#modalMonitorMetrics').classList.add('hidden'));
+  $('#btnMonitorMetricsReset').addEventListener('click', resetMonitorMetrics);
+  $('#btnMonitorMetricsSave').addEventListener('click', saveMonitorMetricsModal);
   // 面包屑
   $('#crumbBack').addEventListener('click', () => {
     clearDashboardContext();
@@ -492,7 +603,11 @@ function updateMetaBar() {
   wSel.value = latestWeekValue(weeks);
 
   const cSel = $('#monitorCategory');
-  cSel.innerHTML = '<option value="">全部品类</option>' + m.categories.map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('');
+  if (cSel) {
+    cSel.setAttribute('list', 'categorySuggest');
+    const cur = String(cSel.value || '').trim();
+    if (cur && !m.categories.includes(cur)) cSel.value = '';
+  }
 
   const tcSel = $('#tagsCategory');
   renderCategoryDatalist();
@@ -585,22 +700,25 @@ function renderMonitor() {
   const view = $('#monitorView').value;
   const trend = ($('#monitorTrend') && $('#monitorTrend').value) || '';
   const tagDim = syncMonitorTagDimensionSelect();
-  const tagGroups = getServerTagSummaryGroups(tagDim.key);
-  const fullModelCount = tagGroups.reduce((sum, g) => sum + (Number(g.modelCount) || 0), 0);
+  state.monitorTagGroupValue = currentMonitorTagFilterValue(tagDim.key) || null;
+  const fullRows = getMonitorFullRows();
+  const aggregationBaseRows = applyMonitorTagFilters(fullRows, { excludeDimension: tagDim.key });
+  const hasFilters = getActiveMonitorTagFilters().length > 0;
+  const tagGroups = hasFilters
+    ? buildFilteredTagSummaryGroups(aggregationBaseRows, tagDim)
+    : getServerTagSummaryGroups(tagDim.key);
+  const fullModelCount = hasFilters
+    ? aggregationBaseRows.length
+    : tagGroups.reduce((sum, g) => sum + (Number(g.modelCount) || 0), 0);
   renderMonitorTagAggregation(tagDim, tagGroups, fullModelCount);
 
-  const detailBaseRows = getMonitorDetailRows(tagGroups);
+  const detailBaseRows = applyMonitorTagFilters(fullRows);
   let filtered = filterMonitorDetailRows(detailBaseRows, view, trend);
   filtered = sortMonitorRows(filtered);
 
   const rules = r.rules || {};
-  const rates = Array.isArray(rules.rates) ? rules.rates : [
-    { key: 'evaRate', name: '估价完成率' },
-    { key: 'orderRate', name: '估价下单率' },
-    { key: 'shipRate', name: '估价发货率' },
-    { key: 'dealRate', name: '估价成交率' },
-    { key: 'returnRate', name: '质检退回率' },
-  ];
+  const allRates = monitorRateList(rules);
+  const rates = getVisibleMonitorRates(allRates);
 
   // ---- KPI 概览 ----
   const total = fullModelCount || detailBaseRows.length;
@@ -609,7 +727,9 @@ function renderMonitor() {
   const watchAll = watchRows.length;
   const waveCnt = watchRows.filter((x) => (x.flags || []).some((f) => f.type === 'wave')).length;
   const downTrendCnt = watchRows.filter((x) => (x.flags || []).some((f) => f.type === 'trend' && f.direction === 'down')).length;
-  const tagDrillLabel = state.monitorTagGroupValue ? groupLabel(state.monitorTagGroupValue) : '';
+  const filterLabel = getActiveMonitorTagFilters()
+    .map((f) => `${getMonitorDimensionLabel(f.dimension)}=${groupLabel(f.value)}`)
+    .join(' · ');
 
   $('#monitorSummary').innerHTML = `
     <div class="kpi-row">
@@ -626,7 +746,7 @@ function renderMonitor() {
       <div class="kpi">
         <span class="kpi-label">当前明细</span>
         <span class="kpi-value mono">${detailTotal}</span>
-        <span class="kpi-sub">${escapeHtml(tagDrillLabel || '全部标签组')}</span>
+        <span class="kpi-sub">${escapeHtml(filterLabel || '全部标签组')}</span>
       </div>
       <div class="kpi ${watchAll ? 'kpi-warn' : ''}">
         <span class="kpi-label">需关注</span>
@@ -724,7 +844,7 @@ function syncMonitorTagDimensionSelect() {
   const fallback = dims.find((d) => d.key === 'core') || dims[0] || { key: 'core', label: '核心度' };
   if (!dims.some((d) => d.key === state.monitorTagDimension)) {
     state.monitorTagDimension = fallback.key;
-    state.monitorTagGroupValue = null;
+    clearMonitorTagFilters();
   }
   const sel = $('#monitorTagDimension');
   if (sel) {
@@ -757,16 +877,35 @@ function getServerTagSummaryGroups(dimensionKey) {
   return summary.groups.map(normalizeTagSummaryGroup);
 }
 
-function getMonitorDetailRows(tagGroups) {
+function getMonitorFullRows() {
   const r = state.monitor || {};
-  const activeValue = state.monitorTagGroupValue ? normalizeGroupValue(state.monitorTagGroupValue) : '';
-  if (activeValue) {
-    const active = (tagGroups || []).find((g) => normalizeGroupValue(g.value) === activeValue);
-    if (active && Array.isArray(active.models)) return active.models.slice();
-  }
   return Array.isArray(r.tagModels)
     ? r.tagModels.slice()
     : (Array.isArray(r.pool) ? r.pool.slice() : []);
+}
+
+function buildFilteredTagSummaryGroups(rows, dimension) {
+  const clientGroups = buildTagSummaryForRows(rows, dimension).map(normalizeTagSummaryGroup);
+  const serverGroups = getServerTagSummaryGroups(dimension && dimension.key);
+  if (!serverGroups.length) return clientGroups;
+  const clientByValue = new Map(clientGroups.map((g) => [normalizeGroupValue(g.value), g]));
+  const merged = serverGroups.map((serverGroup) => {
+    const value = normalizeGroupValue(serverGroup.value);
+    return clientByValue.get(value) || {
+      ...serverGroup,
+      value,
+      modelCount: 0,
+      categoryCount: 0,
+      cur: {},
+      watchCount: 0,
+      downTrendCount: 0,
+      models: [],
+    };
+  });
+  for (const group of clientGroups) {
+    if (!merged.some((g) => normalizeGroupValue(g.value) === normalizeGroupValue(group.value))) merged.push(group);
+  }
+  return merged;
 }
 
 function filterMonitorDetailRows(rows, view, trend) {
@@ -845,29 +984,38 @@ function renderMonitorTagAggregation(dimension, groups, rowCount) {
     hint.textContent = `按「${dimension.label || dimension.key}」聚合服务端全量 ${rowCount} 个机型；点击标签值后，下方机型表进入该组，视图/趋势只影响明细表。`;
   }
   const drill = $('#monitorTagGroupDrill');
-  const activeValue = state.monitorTagGroupValue ? normalizeGroupValue(state.monitorTagGroupValue) : '';
+  const activeValue = currentMonitorTagFilterValue(dimension.key);
   const active = groups.find((g) => normalizeGroupValue(g.value) === activeValue);
   if (drill) {
-    if (active) {
+    const filters = getActiveMonitorTagFilters();
+    if (filters.length) {
+      const chips = filters.map((f) => `
+        <span class="tag-filter-chip">
+          <b>${escapeHtml(getMonitorDimensionLabel(f.dimension))}</b>
+          <span>= ${escapeHtml(groupLabel(f.value))}</span>
+          <button type="button" class="clear-tag-filter" data-dim="${escapeAttr(f.dimension)}" aria-label="移除筛选">×</button>
+        </span>
+      `).join('');
       drill.innerHTML = `
-        <span>已下钻：<b>${escapeHtml(dimension.label || dimension.key)}</b> = <b>${escapeHtml(active.label)}</b> · ${active.modelCount} 个机型</span>
-        <button type="button" id="btnClearTagGroup">清除标签下钻</button>
+        <div class="tag-filter-main">
+          <span>已筛选：</span>
+          ${chips}
+          ${active ? `<span class="tag-filter-count">当前维度命中 ${fmtInt(active.modelCount)} 个机型</span>` : ''}
+        </div>
+        <button type="button" id="btnClearTagGroup">清除全部</button>
       `;
       drill.classList.remove('hidden');
-      const clear = $('#btnClearTagGroup');
-      if (clear) clear.addEventListener('click', () => {
-        state.monitorTagGroupValue = null;
-        refreshMonitor();
+      $$('#monitorTagGroupDrill .clear-tag-filter').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dim = btn.dataset.dim;
+          if (state.monitorTagFilters) delete state.monitorTagFilters[dim];
+          state.monitorTagGroupValue = currentMonitorTagFilterValue(dimension.key) || null;
+          renderMonitor();
+        });
       });
-    } else if (state.monitorTagGroupValue) {
-      drill.innerHTML = `
-        <span>已下钻：<b>${escapeHtml(dimension.label || dimension.key)}</b> = <b>${escapeHtml(groupLabel(state.monitorTagGroupValue))}</b> · 当前筛选无机型</span>
-        <button type="button" id="btnClearTagGroup">清除标签下钻</button>
-      `;
-      drill.classList.remove('hidden');
-      const clear = $('#btnClearTagGroup');
-      if (clear) clear.addEventListener('click', () => {
-        state.monitorTagGroupValue = null;
+      const clearAll = $('#btnClearTagGroup');
+      if (clearAll) clearAll.addEventListener('click', () => {
+        clearMonitorTagFilters();
         refreshMonitor();
       });
     } else {
@@ -890,10 +1038,10 @@ function renderMonitorTagAggregation(dimension, groups, rowCount) {
     </tr>
   `;
   table.querySelector('tbody').innerHTML = groups.length
-    ? groups.map((g) => `
+    ? groups.map((g, idx) => `
       <tr class="${normalizeGroupValue(g.value) === activeValue ? 'selected' : ''}">
         <td>
-          <button type="button" class="tag-group-btn" data-value="${escapeAttr(g.value)}">
+          <button type="button" class="tag-group-btn tag-color-${idx % 6} ${normalizeGroupValue(g.value) === activeValue ? 'is-active' : ''}" data-dim="${escapeAttr(dimension.key)}" data-value="${escapeAttr(g.value)}">
             ${escapeHtml(g.label)}
           </button>
         </td>
@@ -912,9 +1060,8 @@ function renderMonitorTagAggregation(dimension, groups, rowCount) {
   $$('#monitorTagSummaryTable .tag-group-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const value = normalizeGroupValue(btn.dataset.value);
-      const current = state.monitorTagGroupValue ? normalizeGroupValue(state.monitorTagGroupValue) : '';
-      state.monitorTagGroupValue = current === value ? null : value;
-      refreshMonitor();
+      setCurrentMonitorTagFilter(btn.dataset.dim || dimension.key, value);
+      renderMonitor();
     });
   });
 }
@@ -1022,6 +1169,41 @@ function renderMonitorRow(row, rates, waveThreshold) {
       <td><button class="edit-tag" data-cat="${escapeAttr(row.category)}" data-model="${escapeAttr(row.modelName)}">打标签 →</button></td>
     </tr>
   `;
+}
+
+function openMonitorMetricsModal() {
+  const allRates = monitorRateList(state.rules || (state.monitor && state.monitor.rules) || {});
+  const selected = new Set(loadMonitorMetricKeys(allRates));
+  const box = $('#monitorMetricOptions');
+  box.innerHTML = allRates.map((rate) => `
+    <label class="metric-check">
+      <input type="checkbox" value="${escapeAttr(rate.key)}" ${selected.has(rate.key) ? 'checked' : ''} />
+      <span>${escapeHtml(rate.name)}</span>
+    </label>
+  `).join('');
+  $('#modalMonitorMetrics').classList.remove('hidden');
+}
+
+function saveMonitorMetricsModal() {
+  const allRates = monitorRateList(state.rules || (state.monitor && state.monitor.rules) || {});
+  const allowed = new Set(allRates.map((r) => r.key));
+  const keys = $$('#monitorMetricOptions input[type="checkbox"]:checked')
+    .map((input) => input.value)
+    .filter((key) => allowed.has(key));
+  if (!keys.length) {
+    toast('至少保留一个关键转化率指标');
+    return;
+  }
+  saveMonitorMetricKeys(keys);
+  $('#modalMonitorMetrics').classList.add('hidden');
+  renderMonitor();
+}
+
+function resetMonitorMetrics() {
+  const allRates = monitorRateList(state.rules || (state.monitor && state.monitor.rules) || {});
+  saveMonitorMetricKeys(allRates.map((r) => r.key));
+  openMonitorMetricsModal();
+  renderMonitor();
 }
 
 function escapeHtml(s) {

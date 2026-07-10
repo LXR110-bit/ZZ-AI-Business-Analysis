@@ -289,6 +289,30 @@ main { padding: 20px 24px 32px; }
   color: var(--c-accent-ink);
   font-size: 12px;
 }
+.tag-filter-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tag-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--r-pill);
+  background: #fff;
+  color: var(--c-accent-ink);
+}
+.tag-filter-chip button {
+  padding: 0 4px;
+  min-height: 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.tag-filter-count { color: var(--c-text-2); }
 .tag-summary-wrap {
   overflow: auto;
   border: 1px solid var(--c-border);
@@ -302,19 +326,56 @@ main { padding: 20px 24px 32px; }
   background: var(--c-accent-soft);
 }
 .tag-group-btn {
+  --tag-bg: #eff6ff;
+  --tag-border: #bfdbfe;
+  --tag-fg: #1d4ed8;
   padding: 2px 8px;
   border-radius: var(--r-pill);
-  color: var(--c-accent-ink);
-  border-color: #dbeafe;
-  background: #fff;
+  color: var(--tag-fg);
+  border-color: var(--tag-border);
+  background: var(--tag-bg);
   font-weight: 500;
 }
 .tag-group-btn:hover {
-  border-color: var(--c-accent);
-  background: var(--c-accent-soft);
+  filter: saturate(1.08) brightness(0.98);
 }
+.tag-group-btn.is-active {
+  background: var(--tag-fg);
+  border-color: var(--tag-fg);
+  color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tag-fg) 14%, transparent);
+}
+.tag-color-0 { --tag-bg: #eff6ff; --tag-border: #bfdbfe; --tag-fg: #2563eb; }
+.tag-color-1 { --tag-bg: #f0fdf4; --tag-border: #bbf7d0; --tag-fg: #16a34a; }
+.tag-color-2 { --tag-bg: #fff7ed; --tag-border: #fed7aa; --tag-fg: #ea580c; }
+.tag-color-3 { --tag-bg: #fdf2f8; --tag-border: #fbcfe8; --tag-fg: #db2777; }
+.tag-color-4 { --tag-bg: #f5f3ff; --tag-border: #ddd6fe; --tag-fg: #7c3aed; }
+.tag-color-5 { --tag-bg: #ecfeff; --tag-border: #a5f3fc; --tag-fg: #0891b2; }
 .warn-text { color: var(--c-warn-ink); font-weight: 600; }
 .down-text { color: var(--c-down); font-weight: 600; }
+
+.metric-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.metric-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text-2);
+}
+.metric-check:has(input:checked) {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+  color: var(--c-accent-ink);
+  font-weight: 600;
+}
 
 /* ---- 表格 ---- */
 .table-wrap {
@@ -579,7 +640,7 @@ td button.edit-tag:hover {
   color: var(--c-text-2);
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 .tag-radio:hover {
   border-color: var(--c-accent);
@@ -594,6 +655,12 @@ td button.edit-tag:hover {
   border-color: var(--c-accent);
   background: var(--c-accent);
   color: #fff;
+  font-weight: 700;
+  box-shadow: 0 0 0 3px var(--c-accent-soft);
+}
+.tag-radio:not(.keep-radio):has(input:checked)::after {
+  content: "✓";
+  font-weight: 700;
 }
 .tag-radio.keep-radio:has(input:checked) {
   border-color: var(--c-border);
