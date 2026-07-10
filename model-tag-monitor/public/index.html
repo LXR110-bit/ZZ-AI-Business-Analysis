@@ -147,7 +147,6 @@
             </select>
           </label>
           <button id="btnMonitorRun" class="primary">确认</button>
-          <button id="btnMonitorMetrics" type="button">指标设置</button>
         </div>
         <div class="summary" id="monitorSummary"></div>
       </div>
@@ -158,12 +157,15 @@
             <h3>标签维度聚合</h3>
             <p class="hint" id="monitorTagAggHint">按标签维度聚合当前筛选结果；点击标签值后，下方机型表进入该标签值下钻。</p>
           </div>
-          <label class="tag-dimension-select">
-            标签维度
-            <select id="monitorTagDimension">
-              <option value="core">核心度</option>
-            </select>
-          </label>
+          <div class="tag-dimension-actions">
+            <label class="tag-dimension-select">
+              标签维度
+              <select id="monitorTagDimension">
+                <option value="core">核心度</option>
+              </select>
+            </label>
+            <button id="btnMonitorTagCombo" type="button">组合筛选</button>
+          </div>
         </div>
         <div class="tag-group-drill hidden" id="monitorTagGroupDrill"></div>
         <div class="tag-summary-wrap">
@@ -173,13 +175,23 @@
           </table>
         </div>
       </div>
+      <div class="analysis-overview" id="monitorInsightOverview"></div>
+      <div class="model-table-toolbar">
+        <div>
+          <h3>机型明细</h3>
+          <p class="hint">在机型维度查看漏斗指标；可用标签设置做交叉筛选，用指标设置调整明细表列。</p>
+        </div>
+        <div class="model-table-actions">
+          <button id="btnMonitorTagFilters" type="button">标签设置</button>
+          <button id="btnMonitorMetrics" type="button">指标设置</button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table id="monitorTable">
           <thead></thead>
           <tbody></tbody>
         </table>
       </div>
-      <div class="analysis-overview" id="monitorInsightOverview"></div>
     </section>
 
     <!-- 标签管理 -->
@@ -286,6 +298,20 @@
       <div class="actions">
         <button id="btnModalCancel">取消</button>
         <button id="btnModalSave" class="primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monitor 标签组合筛选弹层 -->
+  <div class="modal hidden" id="modalMonitorTagFilters">
+    <div class="modal-body">
+      <h3>标签设置</h3>
+      <p class="hint">可同时选择多个标签维度，查看交叉后的机型明细；留空表示该维度不参与筛选。</p>
+      <div class="tag-filter-options" id="monitorTagFilterOptions"></div>
+      <div class="actions">
+        <button id="btnMonitorTagFiltersReset" type="button">清空标签筛选</button>
+        <button id="btnMonitorTagFiltersCancel" type="button">取消</button>
+        <button id="btnMonitorTagFiltersSave" type="button" class="primary">应用</button>
       </div>
     </div>
   </div>

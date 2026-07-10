@@ -501,6 +501,16 @@ async function init() {
       refreshMonitor();
     });
   }
+  const btnMonitorTagFilters = $('#btnMonitorTagFilters');
+  if (btnMonitorTagFilters) btnMonitorTagFilters.addEventListener('click', openMonitorTagFiltersModal);
+  const btnMonitorTagCombo = $('#btnMonitorTagCombo');
+  if (btnMonitorTagCombo) btnMonitorTagCombo.addEventListener('click', openMonitorTagFiltersModal);
+  const btnMonitorTagFiltersCancel = $('#btnMonitorTagFiltersCancel');
+  if (btnMonitorTagFiltersCancel) btnMonitorTagFiltersCancel.addEventListener('click', () => $('#modalMonitorTagFilters').classList.add('hidden'));
+  const btnMonitorTagFiltersReset = $('#btnMonitorTagFiltersReset');
+  if (btnMonitorTagFiltersReset) btnMonitorTagFiltersReset.addEventListener('click', resetMonitorTagFilters);
+  const btnMonitorTagFiltersSave = $('#btnMonitorTagFiltersSave');
+  if (btnMonitorTagFiltersSave) btnMonitorTagFiltersSave.addEventListener('click', saveMonitorTagFiltersModal);
   $('#btnMonitorMetrics').addEventListener('click', openMonitorMetricsModal);
   $('#btnMonitorMetricsCancel').addEventListener('click', () => $('#modalMonitorMetrics').classList.add('hidden'));
   $('#btnMonitorMetricsReset').addEventListener('click', resetMonitorMetrics);
@@ -1256,6 +1266,93 @@ function resetMonitorMetrics() {
   saveMonitorMetricKeys(allRates.map((r) => r.key));
   openMonitorMetricsModal();
   renderMonitor();
+}
+
+function getConfiguredMonitorTagOptions(dimensionKey) {
+  const category = resolveMonitorCategory();
+  const vocab = normalizeVocab(state.vocab || {});
+  const defs = category
+    ? buildDimensionDefsForCategory(category)
+    : BASE_TAG_DIMENSIONS.map((d) => ({ ...d, options: vocab[d.key] || [] }));
+  const hit = defs.find((d) => d.key === dimensionKey);
+  return uniqStrings(hit && hit.options);
+}
+
+function getMonitorTagFilterOptions(dimension, rows) {
+  const dimKey = dimension && dimension.key;
+  const configured = getConfiguredMonitorTagOptions(dimKey);
+  const present = uniqStrings((rows || []).map((row) => dimensionValueForRow(row, dimKey)).filter(Boolean));
+  const ordered = [];
+  const push = (value) => {
+    const normalized = normalizeGroupValue(value);
+    if (!normalized || ordered.some((x) => x.value === normalized)) return;
+    ordered.push({ value: normalized, label: groupLabel(normalized) });
+  };
+  push(UNTAGGED_VALUE);
+  configured.forEach(push);
+  present
+    .filter((value) => !configured.includes(value))
+    .sort((a, b) => String(a).localeCompare(String(b), 'zh-CN', { numeric: true }))
+    .forEach(push);
+  const active = currentMonitorTagFilterValue(dimKey);
+  if (active) push(active);
+  return ordered;
+}
+
+function openMonitorTagFiltersModal() {
+  syncMonitorTagDimensionSelect();
+  renderMonitorTagFilterOptions();
+  $('#modalMonitorTagFilters').classList.remove('hidden');
+}
+
+function renderMonitorTagFilterOptions() {
+  const box = $('#monitorTagFilterOptions');
+  if (!box) return;
+  const dims = getMonitorTagDimensions();
+  const rows = getMonitorFullRows();
+  if (!dims.length) {
+    box.innerHTML = '<div class="empty-cell">暂无可筛选的标签维度</div>';
+    return;
+  }
+  box.innerHTML = dims.map((dim) => {
+    const selected = currentMonitorTagFilterValue(dim.key);
+    const options = getMonitorTagFilterOptions(dim, rows);
+    return `
+      <label class="tag-filter-row">
+        <span class="tag-filter-label">${escapeHtml(dim.label || dim.key)}</span>
+        <select class="tag-filter-select" data-dim="${escapeAttr(dim.key)}">
+          <option value="">不筛选</option>
+          ${options.map((opt) => `
+            <option value="${escapeAttr(opt.value)}" ${opt.value === selected ? 'selected' : ''}>${escapeHtml(opt.label)}</option>
+          `).join('')}
+        </select>
+      </label>
+    `;
+  }).join('');
+}
+
+function saveMonitorTagFiltersModal() {
+  const dims = getMonitorTagDimensions();
+  const validDims = new Set(dims.map((d) => d.key));
+  const filters = {};
+  $$('#monitorTagFilterOptions .tag-filter-select').forEach((select) => {
+    const dimKey = select.dataset.dim;
+    if (!dimKey || !validDims.has(dimKey) || !select.value) return;
+    filters[dimKey] = normalizeGroupValue(select.value);
+  });
+  state.monitorTagFilters = filters;
+  state.monitorTagGroupValue = currentMonitorTagFilterValue(state.monitorTagDimension) || null;
+  $('#modalMonitorTagFilters').classList.add('hidden');
+  renderMonitor();
+  const count = Object.keys(filters).length;
+  toast(count ? `已应用 ${count} 个标签筛选` : '已清空标签筛选');
+}
+
+function resetMonitorTagFilters() {
+  clearMonitorTagFilters();
+  renderMonitorTagFilterOptions();
+  if (state.monitor) renderMonitor();
+  toast('已清空标签筛选');
 }
 
 function escapeHtml(s) {
