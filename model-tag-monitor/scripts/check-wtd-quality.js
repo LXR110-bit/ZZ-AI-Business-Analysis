@@ -168,6 +168,11 @@ function parseList(value, fallback = []) {
   return items.length ? items : fallback;
 }
 
+function isEnabled(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
 function metricIsWtd(metricSources, metric) {
   const source = metricSources && metricSources[metric];
   if (!source) return false;
@@ -276,6 +281,7 @@ async function checkWtdQuality(options) {
   const broadDropShare = Number(options.broadDropShare || options['broad-drop-share'] || process.env.WTD_QUALITY_BROAD_DROP_SHARE || '0.3');
   const broadDropMinCategories = Number(options.broadDropMinCategories || options['broad-drop-min-categories'] || process.env.WTD_QUALITY_BROAD_DROP_MIN_CATEGORIES || '3');
   const reconciliationTolerance = Number(options.reconciliationTolerance || options['reconciliation-tolerance'] || process.env.WTD_QUALITY_RECONCILIATION_TOLERANCE || '0.25');
+  const reconciliationEnabled = isEnabled(options.reconciliation || options['reconciliation'] || process.env.WTD_QUALITY_RECONCILE, false);
   const watchCategories = parseList(options.watchCategories || options['watch-categories'] || process.env.WTD_QUALITY_WATCH_CATEGORIES, DEFAULT_WATCH_CATEGORIES);
 
   const result = {
@@ -284,7 +290,7 @@ async function checkWtdQuality(options) {
     targetWeek,
     currentDir,
     baselineDir,
-    thresholds: { blockRatio, warnRatio, topN, broadDropShare, broadDropMinCategories, reconciliationTolerance, watchCategories },
+    thresholds: { blockRatio, warnRatio, topN, broadDropShare, broadDropMinCategories, reconciliationTolerance, reconciliationEnabled, watchCategories },
     comparisons: [],
     warnings: [],
     errors: [],
@@ -311,12 +317,15 @@ async function checkWtdQuality(options) {
 
   const currentModelFile = outputPathFrom(currentDir, MODEL_OUTPUT);
   const currentModel = loadModelAggregates(currentModelFile, targetWeek);
-  result.warnings.push(...reconcileCategoryVsModel({
-    categoryRows: currentCategory.rows,
-    modelByCategory: currentModel.byCategory,
-    metricSources: currentCategory.metricSources,
-    tolerance: reconciliationTolerance,
-  }));
+  result.reconciliation = { enabled: reconciliationEnabled, modelFile: currentModelFile || null };
+  if (reconciliationEnabled) {
+    result.warnings.push(...reconcileCategoryVsModel({
+      categoryRows: currentCategory.rows,
+      modelByCategory: currentModel.byCategory,
+      metricSources: currentCategory.metricSources,
+      tolerance: reconciliationTolerance,
+    }));
+  }
 
   if (!baselineDir || !fs.existsSync(baselineDir)) {
     result.state = 'no_baseline';
@@ -375,8 +384,23 @@ async function main() {
   }
   const result = await checkWtdQuality(args);
   const text = JSON.stringify(result, null, 2);
-  if (args.out) fs.writeFileSync(args.out, `${text}\n`, 'utf8');
-  process.stdout.write(`${text}\n`);
+  if (args.out) {
+    fs.writeFileSync(args.out, `${text}\n`, 'utf8');
+    process.stdout.write(`${JSON.stringify({
+      ok: result.ok,
+      state: result.state,
+      targetWeek: result.targetWeek,
+      currentDir: result.currentDir,
+      baselineDir: result.baselineDir,
+      out: args.out,
+      comparisons: result.comparisons.length,
+      errors: result.errors.length,
+      warnings: result.warnings.length,
+      message: result.message || null,
+    }, null, 2)}\n`);
+  } else {
+    process.stdout.write(`${text}\n`);
+  }
   process.exit(result.ok ? 0 : 10);
 }
 
