@@ -280,3 +280,32 @@ def test_cli_unknown_payload_file(capsys):
         "--dry-run",
     ])
     assert rc == 2
+
+def test_generic_alert_fallback_uses_alert_content(tmp_path):
+    """generic_alert 降级文本不能套用周报字段。"""
+    payload = {
+        "title": "🚨 日更失败",
+        "template_color": "red",
+        "body": "失败阶段: coverage\n页面已保留昨天版本",
+        "button_text": "查看 Dashboard",
+        "link_url": "http://47.84.94.234:8848/",
+    }
+    seen: list[dict] = []
+
+    def fake_send(receive_id, receive_id_type, msg):
+        seen.append(msg)
+        if msg["msg_type"] == "interactive":
+            raise TransportError("card failed")
+        return {"raw": {"code": 0}, "message_id": "om_alert"}
+
+    with mock.patch.object(send_card, "_send_via_lark_cli", side_effect=fake_send):
+        result = push_card(
+            template="generic_alert",
+            payload=payload,
+            chat_id="oc_test",
+            outbox_dir=tmp_path,
+        )
+    assert result["status"] == "sent"
+    assert result["kind"] == "post"
+    assert "日更失败" in seen[1]["content"]["post"]["zh_cn"]["title"]
+    assert "页面已保留昨天版本" in seen[1]["content"]["post"]["zh_cn"]["content"][0][0]["text"]

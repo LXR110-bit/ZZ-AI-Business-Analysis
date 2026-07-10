@@ -6,7 +6,7 @@
 |---|---|
 | Host 别名 | `zz-server`（已配置在 `~/.ssh/config`） |
 | IP | `47.84.94.234` |
-| 端口 | `443`（非标准端口） |
+| 端口 | `22`（当前主用）；`443`/`2222` 为服务端备用监听，2222 公网入口需另行验证 |
 | 用户 | `admin`（uid=1000） |
 | 密钥 | `~/.ssh/id_ed25519` |
 | sudo | 免密码，`sudo -n` 直接拿 root |
@@ -28,9 +28,33 @@
 | Node.js | v20.20.2 | `/root/.nvm/versions/node/v20.20.2/bin/node` | 不在 admin 用户的 PATH 里，需要写全路径或 `sudo su - -c '...'` |
 | npm | 同上 | `/root/.nvm/versions/node/v20.20.2/bin/npm` | 同上 |
 | PM2 | 7.0.3 | `/root/.nvm/versions/node/v20.20.2/bin/pm2` | 进程属主是 root，操作必须加 `sudo` |
-| rsync | 3.2.7 | `/usr/bin/rsync` | 部署主力工具 |
+| rsync | 3.2.7 | `/usr/bin/rsync` | 部署主力工具；大文件/生产同步优先 `-avP` 断点续传 |
 | git | 2.34.1 | `/usr/bin/git` | 服务器有但生产目录不是 git 仓库 |
 | curl | 7.81.0 | `/usr/bin/curl` | 支持 HTTPS/HTTP2/brotli |
+
+### SSH/rsync 连接约定（2026-07-09 更新）
+
+`zz-server` 本机 alias 当前走 SSH `Port 22`，并配置短心跳：
+
+```sshconfig
+Host zz-server
+    HostName 47.84.94.234
+    User admin
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519
+    StrictHostKeyChecking accept-new
+    TCPKeepAlive yes
+    ServerAliveInterval 15
+    ServerAliveCountMax 5
+```
+
+传大文件或生产同步优先使用可续传命令：
+
+```bash
+rsync -avP -e "ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=5" ./local-file zz-server:/tmp/
+```
+
+说明：服务端 sshd 已监听 22/443/2222；公网 22 已验证可登录，2222 在服务器本机有 OpenSSH banner，但公网入口仍会提前关闭，暂不作为主通道。
 
 ## 生产目录结构
 
@@ -58,8 +82,8 @@
 
 ```bash
 # 1. 本地文件 → 服务器 /tmp（admin 有写权限）
-rsync -avc src/ zz-server:/tmp/src/
-rsync -avc public/ zz-server:/tmp/public/
+rsync -avP -e ssh src/ zz-server:/tmp/src/
+rsync -avP -e ssh public/ zz-server:/tmp/public/
 
 # 2. sudo 搬到生产目录 + 重启进程
 ssh zz-server 'sudo cp -r /tmp/src/* /root/model-tag-monitor/src/ && \
@@ -70,7 +94,7 @@ ssh zz-server 'sudo cp -r /tmp/src/* /root/model-tag-monitor/src/ && \
 ### 如果改了 package.json（加了依赖）
 
 ```bash
-rsync -avc package.json zz-server:/tmp/package.json
+rsync -avP -e ssh package.json zz-server:/tmp/package.json
 ssh zz-server 'sudo cp /tmp/package.json /root/model-tag-monitor/package.json && \
   cd /root/model-tag-monitor && \
   sudo /root/.nvm/versions/node/v20.20.2/bin/npm install --production && \
@@ -80,7 +104,7 @@ ssh zz-server 'sudo cp /tmp/package.json /root/model-tag-monitor/package.json &&
 ### 如果改了 ecosystem.config.js（PM2 配置）
 
 ```bash
-rsync -avc ecosystem.config.js zz-server:/tmp/ecosystem.config.js
+rsync -avP -e ssh ecosystem.config.js zz-server:/tmp/ecosystem.config.js
 ssh zz-server 'sudo cp /tmp/ecosystem.config.js /root/model-tag-monitor/ecosystem.config.js && \
   sudo /root/.nvm/versions/node/v20.20.2/bin/pm2 reload model-tag-monitor'
 ```

@@ -160,6 +160,15 @@ def render_card(template: str, payload: dict) -> dict:
 
 def _fallback_post_message(template: str, payload: dict) -> dict:
     """卡片发不出去时的富文本降级 (msg_type=post)."""
+    if template == "generic_alert":
+        return {
+            "msg_type": "post",
+            "content": {"post": {"zh_cn": {
+                "title": payload.get("title") or "系统预警",
+                "content": [[{"tag": "text", "text": str(payload.get("body") or "-")}]],
+            }}},
+        }
+
     week = payload.get("week", "")
     total = payload.get("total", "")
     watch_count = payload.get("watch_count", "")
@@ -184,6 +193,9 @@ def _fallback_post_message(template: str, payload: dict) -> dict:
 
 def _fallback_text_message(template: str, payload: dict) -> dict:
     """再降级:纯文本."""
+    if template == "generic_alert":
+        return {"msg_type": "text", "content": {"text": f"{payload.get('title') or '系统预警'}\n{payload.get('body') or '-'}"}}
+
     week = payload.get("week", "")
     lines = [f"机型监测周报 · {week}",
              f"覆盖 {payload.get('total')} · 异常 {payload.get('watch_count')}"]

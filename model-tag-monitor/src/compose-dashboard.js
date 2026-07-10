@@ -153,9 +153,9 @@ function buildAnalysisStatus({ week, syncedAt = null, now = null } = {}) {
   return {
     state: isRolling ? 'rolling' : 'final',
     label: isRolling ? '滚动分析' : '周结冻结',
-    cadence: isRolling ? '每日06:30更新' : '已结束周固定结论',
+    cadence: isRolling ? '每日06:50更新' : '已结束周固定结论',
     description: isRolling
-      ? `${week} 尚未完整结束，当前展示截至已同步数据的滚动经营分析；每日 06:30 刷新后更新。`
+      ? `${week} 尚未完整结束，当前展示截至已同步数据的滚动经营分析；每日 06:50 刷新后更新。`
       : `${week} 已完整结束，经营分析按周冻结，不会被后续周次覆盖。`,
     isRolling,
     weekStart,

@@ -989,18 +989,43 @@ def run_pipeline(
 def _month_from_frame(df: pd.DataFrame) -> str | None:
     if df.empty:
         return None
+    week_starts = _week_start_series(df).dropna()
+    if not week_starts.empty:
+        return month_key(week_starts.max())
 
-    # New AI小万 mail snapshots use week_start_date + day_cnt rather than a
-    # natural-date column.  The file belongs to the ISO week home month.
+    return None
+
+
+def _week_label_to_monday(value: Any) -> date | None:
+    week = str(value).strip()
+    if not week:
+        return None
+    if re.fullmatch(r"W\d{1,2}", week, re.I):
+        week = f"{date.today().year}-W{int(week[1:]):02d}"
+    m = re.fullmatch(r"(\d{4})-W(\d{1,2})", week, re.I)
+    if not m:
+        return None
+    return date.fromisocalendar(int(m.group(1)), int(m.group(2)), 1)
+
+
+def _week_start_series(df: pd.DataFrame) -> pd.Series:
+    """Return per-row ISO week Monday values for source frames.
+
+    New AI小万 model zip snapshots can contain multiple week_start_date values
+    across split xlsx files.  The daily pipeline should advance only the newest
+    rolling week, so month attribution and row filtering must use the max week
+    across the full frame rather than the first row.
+    """
     for col in ("日期", "week_start_date", "周开始", "开始日期"):
         if col in df.columns:
             d = pd.to_datetime(df[col], errors="coerce").dropna()
             if not d.empty:
-                first = d.dt.date.iloc[0]
-                if hasattr(first, "isocalendar"):
-                    iso = first.isocalendar()
-                    monday = date.fromisocalendar(iso.year, iso.week, 1)
-                    return month_key(monday)
+                parsed = pd.to_datetime(df[col], errors="coerce")
+                return parsed.dt.date.map(
+                    lambda value: date.fromisocalendar(value.isocalendar().year, value.isocalendar().week, 1)
+                    if pd.notna(value)
+                    else None
+                )
 
     for col in ("统计周", "周次", "week"):
         if col not in df.columns:
@@ -1008,15 +1033,19 @@ def _month_from_frame(df: pd.DataFrame) -> str | None:
         series = df[col].dropna().astype(str)
         if series.empty:
             continue
-        week = series.iloc[0].strip()
-        if not week:
-            continue
-        if re.fullmatch(r"W\d{1,2}", week):
-            week = f"{date.today().year}-{week.upper().replace('W', 'W')}"
-        y, w = week.split("-W")
-        monday = date.fromisocalendar(int(y), int(w), 1)
-        return month_key(monday)
-    return None
+        return df[col].map(_week_label_to_monday)
+    return pd.Series([None] * len(df), index=df.index)
+
+
+def _filter_latest_week_frame(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    week_starts = _week_start_series(df)
+    valid = week_starts.dropna()
+    if valid.empty:
+        return df
+    latest = valid.max()
+    return df.loc[week_starts == latest].reset_index(drop=True)
 
 
 def _attachment_preference(name: str) -> int:
@@ -1158,7 +1187,7 @@ def run_local_imports_pipeline(
 
     by_month: dict[str, dict[str, pd.DataFrame]] = {}
     for source in required_sources():
-        df = frames_by_source[source.source_key]
+        df = _filter_latest_week_frame(frames_by_source[source.source_key])
         month = _month_from_frame(df)
         if month is None:
             return {"status": "empty_or_unmonthable_source", "source_key": source.source_key}
