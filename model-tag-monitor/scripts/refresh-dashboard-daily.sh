@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# model-tag-monitor v1.4.6 daily refresh flow
+# model-tag-monitor v1.4.7 daily refresh flow
 # 06:50 Asia/Shanghai: local imports with readiness retries -> coverage gate -> cache sync -> AI -> style-2 Lark card.
 set -Eeuo pipefail
 export PATH="/root/.local/bin:/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
-VERSION="1.4.6"
+VERSION="1.4.7"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONITOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PARENT_DIR="$(cd "$MONITOR_DIR/.." && pwd)"
@@ -19,6 +19,10 @@ LOG_DIR="${LOG_DIR:-$MONITOR_DIR/logs}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 DATA_READY_MAX_ATTEMPTS="${DATA_READY_MAX_ATTEMPTS:-3}"
 DATA_READY_RETRY_SECONDS="${DATA_READY_RETRY_SECONDS:-600}"
+ARTIFACT_RETENTION_DAYS="${ARTIFACT_RETENTION_DAYS:-30}"
+ARTIFACT_CLEANUP_ENABLED="${ARTIFACT_CLEANUP_ENABLED:-1}"
+ARTIFACT_CLEANUP_DRY_RUN="${ARTIFACT_CLEANUP_DRY_RUN:-0}"
+SOURCE_CACHE_DIR="${SOURCE_CACHE_DIR:-/tmp/机型周数据_zip_cache}"
 mkdir -p "$LOG_DIR"
 
 SCRIPT_STARTED_AT="$(date -Iseconds)"
@@ -71,6 +75,53 @@ FEISHU_CHAT_ID="${FEISHU_CHAT_ID:-${WEEKLY_REPORT_CHAT_ID:-}}"
 FEISHU_OPEN_ID="${FEISHU_OPEN_ID:-${MY_OPEN_ID:-}}"
 
 log() { printf '[%s] %s\n' "$(date '+%F %T%z')" "$*" | tee -a "$LOG_FILE" >&2; }
+
+cleanup_one_level_by_pattern() {
+  local root="$1"
+  local type_flag="$2"
+  local pattern="$3"
+  local days="$4"
+  [[ -d "$root" ]] || return 0
+  while IFS= read -r -d '' path; do
+    if [[ "${ARTIFACT_CLEANUP_DRY_RUN:-0}" == "1" ]]; then
+      log "cleanup dry-run type=$type_flag pattern=$pattern path=$path"
+    else
+      log "cleanup remove type=$type_flag pattern=$pattern path=$path"
+      rm -rf -- "$path"
+    fi
+  done < <(find "$root" -mindepth 1 -maxdepth 1 -type "$type_flag" -name "$pattern" -mtime +"$days" -print0 2>/dev/null || true)
+}
+
+cleanup_retained_artifacts() {
+  if [[ "${ARTIFACT_CLEANUP_ENABLED:-1}" == "0" ]]; then
+    log "artifact cleanup disabled"
+    return 0
+  fi
+  if ! [[ "${ARTIFACT_RETENTION_DAYS:-30}" =~ ^[0-9]+$ ]] || [[ "$ARTIFACT_RETENTION_DAYS" -lt 1 ]]; then
+    log "WARN: invalid ARTIFACT_RETENTION_DAYS=$ARTIFACT_RETENTION_DAYS; skip artifact cleanup"
+    return 0
+  fi
+
+  log "artifact cleanup start retention_days=$ARTIFACT_RETENTION_DAYS dry_run=${ARTIFACT_CLEANUP_DRY_RUN:-0} log_dir=$LOG_DIR source_cache_dir=$SOURCE_CACHE_DIR outbox_dir=$OUTBOX_DIR"
+
+  cleanup_one_level_by_pattern "$LOG_DIR" d 'local-imports-*' "$ARTIFACT_RETENTION_DAYS"
+  for pattern in \
+    'refresh-dashboard-daily-*.log' \
+    'manual-*.out' \
+    'manual-*.pid' \
+    'local-imports-check-*.log' \
+    'daily-import-coverage-*.json' \
+    'daily-import-coverage-final-*.json' \
+    'daily-refresh-alert-*.json' \
+    'weekly-card-payload-*.json' \
+    'dashboard-*.json'; do
+    cleanup_one_level_by_pattern "$LOG_DIR" f "$pattern" "$ARTIFACT_RETENTION_DAYS"
+  done
+
+  cleanup_one_level_by_pattern "$SOURCE_CACHE_DIR" f '*' "$ARTIFACT_RETENTION_DAYS"
+  cleanup_one_level_by_pattern "$OUTBOX_DIR" f '*.json' "$ARTIFACT_RETENTION_DAYS"
+  log "artifact cleanup done"
+}
 
 post_json() {
   local path="$1"
@@ -166,6 +217,8 @@ log "model-tag-monitor refresh start version=$VERSION api=$API_BASE import_dir=$
 if [[ -z "${FEISHU_REPO_DIR:-}" || ! -d "$FEISHU_REPO_DIR/skills/workflows/机型周数据" ]]; then
   fail_stage "data-import" "data workflow repo not found; cannot run local-imports" "" 2
 fi
+
+cleanup_retained_artifacts || log "WARN: artifact cleanup failed; continue daily refresh"
 
 DATA_READY_MAX_ATTEMPTS="$(node -e 'const n=Number(process.argv[1]); if (!Number.isInteger(n) || n < 1) process.exit(1); process.stdout.write(String(n));' "$DATA_READY_MAX_ATTEMPTS")" || fail_stage "config" "DATA_READY_MAX_ATTEMPTS must be a positive integer" "" 3
 DATA_READY_RETRY_SECONDS="$(node -e 'const n=Number(process.argv[1]); if (!Number.isFinite(n) || n < 0) process.exit(1); process.stdout.write(String(Math.floor(n)));' "$DATA_READY_RETRY_SECONDS")" || fail_stage "config" "DATA_READY_RETRY_SECONDS must be a non-negative number" "" 3

@@ -2,6 +2,10 @@
 
 ## 2026-07-10
 
+- **model-tag-monitor v1.4.7 日更产物保留策略**：日更链路启动时自动清理超过 `ARTIFACT_RETENTION_DAYS`（默认 30 天）的 local-imports、运行日志、覆盖校验文件、卡片 payload、源附件 cache 和 dry-run outbox，避免 50GB 生产盘被历史日更产物打满；支持 `ARTIFACT_CLEANUP_ENABLED=0` 关闭和 `ARTIFACT_CLEANUP_DRY_RUN=1` 演练。
+
+## 2026-07-10
+
 - **model-tag-monitor v1.4.6 日更时点与重试保护**：生产日更改为 06:50 执行；数据准备阶段新增 `DATA_READY_MAX_ATTEMPTS` / `DATA_READY_RETRY_SECONDS`，local-import 或覆盖校验失败时先重试，所有尝试失败后才发送飞书预警，仍保持不覆盖页面、不生成 AI、不推送经营卡片。
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
