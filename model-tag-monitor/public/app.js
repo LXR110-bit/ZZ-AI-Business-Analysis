@@ -655,6 +655,7 @@ async function refreshMonitor() {
     $('#monitorTable thead').innerHTML = '';
     $('#monitorTable tbody').innerHTML = '<tr><td colspan="99">尚未同步数据,请先点顶部「同步数据」。</td></tr>';
     $('#monitorSummary').textContent = '';
+    $('#monitorTagInsightOverview').innerHTML = '';
     $('#monitorInsightOverview').innerHTML = '';
     renderMonitorTagAggregation({ key: 'core', label: '核心度' }, [], 0);
     return;
@@ -673,6 +674,7 @@ async function refreshMonitor() {
   $('#monitorTable thead').innerHTML = '';
   $('#monitorTable tbody').innerHTML = '<tr><td colspan="99" style="padding:24px;text-align:center;color:#888">正在计算监测结果…</td></tr>';
   $('#monitorSummary').textContent = '加载中…';
+  $('#monitorTagInsightOverview').innerHTML = '';
   $('#monitorInsightOverview').innerHTML = '';
   renderMonitorTagAggregation({ key: 'core', label: '核心度' }, [], 0);
   try {
@@ -685,6 +687,7 @@ async function refreshMonitor() {
   } catch (e) {
     $('#monitorTable tbody').innerHTML = `<tr><td colspan="99" style="padding:24px;text-align:center;color:#c33">监测失败: ${e.message}</td></tr>`;
     $('#monitorSummary').textContent = '';
+    $('#monitorTagInsightOverview').innerHTML = '';
     renderMonitorTagAggregation({ key: 'core', label: '核心度' }, [], 0);
     toast('监测失败: ' + e.message);
     return;
@@ -711,6 +714,7 @@ function renderMonitor() {
     ? aggregationBaseRows.length
     : tagGroups.reduce((sum, g) => sum + (Number(g.modelCount) || 0), 0);
   renderMonitorTagAggregation(tagDim, tagGroups, fullModelCount);
+  renderMonitorTagInsight(tagDim, tagGroups, fullModelCount);
 
   const detailBaseRows = applyMonitorTagFilters(fullRows);
   let filtered = filterMonitorDetailRows(detailBaseRows, view, trend);
@@ -975,6 +979,51 @@ function buildTagSummaryForRows(rows, dimension) {
   return groups;
 }
 
+function sumGroupMetric(groups, key) {
+  return (groups || []).reduce((sum, group) => sum + (Number(group && group.cur && group.cur[key]) || 0), 0);
+}
+
+function groupShare(group, total, key = 'orderUv') {
+  const value = Number(group && group.cur && group.cur[key]) || 0;
+  return total > 0 ? value / total : null;
+}
+
+function renderMonitorTagInsight(dimension, groups, rowCount) {
+  const el = $('#monitorTagInsightOverview');
+  if (!el) return;
+  const totalOrder = sumGroupMetric(groups, 'orderUv');
+  const totalGmv = sumGroupMetric(groups, 'gmv');
+  const nonZeroGroups = (groups || []).filter((g) => (Number(g.modelCount) || 0) > 0);
+  const topOrderGroup = nonZeroGroups.slice().sort((a, b) => (Number(b.cur && b.cur.orderUv) || 0) - (Number(a.cur && a.cur.orderUv) || 0))[0];
+  const topWatchGroup = nonZeroGroups.slice().sort((a, b) => (Number(b.watchCount) || 0) - (Number(a.watchCount) || 0))[0];
+  const untagged = (groups || []).find((g) => normalizeGroupValue(g.value) === UNTAGGED_VALUE);
+  const activeFilters = getActiveMonitorTagFilters();
+  const topOrderShare = topOrderGroup ? groupShare(topOrderGroup, totalOrder, 'orderUv') : null;
+  const untaggedShare = untagged ? groupShare(untagged, totalOrder, 'orderUv') : null;
+  const filterText = activeFilters.length
+    ? `当前已交叉筛选 ${activeFilters.map((f) => `${getMonitorDimensionLabel(f.dimension)}=${groupLabel(f.value)}`).join('、')}。`
+    : '当前未限定标签筛选。';
+  const topOrderText = topOrderGroup
+    ? `「${topOrderGroup.label}」贡献下单UV ${fmtInt(topOrderGroup.cur && topOrderGroup.cur.orderUv)}，占该维度 ${fmtRate(topOrderShare)}，覆盖 ${fmtInt(topOrderGroup.modelCount)} 个机型。`
+    : '当前维度暂无可分析的下单分布。';
+  const untaggedText = untagged
+    ? `未打标下单占比 ${fmtRate(untaggedShare)}，机型 ${fmtInt(untagged.modelCount)} 个。`
+    : '';
+  const watchText = topWatchGroup && topWatchGroup.watchCount
+    ? `需关注最集中在「${topWatchGroup.label}」：${fmtInt(topWatchGroup.watchCount)} 个机型。`
+    : '当前标签维度暂无明显关注集中组。';
+
+  el.innerHTML = `
+    <div class="analysis-title">标签维度分析</div>
+    <div class="analysis-body">按「${escapeHtml(dimension.label || dimension.key)}」分析 ${fmtInt(rowCount)} 个机型的漏斗贡献：${escapeHtml(topOrderText)} ${escapeHtml(untaggedText)} ${escapeHtml(watchText)}</div>
+    <div class="analysis-tags">
+      <span>下单UV总量：${fmtInt(totalOrder)}</span>
+      <span>GMV总量：${fmtInt(totalGmv)}</span>
+      <span>${escapeHtml(filterText)}</span>
+    </div>
+  `;
+}
+
 function renderMonitorTagAggregation(dimension, groups, rowCount) {
   const panel = $('#monitorTagAggregation');
   const table = $('#monitorTagSummaryTable');
@@ -1023,6 +1072,7 @@ function renderMonitorTagAggregation(dimension, groups, rowCount) {
       drill.innerHTML = '';
     }
   }
+  const totalOrderUv = sumGroupMetric(groups, 'orderUv');
   table.querySelector('thead').innerHTML = `
     <tr>
       <th>标签值</th>
@@ -1033,6 +1083,7 @@ function renderMonitorTagAggregation(dimension, groups, rowCount) {
       <th class="num">GMV<sub class="mut">/日</sub></th>
       <th class="num">下单率</th>
       <th class="num">成交率</th>
+      <th class="num">下单占比</th>
       <th class="num">需关注</th>
       <th class="num">连续下滑</th>
     </tr>
@@ -1052,6 +1103,7 @@ function renderMonitorTagAggregation(dimension, groups, rowCount) {
         <td class="num">${fmtInt(g.cur.gmv)}</td>
         <td class="num">${fmtRate(g.cur.orderRate)}</td>
         <td class="num">${fmtRate(g.cur.dealRate)}</td>
+        <td class="num">${fmtRate(groupShare(g, totalOrderUv, 'orderUv'))}</td>
         <td class="num ${g.watchCount ? 'warn-text' : ''}">${fmtInt(g.watchCount)}</td>
         <td class="num ${g.downTrendCount ? 'down-text' : ''}">${fmtInt(g.downTrendCount)}</td>
       </tr>
