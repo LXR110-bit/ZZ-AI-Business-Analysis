@@ -9,6 +9,7 @@ const categorySync = require('./category-sync');
 const taxonomySync = require('./taxonomy-sync');
 const boardSync = require('./board-sync');
 const { monitor, DEFAULT_RULES } = require('./monitor');
+const { DEFAULT_TAG_VOCAB, normalizeTagRecord, normalizeTagsStore, normalizeTagVocab } = require('./tagging');
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
 const { createProxy } = require('./proxy');
 const { composeDashboard: composeDashboardV2, mergeBusinessOverviewInsights } = require('./compose-dashboard');
@@ -172,20 +173,23 @@ app.get('/api/data', (req, res) => {
 });
 
 // ---- 标签 ----
-// tags.json 结构: { "category||modelName": { tags: ["核心", "40系"], note: "..." } }
+// tags.json v1.5 结构: { "category||modelName": { dimensions: { core: "核心", ... }, note: "..." } }
+// GET 额外返回 tags: [] 兼容旧前端展示；保存时以 dimensions 为准。
 app.get('/api/tags', (req, res) => {
-  const tags = store.readJSON('tags.json', {});
+  const vocab = normalizeTagVocab(store.readJSON('tag-vocab.json', DEFAULT_TAG_VOCAB));
+  const tags = normalizeTagsStore(store.readJSON('tags.json', {}), { vocab });
   res.json(tags);
 });
 
 app.put('/api/tags/:key', (req, res) => {
   const user = getUser(req);
   const { key } = req.params;
-  const { tags = [], note = '' } = req.body || {};
   if (!key.includes('||')) return res.status(400).json({ error: 'key 格式应为 category||modelName' });
-  const all = store.readJSON('tags.json', {});
+  const category = key.split('||')[0] || '';
+  const vocab = normalizeTagVocab(store.readJSON('tag-vocab.json', DEFAULT_TAG_VOCAB));
+  const all = normalizeTagsStore(store.readJSON('tags.json', {}), { vocab });
   const before = all[key];
-  all[key] = { tags: Array.isArray(tags) ? tags.map(String) : [], note: String(note || '') };
+  all[key] = normalizeTagRecord(req.body || {}, { vocab, category });
   store.writeJSON('tags.json', all);
   store.appendLog({ action: 'tag-update', user, key, before, after: all[key] });
   res.json({ ok: true, tags: all[key] });
@@ -196,14 +200,13 @@ app.post('/api/tags/import', (req, res) => {
   const user = getUser(req);
   const { data, mode = 'merge' } = req.body || {};
   if (!data || typeof data !== 'object') return res.status(400).json({ error: '缺少 data 对象' });
-  let all = mode === 'replace' ? {} : store.readJSON('tags.json', {});
+  const vocab = normalizeTagVocab(store.readJSON('tag-vocab.json', DEFAULT_TAG_VOCAB));
+  const all = mode === 'replace' ? {} : normalizeTagsStore(store.readJSON('tags.json', {}), { vocab });
   let count = 0;
   for (const [k, v] of Object.entries(data)) {
     if (!k.includes('||')) continue;
-    all[k] = {
-      tags: Array.isArray(v?.tags) ? v.tags.map(String) : [],
-      note: String(v?.note || ''),
-    };
+    const category = k.split('||')[0] || '';
+    all[k] = normalizeTagRecord(v, { vocab, category });
     count++;
   }
   store.writeJSON('tags.json', all);
@@ -212,29 +215,16 @@ app.post('/api/tags/import', (req, res) => {
 });
 
 // ---- 标签字典(可选标签集合)----
-// tagVocab.json 结构:
-// { lifecycle: ["新品","主流","长尾","淘汰"], price: ["高","中","低"], core: ["核心","非核心","观察"], custom: { "组装机": ["高端","入门"], ... } }
-const DEFAULT_TAG_VOCAB = {
-  lifecycle: ['新品', '主流', '长尾', '淘汰'],
-  price: ['高价段', '中价段', '低价段'],
-  core: ['核心', '非核心', '观察'],
-  custom: {},
-};
-
+// tag-vocab.json v1.5 结构:
+// { lifecycle: [], price: [], core: [], custom: { "组装机": [{ id, name, options: [] }, ...] } }
 app.get('/api/tag-vocab', (req, res) => {
-  const v = store.readJSON('tag-vocab.json', DEFAULT_TAG_VOCAB);
+  const v = normalizeTagVocab(store.readJSON('tag-vocab.json', DEFAULT_TAG_VOCAB));
   res.json(v);
 });
 
 app.put('/api/tag-vocab', (req, res) => {
   const user = getUser(req);
-  const body = req.body || {};
-  const v = {
-    lifecycle: Array.isArray(body.lifecycle) ? body.lifecycle.map(String) : DEFAULT_TAG_VOCAB.lifecycle,
-    price: Array.isArray(body.price) ? body.price.map(String) : DEFAULT_TAG_VOCAB.price,
-    core: Array.isArray(body.core) ? body.core.map(String) : DEFAULT_TAG_VOCAB.core,
-    custom: body.custom && typeof body.custom === 'object' ? body.custom : {},
-  };
+  const v = normalizeTagVocab(req.body || DEFAULT_TAG_VOCAB);
   store.writeJSON('tag-vocab.json', v);
   store.appendLog({ action: 'vocab-update', user });
   res.json({ ok: true, vocab: v });
@@ -270,10 +260,15 @@ app.get('/api/monitor', (req, res) => {
   const cache = store.readJSON('cache.json', null);
   if (!cache) return res.json({ error: '尚未同步数据,请先点"同步数据"' });
   const rules = store.readJSON('rules.json', DEFAULT_RULES);
-  const tagsMap = {};
-  const tagsAll = store.readJSON('tags.json', {});
-  for (const [k, v] of Object.entries(tagsAll)) tagsMap[k] = v.tags || [];
-  const result = monitor(cache, rules, tagsMap, { week: req.query.week || null });
+  const tagVocab = normalizeTagVocab(store.readJSON('tag-vocab.json', DEFAULT_TAG_VOCAB));
+  const tagsMap = normalizeTagsStore(store.readJSON('tags.json', {}), { vocab: tagVocab });
+  const result = monitor(cache, rules, tagsMap, {
+    week: req.query.week || null,
+    category: req.query.category || '',
+    tagDimension: req.query.tagDimension || 'core',
+    tagValue: req.query.tagValue || '',
+    tagVocab,
+  });
   // 归一化 + 强禁缓存
   // - 剥 ETag/Last-Modified：body 被归一化改写，上游/express 默认 ETag 已失去意义
   // - Cache-Control 三连：no-store 禁存 + no-cache 强制回源 + must-revalidate 兜底

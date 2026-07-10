@@ -1,6 +1,6 @@
 {
   "name": "model-tag-monitor",
-  "version": "1.4.7",
+  "version": "1.5.0",
   "description": "机型标签管理 + 转化率异常监测",
   "main": "src/server.js",
   "scripts": {

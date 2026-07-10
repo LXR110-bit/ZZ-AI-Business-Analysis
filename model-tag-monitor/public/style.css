@@ -106,6 +106,7 @@ body {
 .user-label input:focus,
 .filters input:focus,
 .filters select:focus,
+.tag-dimension-select select:focus,
 .rules-form input:focus,
 .modal-body textarea:focus,
 .modal-body input:focus {
@@ -236,6 +237,84 @@ main { padding: 20px 24px 32px; }
   width: 100%;
   min-width: 0;
 }
+
+/* ---- 监测页：标签维度聚合 ---- */
+.tag-aggregation {
+  margin: 14px 0 16px;
+  padding: 14px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+.tag-aggregation-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.tag-aggregation-head h3 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tag-dimension-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+.tag-dimension-select select {
+  min-width: 150px;
+  padding: 6px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: inherit;
+}
+.tag-group-drill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: var(--r-sm);
+  background: var(--c-accent-soft);
+  color: var(--c-accent-ink);
+  font-size: 12px;
+}
+.tag-summary-wrap {
+  overflow: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+#monitorTagSummaryTable th,
+#monitorTagSummaryTable td {
+  padding: 7px 10px;
+}
+#monitorTagSummaryTable tbody tr.selected {
+  background: var(--c-accent-soft);
+}
+.tag-group-btn {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  color: var(--c-accent-ink);
+  border-color: #dbeafe;
+  background: #fff;
+  font-weight: 500;
+}
+.tag-group-btn:hover {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+.warn-text { color: var(--c-warn-ink); font-weight: 600; }
+.down-text { color: var(--c-down); font-weight: 600; }
 
 /* ---- 表格 ---- */
 .table-wrap {
@@ -479,6 +558,55 @@ td button.edit-tag:hover {
   color: #fff;
   border-color: var(--c-accent);
 }
+.tag-groups .tag-dimension {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+.tag-groups .tag-dimension:last-child { border-bottom: 0; }
+.tag-radio-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  background: var(--c-surface);
+  color: var(--c-text-2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.tag-radio:hover {
+  border-color: var(--c-accent);
+  color: var(--c-accent-ink);
+  background: var(--c-accent-soft);
+}
+.tag-radio input {
+  margin: 0;
+  accent-color: var(--c-accent);
+}
+.tag-radio:has(input:checked) {
+  border-color: var(--c-accent);
+  background: var(--c-accent);
+  color: #fff;
+}
+.tag-radio.keep-radio:has(input:checked) {
+  border-color: var(--c-border);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+}
+.tag-dim-chip b {
+  font-weight: 600;
+  color: inherit;
+}
+.legacy-tag-chip {
+  border-style: dashed;
+}
 
 /* 字典弹窗 */
 .vocab-groups {
@@ -496,14 +624,55 @@ td button.edit-tag:hover {
 .vocab-groups textarea { margin-top: 6px; font-family: var(--f-mono); font-size: 12px; }
 
 #vocabCustom .cat-row {
+  display: block;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+}
+#vocabCustom .cat-row.has-error,
+#vocabCustom .cat-dim-row.has-error {
+  border-color: var(--c-down);
+  box-shadow: 0 0 0 3px var(--c-down-soft);
+}
+#vocabCustom .cat-row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+#vocabCustom .cat-row-head label {
+  flex: 1;
+  color: var(--c-text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+#vocabCustom .cat-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+#vocabCustom .cat-dims {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#vocabCustom .cat-dim-row {
   display: grid;
-  grid-template-columns: 160px 1fr 28px;
-  gap: 10px;
-  margin-bottom: 8px;
+  grid-template-columns: 180px 1fr 32px;
+  gap: 8px;
   align-items: start;
+  padding: 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
 }
 #vocabCustom .cat-row input,
-#vocabCustom .cat-row textarea {
+#vocabCustom .cat-row textarea,
+#vocabCustom .cat-dim-row input,
+#vocabCustom .cat-dim-row textarea {
   width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--c-border);
@@ -513,21 +682,29 @@ td button.edit-tag:hover {
   background: var(--c-surface);
   color: var(--c-text);
 }
-#vocabCustom .cat-row textarea {
+#vocabCustom .cat-row textarea,
+#vocabCustom .cat-dim-row textarea {
   font-family: var(--f-mono);
   min-height: 44px;
   resize: vertical;
 }
-#vocabCustom .cat-row .del {
+#vocabCustom .cat-row .del,
+#vocabCustom .cat-dim-row .del-dim {
+  width: 28px;
+  height: 30px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
   color: var(--c-text-3);
   cursor: pointer;
   text-align: center;
-  font-size: 16px;
-  line-height: 32px;
+  font-size: 12px;
+  line-height: 1;
   border-radius: var(--r-sm);
   transition: color 120ms ease, background 120ms ease;
 }
-#vocabCustom .cat-row .del:hover { color: var(--c-down); background: var(--c-down-soft); }
+#vocabCustom .cat-row .del:hover,
+#vocabCustom .cat-dim-row .del-dim:hover { color: var(--c-down); background: var(--c-down-soft); }
 
 /* ---- Toast ---- */
 .toast {
@@ -1059,8 +1236,14 @@ button.primary.is-dirty {
     padding: 18px;
   }
   .vocab-groups { grid-template-columns: 1fr; }
-  #vocabCustom .cat-row { grid-template-columns: 1fr 28px; }
-  #vocabCustom .cat-row textarea { grid-column: 1 / -1; }
+  .tag-aggregation-head,
+  #vocabCustom .cat-row-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  #vocabCustom .cat-row-actions { justify-content: flex-start; }
+  #vocabCustom .cat-dim-row { grid-template-columns: 1fr 32px; }
+  #vocabCustom .cat-dim-row textarea { grid-column: 1 / -1; }
 }
 
 @media (max-width: 420px) {
