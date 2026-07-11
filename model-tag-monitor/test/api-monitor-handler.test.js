@@ -40,6 +40,32 @@ function httpGet(pathAndQuery) {
   });
 }
 
+
+function httpJson(method, pathAndQuery, payload) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload || {});
+    const req = http.request({
+      host: '127.0.0.1',
+      port: PORT,
+      path: pathAndQuery,
+      method,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let json = null;
+        try { json = text ? JSON.parse(text) : null; } catch {}
+        resolve({ status: res.statusCode, headers: res.headers, body: text, json });
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(5000, () => req.destroy(new Error('http json timeout')));
+    req.end(body);
+  });
+}
+
 async function waitReady(child, maxMs = 5000) {
   const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
@@ -102,7 +128,29 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
   try {
     await waitReady(child);
 
-    const r = await httpGet('/api/monitor');
+    const vocabPut = await httpJson('PUT', '/api/tag-vocab', {
+      core: ['核心', '观察'],
+      lifecycle: ['主流'],
+      price: ['高价段'],
+      custom: { 手机: [{ id: 'tier', name: '手机标签1', options: ['A层', 'B层'] }] },
+    });
+    assert.equal(vocabPut.status, 200, 'tag-vocab PUT status 200');
+    assert.equal(vocabPut.json.vocab.custom.手机[0].name, '手机标签1');
+
+    const tagKey = encodeURIComponent('手机||测试机型');
+    const tagPut = await httpJson('PUT', `/api/tags/${tagKey}`, {
+      dimensions: { core: '核心', 'custom:手机:tier': 'A层' },
+      note: 'api-test',
+    });
+    assert.equal(tagPut.status, 200, 'tags PUT status 200');
+    assert.deepEqual(tagPut.json.tags.dimensions, { core: '核心', 'custom:手机:tier': 'A层' });
+
+    const tagsGet = await httpGet('/api/tags');
+    assert.equal(tagsGet.status, 200, 'tags GET status 200');
+    const tagsBody = JSON.parse(tagsGet.body);
+    assert.equal(tagsBody['手机||测试机型'].dimensions.core, '核心');
+
+    const r = await httpGet('/api/monitor?category=%E6%89%8B%E6%9C%BA&tagDimension=custom%3A%E6%89%8B%E6%9C%BA%3Atier');
     assert.equal(r.status, 200, 'status 200');
 
     // 1) Cache-Control 三连
@@ -119,6 +167,10 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
     // 3) body 归一化
     const body = JSON.parse(r.body);
     assert.ok(Array.isArray(body.pool), 'pool 必须是数组');
+    assert.ok(Array.isArray(body.tagDimensions), 'tagDimensions 必须是数组');
+    assert.equal(body.tagSummary.dimension, 'custom:手机:tier', 'tagSummary 支持自定义标签维度');
+    assert.equal(body.tagSummary.groups.find((g) => g.value === 'A层').modelCount, 1, '自定义标签聚合命中机型');
+    assert.ok(body.tagSummary.groups.some((g) => g.value === '未打标'), '未打标必须作为正式分组');
 
     for (const item of body.pool) {
       assert.ok(item.trend && typeof item.trend === 'object', `pool item ${item.modelName} trend 必须是对象`);
