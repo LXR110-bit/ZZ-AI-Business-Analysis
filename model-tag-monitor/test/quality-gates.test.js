@@ -161,6 +161,21 @@ test('validateAiInsightsQuality: blocks technical field leakage and enforces rol
   assert.match(bad.errors.join('\n'), /pct/);
 });
 
+test('validateAiInsightsQuality: accepts deterministic fallback after pct localization', () => {
+  const { fallbackInsights } = require('../scripts/generate-business-overview-insights');
+  const dashboard = buildDashboard();
+  const dashboardInsightText = JSON.stringify(dashboard.insights);
+  assert.doesNotMatch(dashboardInsightText, /(?:^|[^A-Za-z])(?:pct|pp)\b/i);
+
+  const cache = fallbackInsights(dashboard, []);
+  const cacheInsightText = JSON.stringify(cache.insights);
+  assert.doesNotMatch(cacheInsightText, /(?:^|[^A-Za-z])(?:pct|pp)\b/i);
+  assert.match(cacheInsightText, /下单率变化 (?:上升|下降|持平|待补)/);
+
+  const result = validateAiInsightsQuality(cache, { dashboard });
+  assert.equal(result.ok, true, result.errors.join('\n'));
+});
+
 test('validateCardPayload: blocks technical field leakage before Feishu send', () => {
   const payload = {
     version: APP_VERSION,

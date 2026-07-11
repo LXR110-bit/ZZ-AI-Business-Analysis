@@ -404,7 +404,9 @@ function formatSignedWan(v) {
 function formatSignedPct(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '待补';
-  return `${n >= 0 ? '+' : ''}${(n * 100).toFixed(1)}pct`;
+  const abs = Math.abs(n);
+  if (abs < 0.0005) return '持平';
+  return `${n > 0 ? '上升' : '下降'} ${(abs * 100).toFixed(1)} 个百分点`;
 }
 
 function fallbackSecondaryCategoryInsights(summary) {

@@ -375,6 +375,14 @@ function formatBoardDeltaPct(board, key) {
   return `（环比${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(1)}%）`;
 }
 
+function formatSignedRateDelta(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '待补';
+  const abs = Math.abs(n);
+  if (abs < 0.0005) return '持平';
+  return `${n > 0 ? '上升' : '下降'} ${(abs * 100).toFixed(1)} 个百分点`;
+}
+
 function buildSecondaryInsightMap(categories) {
   const groups = {};
   for (const c of categories || []) {
@@ -418,7 +426,7 @@ function buildCategoryInsightMap(categories) {
     const cur = c.cur || {};
     const delta = c.delta || {};
     const risk = (c.anomalyScore || 0) >= 2 ? '高' : ((c.anomalyScore || 0) === 1 ? '中' : '低');
-    const orderRateDelta = delta.orderRate == null ? '待补' : `${delta.orderRate >= 0 ? '+' : ''}${(delta.orderRate * 100).toFixed(1)}pct`;
+    const orderRateDelta = formatSignedRateDelta(delta.orderRate);
     out[c.category] = `${c.category}（${c.tier || '未分层'} / ${c.secondaryCategory || c.board || '未归类'}）成交GMV ${formatWan(cur.gmv)}，下单率变化 ${orderRateDelta}，异常风险${risk}；${deterministicCategoryAction(c)}`;
   }
   return out;
