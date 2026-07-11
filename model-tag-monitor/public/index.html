@@ -16,7 +16,7 @@
     rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
   />
-  <link rel="stylesheet" href="/style.css?v=20260709e" />
+  <link rel="stylesheet" href="/style.css?v=20260710a" />
   <link rel="stylesheet" href="/dashboard.css?v=20260709e" />
 </head>
 <body>
@@ -131,14 +131,12 @@
             <select id="monitorWeek"></select>
           </label>
           <label>品类
-            <select id="monitorCategory">
-              <option value="">全部品类</option>
-            </select>
+            <input id="monitorCategory" list="categorySuggest" placeholder="搜索/全部品类" autocomplete="off" />
           </label>
           <label>视图
             <select id="monitorView">
               <option value="watch">仅需关注</option>
-              <option value="pool">TOP N 全量</option>
+              <option value="pool">全部机型</option>
             </select>
           </label>
           <label>趋势
@@ -152,7 +150,42 @@
         </div>
         <div class="summary" id="monitorSummary"></div>
       </div>
+      <div class="analysis-overview" id="monitorTagInsightOverview"></div>
+      <div class="tag-aggregation" id="monitorTagAggregation">
+        <div class="tag-aggregation-head">
+          <div>
+            <h3>标签维度聚合</h3>
+            <p class="hint" id="monitorTagAggHint">按标签维度聚合当前筛选结果；点击标签值后，下方机型表进入该标签值下钻。</p>
+          </div>
+          <div class="tag-dimension-actions">
+            <label class="tag-dimension-select">
+              标签维度
+              <select id="monitorTagDimension">
+                <option value="core">核心度</option>
+              </select>
+            </label>
+            <button id="btnMonitorTagCombo" type="button">组合筛选</button>
+          </div>
+        </div>
+        <div class="tag-group-drill hidden" id="monitorTagGroupDrill"></div>
+        <div class="tag-summary-wrap">
+          <table id="monitorTagSummaryTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
       <div class="analysis-overview" id="monitorInsightOverview"></div>
+      <div class="model-table-toolbar">
+        <div>
+          <h3>机型明细</h3>
+          <p class="hint">在机型维度查看漏斗指标；可用标签设置做交叉筛选，用指标设置调整明细表列。</p>
+        </div>
+        <div class="model-table-actions">
+          <button id="btnMonitorTagFilters" type="button">标签设置</button>
+          <button id="btnMonitorMetrics" type="button">指标设置</button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table id="monitorTable">
           <thead></thead>
@@ -164,16 +197,16 @@
     <!-- 标签管理 -->
     <section class="page hidden" id="page-tags">
       <div class="flow-hint">
-        <span class="step"><b>1</b> 在「编辑标签字典」里配好本品类可选标签</span>
+        <span class="step"><b>1</b> 在「编辑标签字典」里配好本品类可选标签维度</span>
         <span class="sep">→</span>
         <span class="step"><b>2</b> 下面表格里找到目标机型</span>
         <span class="sep">→</span>
-        <span class="step"><b>3</b> 点该行「编辑」，勾选标签即完成打标</span>
+        <span class="step"><b>3</b> 点该行「编辑」，每个维度单选即完成打标</span>
       </div>
       <div class="page-header">
         <div class="filters">
           <label>品类
-            <select id="tagsCategory"></select>
+            <input id="tagsCategory" list="categorySuggest" placeholder="搜索并选择品类" autocomplete="off" />
           </label>
           <label>搜索机型
             <input id="tagsSearch" placeholder="机型关键词，回车应用" />
@@ -269,20 +302,48 @@
     </div>
   </div>
 
+  <!-- Monitor 标签组合筛选弹层 -->
+  <div class="modal hidden" id="modalMonitorTagFilters">
+    <div class="modal-body">
+      <h3>标签设置</h3>
+      <p class="hint">可同时选择多个标签维度，查看交叉后的机型明细；留空表示该维度不参与筛选。</p>
+      <div class="tag-filter-options" id="monitorTagFilterOptions"></div>
+      <div class="actions">
+        <button id="btnMonitorTagFiltersReset" type="button">清空标签筛选</button>
+        <button id="btnMonitorTagFiltersCancel" type="button">取消</button>
+        <button id="btnMonitorTagFiltersSave" type="button" class="primary">应用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monitor 指标设置弹层 -->
+  <div class="modal hidden" id="modalMonitorMetrics">
+    <div class="modal-body">
+      <h3>监测指标设置</h3>
+      <p class="hint">选择下方机型明细表展示的关键转化率列；标签维度聚合仍保留核心漏斗指标。</p>
+      <div class="metric-options" id="monitorMetricOptions"></div>
+      <div class="actions">
+        <button id="btnMonitorMetricsReset" type="button">恢复默认</button>
+        <button id="btnMonitorMetricsCancel" type="button">取消</button>
+        <button id="btnMonitorMetricsSave" type="button" class="primary">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 标签字典弹层 -->
   <div class="modal hidden" id="modalVocab">
     <div class="modal-body wide">
       <h3>标签字典</h3>
       <p class="hint">这里只<b>定义可选标签</b>。定义好之后，去「监测结果 / 标签管理」页点某个机型的「打标」按钮，就能勾选下面这些标签给它打上。</p>
+      <p class="hint">基础维度全品类通用；品类自定义维度支持一个品类配置多个维度，每个维度都需要名称和候选值。</p>
       <div class="vocab-groups">
         <label>生命周期<span class="sub">全品类通用（如：新品/在售/EOL）</span><textarea data-key="lifecycle" rows="4"></textarea></label>
         <label>价格段<span class="sub">全品类通用（如：高端/中端/入门）</span><textarea data-key="price" rows="4"></textarea></label>
         <label>核心度<span class="sub">全品类通用（如：核心机/长尾）</span><textarea data-key="core" rows="4"></textarea></label>
       </div>
-      <h4>品类自定义标签</h4>
-      <p class="hint">按品类各自的业务口径加。左边填品类名，右边每行一个标签。</p>
+      <h4>品类自定义维度</h4>
+      <p class="hint">先从可搜索品类输入框选择准确品类，再为该品类新增一个或多个自定义维度。</p>
       <div id="vocabCustom"></div>
-      <datalist id="modelListSuggest"></datalist>
       <div class="actions">
         <button id="btnVocabAddCat">+ 加一个品类</button>
         <button id="btnVocabCancel">取消</button>
@@ -293,6 +354,7 @@
 
   <!-- Toast -->
   <div id="toast" class="toast hidden"></div>
+  <datalist id="categorySuggest"></datalist>
 
   <!-- 机型详情侧边抽屉 -->
   <div id="modelDrawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
@@ -311,6 +373,6 @@
   </div>
 
   <script src="/dashboard-v2.js?v=20260709e"></script>
-  <script src="/app.js?v=20260709e"></script>
+  <script src="/app.js?v=20260710a"></script>
 </body>
 </html>

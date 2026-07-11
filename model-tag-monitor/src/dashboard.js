@@ -10,6 +10,7 @@
 
 const store = require('./store');
 const { monitor, DEFAULT_RULES } = require('./monitor');
+const { DEFAULT_TAG_VOCAB, normalizeTagsStore, normalizeTagVocab } = require('./tagging');
 
 let cache = null; // { key, expireAt, payload }
 const TTL_MS = 60 * 1000;
@@ -39,13 +40,28 @@ function normalizeMonitorItem(item) {
   return { ...item, trend: normalizeTrend(item.trend) };
 }
 
-// monitor 整体归一化：pool + watchList 逐项过 trend
+function normalizeTagSummary(summary) {
+  if (!summary || typeof summary !== 'object') return summary;
+  return {
+    ...summary,
+    groups: Array.isArray(summary.groups)
+      ? summary.groups.map((group) => ({
+        ...group,
+        models: Array.isArray(group.models) ? group.models.map(normalizeMonitorItem) : [],
+      }))
+      : [],
+  };
+}
+
+// monitor 整体归一化：pool / watchList / v1.5 tagModels 逐项过 trend
 function normalizeMonitor(mr) {
   if (!mr || typeof mr !== 'object') return mr;
   return {
     ...mr,
     pool: Array.isArray(mr.pool) ? mr.pool.map(normalizeMonitorItem) : [],
     watchList: Array.isArray(mr.watchList) ? mr.watchList.map(normalizeMonitorItem) : [],
+    tagModels: Array.isArray(mr.tagModels) ? mr.tagModels.map(normalizeMonitorItem) : [],
+    tagSummary: normalizeTagSummary(mr.tagSummary),
   };
 }
 
@@ -77,17 +93,16 @@ function build() {
   const c = store.readJSON('cache.json', null);
   if (!c || !c.rows || !c.rows.length) return null;
   const rules = store.readJSON('rules.json', DEFAULT_RULES);
-  const tagsMap = {};
-  const tagsAll = store.readJSON('tags.json', {});
-  for (const [k, v] of Object.entries(tagsAll)) tagsMap[k] = v.tags || [];
+  const tagVocab = normalizeTagVocab(store.readJSON('tag-vocab.json', DEFAULT_TAG_VOCAB));
+  const tagsMap = normalizeTagsStore(store.readJSON('tags.json', {}), { vocab: tagVocab });
 
   const weeks = (c.weeks || []).slice().sort();
   const latestWeek = weeks[weeks.length - 1];
   const prevWeek = weeks[weeks.length - 2] || null;
 
   // 走一遍 monitor 拿到 pool / watchList
-  const mr = monitor(c, rules, tagsMap, { week: latestWeek });
-  const prevMr = prevWeek ? monitor(c, rules, tagsMap, { week: prevWeek }) : null;
+  const mr = monitor(c, rules, tagsMap, { week: latestWeek, tagVocab });
+  const prevMr = prevWeek ? monitor(c, rules, tagsMap, { week: prevWeek, tagVocab }) : null;
 
   // ---- KPI ----
   const totalModels = mr.pool.length;
