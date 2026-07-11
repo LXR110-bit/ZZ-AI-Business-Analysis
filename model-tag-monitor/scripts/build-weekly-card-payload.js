@@ -2,6 +2,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const APP_VERSION = require('../package.json').version;
 
 function arg(name, fallback) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -45,8 +46,8 @@ function anomalyFromMonitor(monitor) {
     .map((p, idx) => ({
       rank: idx + 1,
       name: p.modelName || p.category || '-',
-      metric_current: `orderRate ${rate(p.cur && p.cur.orderRate)}`,
-      metric_prev: `orderRate ${rate(p.prev && p.prev.orderRate)}`,
+      metric_current: `下单率 ${rate(p.cur && p.cur.orderRate)}`,
+      metric_prev: `下单率 ${rate(p.prev && p.prev.orderRate)}`,
       delta_label: `(${pct(p.delta.orderRate)})`,
       hypothesis: buildHypothesis(p),
     }));
@@ -68,9 +69,31 @@ function anomalyFromDashboard(dashboard) {
 }
 
 function buildHypothesis(p) {
-  const flags = (p.flags || []).slice(0, 2).map((f) => f.name || f.metric || f.type).filter(Boolean).join('、');
+  const flags = (p.flags || [])
+    .slice(0, 2)
+    .map((f) => localizeMetricLabel(f.name || f.metric || f.type))
+    .filter(Boolean)
+    .join('、');
   if (flags) return `${flags}触发异动，建议进入监测详情查看机型链路`;
   return '指标波动较大，建议进入监测详情查看机型链路';
+}
+
+function localizeMetricLabel(value) {
+  const labels = {
+    conditionUv: '机况UV',
+    jkuv: '机况UV',
+    evaUv: '估价UV',
+    orderUv: '下单UV',
+    shipCnt: '发货数',
+    dealCnt: '成交订单',
+    gmv: '成交GMV',
+    evaRate: '估价完成率',
+    orderRate: '下单率',
+    shipRate: '发货率',
+    dealRate: '成交率',
+    returnRate: '退回率',
+  };
+  return labels[value] || value;
 }
 
 function formatWan(v) {

@@ -4,10 +4,10 @@
 set -Eeuo pipefail
 export PATH="/root/.local/bin:/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
-VERSION="1.4.7"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONITOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PARENT_DIR="$(cd "$MONITOR_DIR/.." && pwd)"
+VERSION="${VERSION:-$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$MONITOR_DIR/package.json")}"
 API_BASE="${API_BASE:-http://127.0.0.1:8848}"
 DASHBOARD_URL="${DASHBOARD_URL:-http://47.84.94.234:8848/?tab=dashboard}"
 REPORT_URL="${REPORT_URL:-$DASHBOARD_URL}"
@@ -42,6 +42,11 @@ PAYLOAD_FILE="$LOG_DIR/weekly-card-payload-$RUN_ID.json"
 ALERT_PAYLOAD_FILE="$LOG_DIR/daily-refresh-alert-$RUN_ID.json"
 COVERAGE_FILE="$LOG_DIR/daily-import-coverage-$RUN_ID.json"
 FINAL_COVERAGE_FILE="$LOG_DIR/daily-import-coverage-final-$RUN_ID.json"
+QUALITY_FILE="$LOG_DIR/wtd-quality-$RUN_ID.json"
+BOARD_METRICS_CHECK_FILE="$LOG_DIR/board-metrics-check-$RUN_ID.json"
+DASHBOARD_CONTRACT_FILE="$LOG_DIR/dashboard-contract-$RUN_ID.json"
+AI_QUALITY_FILE="$LOG_DIR/ai-insights-quality-$RUN_ID.json"
+CARD_QUALITY_FILE="$LOG_DIR/card-payload-quality-$RUN_ID.json"
 LOG_FILE="$LOG_DIR/refresh-dashboard-daily-$RUN_ID.log"
 STAGING_IMPORT_DIR="$LOG_DIR/local-imports-$RUN_ID"
 
@@ -112,6 +117,11 @@ cleanup_retained_artifacts() {
     'local-imports-check-*.log' \
     'daily-import-coverage-*.json' \
     'daily-import-coverage-final-*.json' \
+    'wtd-quality-*.json' \
+    'board-metrics-check-*.json' \
+    'dashboard-contract-*.json' \
+    'ai-insights-quality-*.json' \
+    'card-payload-quality-*.json' \
     'daily-refresh-alert-*.json' \
     'weekly-card-payload-*.json' \
     'dashboard-*.json'; do
@@ -156,7 +166,18 @@ let detail = '';
 if (detailFile && fs.existsSync(detailFile)) {
   try {
     const json = JSON.parse(fs.readFileSync(detailFile, 'utf8'));
-    detail = `\n**覆盖状态**：${json.state || '-'}\n**预期覆盖日期**：${json.expectedDataEnd || '-'}\n**预期天数**：${json.expectedDays ?? '-'}\n**错误摘要**：${(json.errors || []).join('; ') || json.message || '-'}`;
+    const lines = [];
+    if (json.state) lines.push(`**状态**：${json.state}`);
+    if (json.expectedDataEnd || json.expectedDays != null) {
+      lines.push(`**预期覆盖日期**：${json.expectedDataEnd || '-'}`);
+      lines.push(`**预期天数**：${json.expectedDays ?? '-'}`);
+    }
+    if (json.targetWeek) lines.push(`**校验周**：${json.targetWeek}`);
+    const errors = Array.isArray(json.errors) ? json.errors.filter(Boolean) : [];
+    const warnings = Array.isArray(json.warnings) ? json.warnings.filter(Boolean) : [];
+    lines.push(`**错误摘要**：${errors.join('; ') || json.message || '-'}`);
+    if (warnings.length) lines.push(`**警告摘要**：${warnings.slice(0, 5).join('; ')}`);
+    detail = `\n${lines.join('\n')}`;
   } catch (e) {
     detail = `\n**详情文件**：${detailFile}`;
   }
@@ -232,6 +253,7 @@ run_data_ready_attempt() {
   local attempt="$1"
   local attempt_dir="$2"
   local attempt_coverage_file="$3"
+  local attempt_quality_file="$4"
 
   log "run local-imports into staging dir attempt=$attempt/$DATA_READY_MAX_ATTEMPTS dir=$attempt_dir"
   rm -rf "$attempt_dir"
@@ -263,8 +285,22 @@ run_data_ready_attempt() {
     return 11
   fi
 
+  log "validate staged WTD data quality attempt=$attempt/$DATA_READY_MAX_ATTEMPTS"
+  if ! node "$SCRIPT_DIR/check-wtd-quality.js" \
+    --current-dir "$attempt_dir" \
+    --baseline-dir "$IMPORT_DIR" \
+    --target-weeks "$TARGET_WEEKS" \
+    --out "$attempt_quality_file" | tee -a "$LOG_FILE"; then
+    LAST_READY_STAGE="quality"
+    LAST_READY_MESSAGE="staged WTD data quality validation failed on attempt $attempt/$DATA_READY_MAX_ATTEMPTS; dashboard cache was not touched"
+    LAST_READY_DETAIL_FILE="$attempt_quality_file"
+    LAST_READY_CODE=12
+    return 12
+  fi
+
   STAGING_IMPORT_DIR="$attempt_dir"
   cp "$attempt_coverage_file" "$COVERAGE_FILE"
+  cp "$attempt_quality_file" "$QUALITY_FILE"
   return 0
 }
 
@@ -272,12 +308,14 @@ DATA_READY_OK=0
 for attempt in $(seq 1 "$DATA_READY_MAX_ATTEMPTS"); do
   ATTEMPT_STAGING_IMPORT_DIR="$STAGING_IMPORT_DIR"
   ATTEMPT_COVERAGE_FILE="$COVERAGE_FILE"
+  ATTEMPT_QUALITY_FILE="$QUALITY_FILE"
   if [[ "$DATA_READY_MAX_ATTEMPTS" != "1" ]]; then
     ATTEMPT_STAGING_IMPORT_DIR="$LOG_DIR/local-imports-$RUN_ID-attempt-$attempt"
     ATTEMPT_COVERAGE_FILE="$LOG_DIR/daily-import-coverage-$RUN_ID-attempt-$attempt.json"
+    ATTEMPT_QUALITY_FILE="$LOG_DIR/wtd-quality-$RUN_ID-attempt-$attempt.json"
   fi
 
-  if run_data_ready_attempt "$attempt" "$ATTEMPT_STAGING_IMPORT_DIR" "$ATTEMPT_COVERAGE_FILE"; then
+  if run_data_ready_attempt "$attempt" "$ATTEMPT_STAGING_IMPORT_DIR" "$ATTEMPT_COVERAGE_FILE" "$ATTEMPT_QUALITY_FILE"; then
     DATA_READY_OK=1
     if [[ "$attempt" != "1" ]]; then
       log "data readiness succeeded after retry attempt=$attempt/$DATA_READY_MAX_ATTEMPTS"
@@ -300,7 +338,7 @@ if ! node "$SCRIPT_DIR/promote-local-imports.js" \
   --source-dir "$STAGING_IMPORT_DIR" \
   --dest-dir "$IMPORT_DIR" \
   --run-id "$RUN_ID" | tee -a "$LOG_FILE"; then
-  fail_stage "promote" "failed to promote validated imports; dashboard cache was not touched" "$COVERAGE_FILE" 12
+  fail_stage "promote" "failed to promote validated imports; dashboard cache was not touched" "$COVERAGE_FILE" 13
 fi
 
 log "validate promoted import coverage"
@@ -310,15 +348,23 @@ if ! node "$SCRIPT_DIR/validate-daily-import-coverage.js" \
   --run-id "$RUN_ID" \
   --started-at "$SCRIPT_STARTED_AT" \
   --out "$FINAL_COVERAGE_FILE" | tee -a "$LOG_FILE"; then
-  fail_stage "coverage" "promoted import coverage validation failed; dashboard cache was not touched" "$FINAL_COVERAGE_FILE" 13
+  fail_stage "coverage" "promoted import coverage validation failed; dashboard cache was not touched" "$FINAL_COVERAGE_FILE" 14
 fi
 
 BOARD_METRICS_OUT="$IMPORT_DIR/board_metrics_feishu.csv"
 log "sync board metrics from Feishu sheet -> $BOARD_METRICS_OUT"
 if ! node "$SCRIPT_DIR/sync-board-metrics-from-feishu.js" --out "$BOARD_METRICS_OUT" | tee -a "$LOG_FILE"; then
-  fail_stage "board-metrics" "Feishu board metrics materialization failed; dashboard cache was not touched" "$FINAL_COVERAGE_FILE" 14
+  fail_stage "board-metrics" "Feishu board metrics materialization failed; dashboard cache was not touched" "$FINAL_COVERAGE_FILE" 15
 fi
 log "Feishu board metrics materialized"
+
+log "validate board metrics cache"
+if ! node "$SCRIPT_DIR/check-board-metrics-cache.js" \
+  --file "$BOARD_METRICS_OUT" \
+  --target-weeks "$TARGET_WEEKS" \
+  --out "$BOARD_METRICS_CHECK_FILE" | tee -a "$LOG_FILE"; then
+  fail_stage "board-metrics-quality" "Feishu board metrics cache validation failed; dashboard cache was not touched" "$BOARD_METRICS_CHECK_FILE" 16
+fi
 
 # Only after local-imports and boundary validation pass can dashboard caches be refreshed.
 post_json /api/sync || fail_stage "sync" "POST /api/sync failed" "$FINAL_COVERAGE_FILE" 20
@@ -344,6 +390,15 @@ NODE
   fail_stage "sync" "dashboard health check failed" "$FINAL_COVERAGE_FILE" 25
 fi
 
+log "validate dashboard v2 contract"
+if ! node "$SCRIPT_DIR/check-dashboard-contract.js" \
+  --dashboard-file "$LOG_DIR/dashboard-$RUN_ID.json" \
+  --target-weeks "$TARGET_WEEKS" \
+  --expected-version "$VERSION" \
+  --out "$DASHBOARD_CONTRACT_FILE" | tee -a "$LOG_FILE"; then
+  fail_stage "dashboard-contract" "dashboard contract validation failed after sync" "$DASHBOARD_CONTRACT_FILE" 26
+fi
+
 log "generate business overview insights cache after data sync success"
 if ! BUSINESS_OVERVIEW_AI_ENABLED="${BUSINESS_OVERVIEW_AI_ENABLED:-1}" \
   node "$SCRIPT_DIR/generate-business-overview-insights.js" --api-base "$API_BASE" | tee -a "$LOG_FILE"; then
@@ -351,12 +406,29 @@ if ! BUSINESS_OVERVIEW_AI_ENABLED="${BUSINESS_OVERVIEW_AI_ENABLED:-1}" \
 fi
 log "business overview insights cache generated"
 
+AI_QUALITY_ARGS=(--dashboard-file "$LOG_DIR/dashboard-$RUN_ID.json" --data-dir "${DATA_DIR:-$MONITOR_DIR/data}" --out "$AI_QUALITY_FILE")
+if [[ "${AI_QUALITY_REQUIRE_AI:-0}" == "1" ]]; then
+  AI_QUALITY_ARGS+=(--require-ai)
+fi
+log "validate business overview insights quality"
+if ! node "$SCRIPT_DIR/check-ai-insights-quality.js" "${AI_QUALITY_ARGS[@]}" | tee -a "$LOG_FILE"; then
+  fail_stage "ai-quality" "business overview insights quality validation failed" "$AI_QUALITY_FILE" 31
+fi
+
 if ! node "$SCRIPT_DIR/build-weekly-card-payload.js" \
   --api-base "$API_BASE" \
   --dashboard-url "$DASHBOARD_URL" \
   --report-url "$REPORT_URL" \
   --out "$PAYLOAD_FILE" | tee -a "$LOG_FILE"; then
   fail_stage "payload" "weekly card payload generation failed" "$FINAL_COVERAGE_FILE" 40
+fi
+
+log "validate weekly card payload quality"
+if ! node "$SCRIPT_DIR/check-card-payload.js" \
+  --payload "$PAYLOAD_FILE" \
+  --week "$TARGET_WEEK" \
+  --out "$CARD_QUALITY_FILE" | tee -a "$LOG_FILE"; then
+  fail_stage "payload-quality" "weekly card payload quality validation failed" "$CARD_QUALITY_FILE" 41
 fi
 
 PUSH_ARGS=(--template monitor_weekly --payload "$PAYLOAD_FILE" --outbox-dir "$OUTBOX_DIR")
