@@ -213,6 +213,11 @@ test('validateBoardMetricsCache: enforces APP DAU / 回收入口UV whitelist and
   const good = validateBoardMetricsCache(csv, { targetWeek: '2026-W28' });
   assert.equal(good.ok, true, good.errors.join('\n'));
 
+  const futureBlankCsv = '统计周,APP日均DAU,回收入口UV,聚合回收渗透率,聚合回收真实渗透率\n2026-W27,3859036,758687,10.71%,7.85%\n2026-W28,3702708,739737,10.16%,7.44%\n2026-W29,,,,\n';
+  const futureBlank = validateBoardMetricsCache(futureBlankCsv, { requiredWeeks: ['2026-W27', '2026-W28'], targetWeek: '2026-W28' });
+  assert.equal(futureBlank.ok, true, futureBlank.errors.join('\n'));
+  assert.match(futureBlank.warnings.join('\n'), /2026-W29/);
+
   const badCsv = '统计周,APP日均DAU,回收入口UV,回收DAU\n2026-W28,3702708,739737,55033\n';
   const bad = validateBoardMetricsCache(badCsv, { targetWeek: '2026-W28' });
   assert.equal(bad.ok, false);
