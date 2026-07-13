@@ -26,9 +26,9 @@ const REPO_ROOT = path.join(__dirname, '..');
 const PORT = 18849; // 避开常用端口
 const RATE_KEYS = ['dealRate', 'evaRate', 'orderRate', 'returnRate', 'shipRate'];
 
-function httpGet(pathAndQuery) {
+function httpGet(pathAndQuery, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.get({ host: '127.0.0.1', port: PORT, path: pathAndQuery }, (res) => {
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: pathAndQuery, headers }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
@@ -41,7 +41,7 @@ function httpGet(pathAndQuery) {
 }
 
 
-function httpJson(method, pathAndQuery, payload) {
+function httpJson(method, pathAndQuery, payload, headers = {}) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(payload || {});
     const req = http.request({
@@ -49,7 +49,7 @@ function httpJson(method, pathAndQuery, payload) {
       port: PORT,
       path: pathAndQuery,
       method,
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...headers },
     }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
@@ -73,12 +73,20 @@ async function waitReady(child, maxMs = 5000) {
       throw new Error(`server exited before ready: code=${child.exitCode} signal=${child.signalCode || ''}`);
     }
     try {
-      const r = await httpGet('/api/meta');
+      const r = await httpGet('/api/health');
       if (r.status === 200) return;
     } catch {}
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error('server not ready within ' + maxMs + 'ms');
+}
+
+async function verifyAccess() {
+  const r = await httpJson('POST', '/api/access/verify', { name: '测试用户', code: 'WXFX2026' });
+  assert.equal(r.status, 200, r.body);
+  const setCookie = r.headers['set-cookie'];
+  assert.ok(Array.isArray(setCookie) && setCookie.length, '门禁校验后必须设置 cookie');
+  return setCookie.map((c) => c.split(';')[0]).join('; ');
 }
 
 function writeTinyMonitorFixture(dir) {
@@ -127,13 +135,15 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
 
   try {
     await waitReady(child);
+    const cookie = await verifyAccess();
+    const authHeaders = { Cookie: cookie };
 
     const vocabPut = await httpJson('PUT', '/api/tag-vocab', {
       core: ['核心', '观察'],
       lifecycle: ['主流'],
       price: ['高价段'],
       custom: { 手机: [{ id: 'tier', name: '手机标签1', options: ['A层', 'B层'] }] },
-    });
+    }, authHeaders);
     assert.equal(vocabPut.status, 200, 'tag-vocab PUT status 200');
     assert.equal(vocabPut.json.vocab.custom.手机[0].name, '手机标签1');
 
@@ -141,16 +151,16 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
     const tagPut = await httpJson('PUT', `/api/tags/${tagKey}`, {
       dimensions: { core: '核心', 'custom:手机:tier': 'A层' },
       note: 'api-test',
-    });
+    }, authHeaders);
     assert.equal(tagPut.status, 200, 'tags PUT status 200');
     assert.deepEqual(tagPut.json.tags.dimensions, { core: '核心', 'custom:手机:tier': 'A层' });
 
-    const tagsGet = await httpGet('/api/tags');
+    const tagsGet = await httpGet('/api/tags', authHeaders);
     assert.equal(tagsGet.status, 200, 'tags GET status 200');
     const tagsBody = JSON.parse(tagsGet.body);
     assert.equal(tagsBody['手机||测试机型'].dimensions.core, '核心');
 
-    const r = await httpGet('/api/monitor?category=%E6%89%8B%E6%9C%BA&tagDimension=custom%3A%E6%89%8B%E6%9C%BA%3Atier');
+    const r = await httpGet('/api/monitor?category=%E6%89%8B%E6%9C%BA&tagDimension=custom%3A%E6%89%8B%E6%9C%BA%3Atier', authHeaders);
     assert.equal(r.status, 200, 'status 200');
 
     // 1) Cache-Control 三连

@@ -3,6 +3,7 @@ const express = require('express');
 const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const store = require('./store');
 const { sync } = require('./sync');
 const categorySync = require('./category-sync');
@@ -17,11 +18,73 @@ const { composeDashboard: composeDashboardV2, mergeBusinessOverviewInsights } = 
 const app = express();
 const PORT = process.env.PORT || 8848;
 const UPSTREAM = (process.env.PROXY_UPSTREAM || '').trim();
+const ACCESS_CODE = process.env.ACCESS_CODE || 'WXFX2026';
+const ACCESS_COOKIE = 'wxfx_access';
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || ACCESS_CODE;
+const ACCESS_TOKEN = crypto
+  .createHmac('sha256', ACCESS_TOKEN_SECRET)
+  .update('model-tag-monitor-access')
+  .digest('hex');
 
 // gzip 压缩所有响应(monitor 结果约 2.8MB → 压缩后约 400KB)
 app.use(compression());
 app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+function parseCookies(req) {
+  const header = String(req.headers.cookie || '');
+  const out = {};
+  for (const part of header.split(';')) {
+    const [rawKey, ...rawValue] = part.trim().split('=');
+    if (!rawKey) continue;
+    out[rawKey] = decodeURIComponent(rawValue.join('=') || '');
+  }
+  return out;
+}
+
+function hasAccess(req) {
+  return parseCookies(req)[ACCESS_COOKIE] === ACCESS_TOKEN;
+}
+
+function setAccessCookie(res) {
+  res.setHeader(
+    'Set-Cookie',
+    `${ACCESS_COOKIE}=${encodeURIComponent(ACCESS_TOKEN)}; Path=/; HttpOnly; SameSite=Lax`
+  );
+}
+
+function clearAccessCookie(res) {
+  res.setHeader(
+    'Set-Cookie',
+    `${ACCESS_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+  );
+}
+
+// ---- 页面门禁 ----
+// 静态页面可加载，但所有业务 API 都必须先通过门禁校验，避免只做前端隐藏。
+app.post('/api/access/verify', (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 32);
+  const code = String(req.body?.code || '');
+  if (!name) return res.status(400).json({ error: '请先输入姓名' });
+  if (code !== ACCESS_CODE) return res.status(401).json({ error: '门禁码不正确' });
+  setAccessCookie(res);
+  res.json({ ok: true, name });
+});
+
+app.get('/api/access/status', (req, res) => {
+  res.json({ ok: hasAccess(req) });
+});
+
+app.post('/api/access/logout', (req, res) => {
+  clearAccessCookie(res);
+  res.json({ ok: true });
+});
+
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  if (hasAccess(req)) return next();
+  res.status(401).json({ error: '需要先通过门禁验证' });
+});
 
 // 代理模式：/api/* → PROXY_UPSTREAM（/api/dashboard 例外，见 EXCLUDE_PATHS）
 // /api/monitor 挂 responseRewrite 归一化 trend，兜底 Node 版 wave.js calcTrend `{}` bug

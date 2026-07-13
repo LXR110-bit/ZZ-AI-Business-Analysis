@@ -18,6 +18,131 @@ function setUserName(v) {
   localStorage.setItem('userName', v || '');
 }
 
+let _appStarted = false;
+
+function setAccessError(message) {
+  const el = $('#accessError');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('hidden', !message);
+}
+
+function showAccessGate() {
+  $('#accessGate')?.classList.remove('hidden');
+  const shell = $('#appShell');
+  if (shell) {
+    shell.classList.add('hidden');
+    shell.setAttribute('aria-hidden', 'true');
+  }
+  const nameInput = $('#accessName');
+  const codeInput = $('#accessCode');
+  if (nameInput) nameInput.value = '';
+  if (codeInput) codeInput.value = '';
+  nameInput?.focus();
+}
+
+function showAppShell() {
+  $('#accessGate')?.classList.add('hidden');
+  const shell = $('#appShell');
+  if (shell) {
+    shell.classList.remove('hidden');
+    shell.setAttribute('aria-hidden', 'false');
+  }
+}
+
+async function readAccessError(res) {
+  try {
+    const data = await res.json();
+    return data.error || `门禁校验失败(${res.status})`;
+  } catch {
+    return `门禁校验失败(${res.status})`;
+  }
+}
+
+async function hasServerAccess() {
+  try {
+    const res = await fetch('/api/access/status', { cache: 'no-store' });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return !!data.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function clearServerAccess() {
+  try {
+    await fetch('/api/access/logout', { method: 'POST', cache: 'no-store' });
+  } catch {
+    // 即使清理请求失败，也保持前端门禁可见，避免静默进入。
+  }
+}
+
+async function startAppOnce() {
+  if (_appStarted) return;
+  _appStarted = true;
+  await init();
+}
+
+async function handleAccessSubmit(e) {
+  e.preventDefault();
+  const name = ($('#accessName')?.value || '').trim();
+  const code = $('#accessCode')?.value || '';
+  if (!name && !code.trim()) {
+    setAccessError('请输入姓名和门禁码');
+    $('#accessName')?.focus();
+    return;
+  }
+  if (!name) {
+    setAccessError('请输入姓名');
+    $('#accessName')?.focus();
+    return;
+  }
+  if (!code.trim()) {
+    setAccessError('请输入门禁码');
+    $('#accessCode')?.focus();
+    return;
+  }
+
+  const btn = $('.access-submit');
+  if (btn) btn.disabled = true;
+  setAccessError('');
+  try {
+    const res = await fetch('/api/access/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, code: code.trim() }),
+    });
+    if (!res.ok) {
+      setAccessError(await readAccessError(res));
+      $('#accessCode')?.focus();
+      return;
+    }
+    setUserName(name);
+    const userNameInput = $('#userName');
+    if (userNameInput) userNameInput.value = name;
+    const codeInput = $('#accessCode');
+    if (codeInput) codeInput.value = '';
+    showAppShell();
+    await startAppOnce();
+  } catch (err) {
+    setAccessError('门禁服务暂不可用，请稍后重试');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function bootAccessGate() {
+  const form = $('#accessForm');
+  if (!form) {
+    await startAppOnce();
+    return;
+  }
+  form.addEventListener('submit', handleAccessSubmit);
+  await clearServerAccess();
+  showAccessGate();
+}
+
 async function api(url, opts = {}) {
   const headers = { 'Content-Type': 'application/json', 'X-User': getUserName() || 'anonymous', ...(opts.headers || {}) };
   const res = await fetch(url, { ...opts, headers });
@@ -2053,4 +2178,4 @@ document.addEventListener('keydown', (ev) => {
 });
 
 // ---- 启动 ----
-init();
+bootAccessGate();

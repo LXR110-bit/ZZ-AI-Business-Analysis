@@ -61,6 +61,85 @@ body {
 }
 .hidden { display: none !important; }
 
+/* ---- 页面门禁 ---- */
+.access-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.10), transparent 28%),
+    radial-gradient(circle at 80% 10%, rgba(5, 150, 105, 0.08), transparent 24%),
+    var(--c-bg);
+}
+.access-card {
+  width: min(420px, 100%);
+  padding: 28px;
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-modal);
+}
+.access-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  background: var(--c-accent-soft);
+  color: var(--c-accent-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.access-card h1 {
+  margin: 14px 0 6px;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.access-desc {
+  margin: 0 0 20px;
+  color: var(--c-text-2);
+}
+.access-field {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  color: var(--c-text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.access-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: inherit;
+  font-size: 14px;
+}
+.access-field input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-accent-soft);
+}
+.access-error {
+  margin: 2px 0 12px;
+  padding: 8px 10px;
+  border: 1px solid #fecaca;
+  border-radius: var(--r-md);
+  background: var(--c-down-soft);
+  color: var(--c-down);
+  font-size: 12px;
+}
+.access-submit {
+  width: 100%;
+  justify-content: center;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 /* ---- 顶栏 ---- */
 .topbar {
   display: flex;
