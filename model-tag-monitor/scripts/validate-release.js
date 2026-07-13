@@ -6,7 +6,8 @@ const path = require('node:path');
 
 const PACKAGE_VERSION = require('../package.json').version;
 const EXPECTED_VERSION = process.env.EXPECTED_VERSION || PACKAGE_VERSION;
-const EXPECTED_WEEKS = (process.env.TARGET_WEEKS || '2026-W19,2026-W20,2026-W21,2026-W22,2026-W23,2026-W24,2026-W25,2026-W26,2026-W27,2026-W28')
+const { deriveTargetWeeks } = require('./derive-target-weeks');
+const EXPECTED_WEEKS = (process.env.TARGET_WEEKS || deriveTargetWeeks({ keepWeeks: process.env.KEEP_WEEKS || 10 }).join(','))
   .split(',')
   .map((w) => w.trim())
   .filter(Boolean);
