@@ -378,6 +378,15 @@ function readExistingAiCacheForWeek(week, primaryName = outName) {
   return null;
 }
 
+function isFinalCacheFreshForDashboard(cache, summary) {
+  if (!cache || !summary) return false;
+  const expectedStatus = normalizeAnalysisStatus(summary.analysisStatus);
+  const actualStatus = normalizeAnalysisStatus(cache.analysisStatus);
+  if (expectedStatus && expectedStatus.state && actualStatus && actualStatus.state !== expectedStatus.state) return false;
+  const expectedHash = hashInput(summary);
+  return Boolean(cache.inputHash && cache.inputHash === expectedHash);
+}
+
 function writeCacheForWeek(cache, primaryName = outName) {
   const names = cacheNamesForWeek(cache && cache.week, primaryName);
   for (const name of names) store.writeJSON(name, cache);
@@ -709,17 +718,21 @@ async function main() {
 
   // 已结束周的 AI 结论默认冻结：即使生产脚本打开 AI，也不覆盖 W27 这类周结文件。
   // 当前未结束周（如 W28）则按每日刷新滚动重算。
-  if (existing && !rolling && !allowFinalRefresh) {
+  if (existing && !rolling && !allowFinalRefresh && isFinalCacheFreshForDashboard(existing.cache, summary)) {
+    const refreshed = attachCacheAnalysisStatus(existing.cache, dashboard);
+    const written = writeCacheForWeek(refreshed);
     console.log(JSON.stringify({
       ok: true,
-      mode: existing.cache.mode,
+      mode: refreshed.mode,
       aiEnabled,
       preserved: true,
-      out: store.filePath(existing.name),
-      week: existing.cache.week,
+      refreshedAnalysisStatus: true,
+      out: written.map((name) => store.filePath(name)),
+      week: refreshed.week,
       dashboardWeek: dashboard.week,
       analysisState: (summary.analysisStatus && summary.analysisStatus.state) || null,
-      warnings: existing.cache.warnings || [],
+      cacheAnalysisState: (refreshed.analysisStatus && refreshed.analysisStatus.state) || null,
+      warnings: refreshed.warnings || [],
     }, null, 2));
     return;
   }

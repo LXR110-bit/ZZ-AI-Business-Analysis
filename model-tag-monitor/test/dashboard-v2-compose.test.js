@@ -3,11 +3,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { composeDashboard, buildAnalysisStatus, mergeBusinessOverviewInsights } = require('../src/compose-dashboard');
 const { COUNT_KEYS, RATE_KEYS } = require('../src/aggregate/funnel');
+const { validateAiInsightsQuality } = require('../scripts/check-ai-insights-quality');
+const { summarizeDashboard } = require('../scripts/generate-business-overview-insights');
 
 const FIX_DIR = path.join(__dirname, 'fixtures');
 const categoryCache = JSON.parse(fs.readFileSync(path.join(FIX_DIR, 'category-cache.json'), 'utf8'));
@@ -46,6 +49,60 @@ async function waitForJson(url, timeoutMs = 5000) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw lastErr || new Error(`timeout waiting for ${url}`);
+}
+
+function outputBasenames(out) {
+  return (Array.isArray(out) ? out : [out]).filter(Boolean).map((x) => path.basename(x)).sort();
+}
+
+function formatWanForTest(v) {
+  const n = Number(v) || 0;
+  if (n >= 100000000) return `${(n / 100000000).toFixed(2)}亿`;
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
+  return `${Math.round(n)}`;
+}
+
+
+function completeInsightMap(keys, prefix) {
+  return Object.fromEntries(keys.map((key) => [key, `${prefix}${key}：成交GMV、下单率和风险判断已覆盖，当前维持观察。`]));
+}
+
+function dashboardInputHash(dashboard) {
+  return crypto.createHash('sha256').update(JSON.stringify(summarizeDashboard(dashboard))).digest('hex');
+}
+
+function completeAiCacheForDashboard(dashboard, override = {}) {
+  const secondary = [...new Set((dashboard.categories || [])
+    .filter((c) => c && c.status !== '已下线')
+    .map((c) => c.secondaryCategory || c.board)
+    .filter(Boolean))];
+  const categories = [...new Set((dashboard.categories || [])
+    .map((c) => c && c.category)
+    .filter(Boolean))];
+  return {
+    version: dashboard.version,
+    week: dashboard.week,
+    prevWeek: dashboard.prevWeek || '',
+    generatedAt: '2026-07-12T23:00:00.000Z',
+    generatedBy: 'codex-cli-read-only',
+    mode: 'ai',
+    inputHash: dashboardInputHash(dashboard),
+    analysisStatus: dashboard.analysisStatus,
+    insights: {
+      board: `${dashboard.week} existing AI board insight`,
+      tiers: {
+        发展: 'existing AI 发展洞察',
+        孵化: 'existing AI 孵化洞察',
+        种子: 'existing AI 种子洞察',
+      },
+      secondaryCategories: completeInsightMap(secondary, 'existing AI 二级类目'),
+      categories: completeInsightMap(categories, 'existing AI 品类'),
+      category: 'existing AI 品类概览',
+      monitor: 'existing AI 监测页洞察',
+    },
+    warnings: [],
+    ...override,
+  };
 }
 
 function buildCompleteAiResult(summary) {
@@ -568,39 +625,35 @@ test('business overview generator: AI error warnings are sanitized and capped', 
   assert.equal(msg.includes('invalid_json_schema'), true);
 });
 
-test('business overview generator: AI disabled preserves existing AI cache', () => {
+test('business overview generator: AI disabled preserves existing final AI cache when hash matches', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-preserve-test-'));
   const dashboardFile = path.join(tmp, 'dashboard.json');
-  fs.writeFileSync(dashboardFile, JSON.stringify(composeDashboard(baseOpts)), 'utf8');
+  const dashboard = composeDashboard({ ...baseOpts, analysisNow: '2026-07-09T02:30:00.000Z' });
+  fs.writeFileSync(dashboardFile, JSON.stringify(dashboard), 'utf8');
   const cacheFile = path.join(tmp, 'business-overview-insights-2026-W27.json');
-  fs.writeFileSync(cacheFile, JSON.stringify({
+  fs.writeFileSync(cacheFile, JSON.stringify(completeAiCacheForDashboard(dashboard, {
     version: '1.3.0',
-    week: '2026-W27',
-    generatedBy: 'codex-cli-read-only',
-    mode: 'ai',
-    inputHash: 'existing-ai-hash',
+    generatedAt: '2026-07-09T00:00:00.000Z',
     insights: {
+      ...completeAiCacheForDashboard(dashboard).insights,
       board: '已有 AI 大盘洞察',
       tiers: { 发展: '已有发展', 孵化: '已有孵化', 种子: '已有种子' },
       category: '已有品类',
       monitor: '已有监测',
     },
     warnings: ['已有 warning'],
-  }), 'utf8');
-  fs.writeFileSync(path.join(tmp, 'business-overview-insights.json'), JSON.stringify({
-    version: '1.3.0',
-    week: '2026-W27',
-    generatedBy: 'codex-cli-read-only',
-    mode: 'ai',
-    inputHash: 'latest-ai-hash',
+  })), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights.json'), JSON.stringify(completeAiCacheForDashboard(dashboard, {
+    generatedAt: '2026-07-09T01:00:00.000Z',
+    inputHash: 'stale-latest-hash',
     insights: {
+      ...completeAiCacheForDashboard(dashboard).insights,
       board: 'latest cache 不应优先于周冻结文件',
       tiers: { 发展: 'latest', 孵化: 'latest', 种子: 'latest' },
       category: 'latest',
       monitor: 'latest',
     },
-    warnings: [],
-  }), 'utf8');
+  })), 'utf8');
 
   const proc = spawnSync(process.execPath, [
     path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
@@ -614,12 +667,15 @@ test('business overview generator: AI disabled preserves existing AI cache', () 
   assert.equal(proc.status, 0, proc.stderr || proc.stdout);
   const stdout = JSON.parse(proc.stdout);
   assert.equal(stdout.preserved, true);
-  assert.equal(stdout.out.endsWith('business-overview-insights-2026-W27.json'), true);
-  assert.equal(path.basename(stdout.out), 'business-overview-insights-2026-W27.json');
+  assert.deepEqual(outputBasenames(stdout.out), [
+    'business-overview-insights-2026-W27.json',
+    'business-overview-insights.json',
+  ]);
 
   const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
   assert.equal(cache.mode, 'ai');
   assert.equal(cache.generatedBy, 'codex-cli-read-only');
+  assert.equal(cache.inputHash, dashboardInputHash(dashboard));
   assert.equal(cache.insights.board, '已有 AI 大盘洞察');
 });
 
@@ -669,27 +725,25 @@ test('business overview generator: rolling week refreshes daily instead of prese
   assert.notEqual(cache.insights.board, '昨日 W28 AI 不应冻结复用');
 });
 
-test('business overview generator: completed week preserves frozen AI even when AI is enabled', () => {
+test('business overview generator: completed week preserves frozen AI when final cache hash matches', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-final-freeze-test-'));
   const dashboardFile = path.join(tmp, 'dashboard.json');
-  fs.writeFileSync(dashboardFile, JSON.stringify(composeDashboard({
+  const dashboard = composeDashboard({
     ...baseOpts,
     analysisNow: '2026-07-09T02:30:00.000Z',
-  })), 'utf8');
-  fs.writeFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), JSON.stringify({
+  });
+  fs.writeFileSync(dashboardFile, JSON.stringify(dashboard), 'utf8');
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), JSON.stringify(completeAiCacheForDashboard(dashboard, {
     version: '1.4.2',
-    week: '2026-W27',
-    generatedBy: 'codex-cli-read-only',
-    mode: 'ai',
-    inputHash: 'frozen-w27-ai',
+    generatedAt: '2026-07-09T00:00:00.000Z',
     insights: {
+      ...completeAiCacheForDashboard(dashboard).insights,
       board: 'W27 frozen AI must not be regenerated',
       tiers: { 发展: 'W27 frozen', 孵化: 'W27 frozen', 种子: 'W27 frozen' },
       category: 'W27 frozen category',
       monitor: 'W27 frozen monitor',
     },
-    warnings: [],
-  }), 'utf8');
+  })), 'utf8');
 
   const proc = spawnSync(process.execPath, [
     path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
@@ -705,10 +759,100 @@ test('business overview generator: completed week preserves frozen AI even when 
   assert.equal(stdout.preserved, true);
   assert.equal(stdout.aiEnabled, true);
   assert.equal(stdout.analysisState, 'final');
-  assert.equal(stdout.out.endsWith('business-overview-insights-2026-W27.json'), true);
+  assert.deepEqual(outputBasenames(stdout.out), [
+    'business-overview-insights-2026-W27.json',
+    'business-overview-insights.json',
+  ]);
 
   const cache = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), 'utf8'));
+  assert.equal(cache.inputHash, dashboardInputHash(dashboard));
   assert.equal(cache.insights.board, 'W27 frozen AI must not be regenerated');
+});
+
+test('business overview generator: Monday final status does not preserve stale rolling AI cache', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-final-status-refresh-test-'));
+  const dashboardFile = path.join(tmp, 'dashboard.json');
+  const finalDashboard = composeDashboard({
+    ...baseOpts,
+    week: '2026-W27',
+    prevWeek: '2026-W26',
+    analysisNow: '2026-07-06T02:30:00.000Z',
+  });
+  assert.equal(finalDashboard.analysisStatus.state, 'final');
+  fs.writeFileSync(dashboardFile, JSON.stringify(finalDashboard), 'utf8');
+
+  const rollingStatus = composeDashboard({
+    ...baseOpts,
+    week: '2026-W27',
+    prevWeek: '2026-W26',
+    analysisNow: '2026-07-03T02:30:00.000Z',
+  }).analysisStatus;
+  assert.equal(rollingStatus.state, 'rolling');
+
+  const existingCache = completeAiCacheForDashboard(finalDashboard, {
+    generatedAt: '2026-07-11T13:39:38.950Z',
+    inputHash: 'rolling-ai-hash',
+    analysisStatus: {
+      ...rollingStatus,
+      generatedAt: '2026-07-11T13:39:38.950Z',
+      generatedBy: 'codex-cli-read-only',
+      mode: 'ai',
+      inputHash: 'rolling-ai-hash',
+    },
+    warnings: ['未配置上周策略/预判，暂无法检核兑现'],
+  });
+  existingCache.insights.board = 'W27 rolling AI stale GMV，不应在 final 周继续展示。';
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), JSON.stringify(existingCache), 'utf8');
+
+  const proc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
+    '--dashboard-file', dashboardFile,
+    '--out-name', 'business-overview-insights.json',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, BUSINESS_OVERVIEW_AI_ENABLED: '0' },
+    encoding: 'utf8',
+  });
+  assert.equal(proc.status, 0, proc.stderr || proc.stdout);
+  const stdout = JSON.parse(proc.stdout);
+  assert.equal(stdout.preserved, false);
+  assert.equal(stdout.mode, 'deterministic');
+  assert.equal(stdout.analysisState, 'final');
+  assert.deepEqual(outputBasenames(stdout.out), [
+    'business-overview-insights-2026-W27.json',
+    'business-overview-insights.json',
+  ]);
+
+  const weekly = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights-2026-W27.json'), 'utf8'));
+  const latest = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights.json'), 'utf8'));
+  assert.deepEqual(latest, weekly);
+  assert.equal(weekly.mode, 'deterministic');
+  assert.equal(weekly.generatedBy, 'business_overview_deterministic');
+  assert.notEqual(weekly.generatedAt, '2026-07-11T13:39:38.950Z');
+  assert.notEqual(weekly.inputHash, 'rolling-ai-hash');
+  assert.equal(weekly.inputHash, dashboardInputHash(finalDashboard));
+  assert.notEqual(weekly.insights.board, 'W27 rolling AI stale GMV，不应在 final 周继续展示。');
+  assert.match(weekly.insights.board, new RegExp(`成交GMV ${formatWanForTest(finalDashboard.board.cur.gmv)}`));
+  assert.equal(weekly.analysisStatus.state, 'final');
+  assert.equal(weekly.analysisStatus.label, '周结冻结');
+  assert.equal(weekly.analysisStatus.isRolling, false);
+
+  const quality = validateAiInsightsQuality(weekly, { dashboard: finalDashboard });
+  assert.equal(quality.ok, true, quality.errors.join('\n'));
+
+  const qualityProc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'check-ai-insights-quality.js'),
+    '--dashboard-file', dashboardFile,
+    '--data-dir', tmp,
+    '--week', '2026-W27',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    encoding: 'utf8',
+  });
+  assert.equal(qualityProc.status, 0, qualityProc.stderr || qualityProc.stdout);
+  const qualityStdout = JSON.parse(qualityProc.stdout);
+  assert.equal(qualityStdout.ok, true, qualityStdout.errors.join('\n'));
+  assert.equal(path.basename(qualityStdout.cacheFile), 'business-overview-insights-2026-W27.json');
 });
 
 test('api dashboard: W27 weekly frozen cache has priority over latest cache and returns new maps', async () => {
