@@ -55,23 +55,32 @@ function validateBoardMetricsCache(csvText, options = {}) {
 
   const index = new Map(headers.map((h, i) => [h, i]));
   const rows = [];
+  const requiredWeeks = options.requiredWeeks && options.requiredWeeks.length
+    ? options.requiredWeeks
+    : (options.targetWeek ? [options.targetWeek] : []);
+  const requiredWeekSet = new Set(requiredWeeks);
+  const shouldValidateAllRows = requiredWeekSet.size === 0;
+  const skippedBlankWeeks = [];
   for (const line of lines.slice(1)) {
     const cells = parseCsvLine(line);
     const week = normalizeWeek(cells[index.get('统计周')]);
     if (!/^\d{4}-W\d{2}$/.test(week)) continue;
     const appDau = cleanNumber(cells[index.get('APP日均DAU')]);
     const recycleEntranceUv = cleanNumber(cells[index.get('回收入口UV')]);
-    if (appDau == null || appDau <= 0) errors.push(`${week} APP日均DAU must be positive, got ${cells[index.get('APP日均DAU')] || '<empty>'}`);
-    if (recycleEntranceUv == null || recycleEntranceUv <= 0) errors.push(`${week} 回收入口UV must be positive, got ${cells[index.get('回收入口UV')] || '<empty>'}`);
+    const shouldValidateRow = shouldValidateAllRows || requiredWeekSet.has(week);
+    if (shouldValidateRow) {
+      if (appDau == null || appDau <= 0) errors.push(`${week} APP日均DAU must be positive, got ${cells[index.get('APP日均DAU')] || '<empty>'}`);
+      if (recycleEntranceUv == null || recycleEntranceUv <= 0) errors.push(`${week} 回收入口UV must be positive, got ${cells[index.get('回收入口UV')] || '<empty>'}`);
+    } else if (appDau == null && recycleEntranceUv == null) {
+      skippedBlankWeeks.push(week);
+    }
     rows.push({ week, appDau, recycleEntranceUv });
   }
   if (!rows.length) errors.push('no valid week rows in board metrics CSV');
 
-  const requiredWeeks = options.requiredWeeks && options.requiredWeeks.length
-    ? options.requiredWeeks
-    : (options.targetWeek ? [options.targetWeek] : []);
   const weekSet = new Set(rows.map((row) => row.week));
   for (const week of requiredWeeks) if (!weekSet.has(week)) errors.push(`required target week missing from board metrics CSV: ${week}`);
+  if (skippedBlankWeeks.length) warnings.push(`skipped non-target blank week row(s): ${skippedBlankWeeks.join(',')}`);
 
   return {
     ok: errors.length === 0,
@@ -88,8 +97,9 @@ function main() {
   const file = args.file || args.out || process.env.BOARD_METRICS_OUT;
   if (!file) throw new Error('Usage: check-board-metrics-cache.js --file <board_metrics_feishu.csv> [--target-weeks <weeks>] [--out <report.json>]');
   if (!fs.existsSync(file)) throw new Error(`board metrics CSV not found: ${file}`);
-  const targetWeek = args['target-week'] || lastTargetWeek(args['target-weeks'] || process.env.TARGET_WEEKS || '');
-  const result = validateBoardMetricsCache(fs.readFileSync(file, 'utf8'), { targetWeek });
+  const targetWeeks = parseTargetWeeks(args['target-weeks'] || process.env.TARGET_WEEKS || '');
+  const targetWeek = args['target-week'] || (targetWeeks.length ? targetWeeks[targetWeeks.length - 1] : lastTargetWeek(''));
+  const result = validateBoardMetricsCache(fs.readFileSync(file, 'utf8'), { targetWeek, requiredWeeks: targetWeeks });
   result.file = file;
   result.targetWeek = targetWeek || null;
   const text = JSON.stringify(result, null, 2);
