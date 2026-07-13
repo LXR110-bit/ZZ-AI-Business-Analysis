@@ -35,12 +35,12 @@ const baseOpts = {
   boardBenchmark, boardMetrics, modelCache, modelTaxonomy,
 };
 
-async function waitForJson(url, timeoutMs = 5000) {
+async function waitForJson(url, timeoutMs = 5000, headers = {}) {
   const started = Date.now();
   let lastErr;
   while (Date.now() - started < timeoutMs) {
     try {
-      const resp = await fetch(url);
+      const resp = await fetch(url, { headers });
       if (resp.ok) return resp.json();
       lastErr = new Error(`HTTP ${resp.status}`);
     } catch (e) {
@@ -49,6 +49,18 @@ async function waitForJson(url, timeoutMs = 5000) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw lastErr || new Error(`timeout waiting for ${url}`);
+}
+
+async function fetchAccessCookie(baseUrl) {
+  const resp = await fetch(`${baseUrl}/api/access/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: '测试用户', code: 'WXFX2026' }),
+  });
+  assert.equal(resp.status, 200, await resp.text());
+  const setCookie = resp.headers.get('set-cookie');
+  assert.ok(setCookie, '门禁校验后必须设置 cookie');
+  return setCookie.split(';')[0];
 }
 
 function outputBasenames(out) {
@@ -903,7 +915,10 @@ test('api dashboard: W27 weekly frozen cache has priority over latest cache and 
   });
 
   try {
-    const dashboard = await waitForJson(`http://127.0.0.1:${port}/api/dashboard?week=2026-W27`, 8000);
+    const baseUrl = `http://127.0.0.1:${port}`;
+    await waitForJson(`${baseUrl}/api/health`, 8000);
+    const cookie = await fetchAccessCookie(baseUrl);
+    const dashboard = await waitForJson(`${baseUrl}/api/dashboard?week=2026-W27`, 8000, { Cookie: cookie });
     assert.equal(dashboard.week, '2026-W27');
     assert.equal(dashboard.insights.board, 'W27 frozen weekly AI board');
     assert.equal(dashboard.insights.secondaryCategories.摄影摄像, 'W27 摄影摄像 AI');

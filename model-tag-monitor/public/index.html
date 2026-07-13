@@ -16,10 +16,29 @@
     rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
   />
-  <link rel="stylesheet" href="/style.css?v=20260710a" />
-  <link rel="stylesheet" href="/dashboard.css?v=20260709e" />
+  <link rel="stylesheet" href="/style.css?v=20260713a" />
+  <link rel="stylesheet" href="/dashboard.css?v=20260713a" />
 </head>
 <body>
+  <section id="accessGate" class="access-gate" aria-labelledby="accessTitle">
+    <form id="accessForm" class="access-card">
+      <div class="access-eyebrow">内部经营分析</div>
+      <h1 id="accessTitle">万象AI经营分析门禁</h1>
+      <p class="access-desc">请输入姓名和门禁码后查看数据看板。</p>
+      <label class="access-field">
+        <span>姓名</span>
+        <input id="accessName" type="text" autocomplete="name" placeholder="请输入姓名" required />
+      </label>
+      <label class="access-field">
+        <span>门禁码</span>
+        <input id="accessCode" type="password" autocomplete="off" placeholder="请输入门禁码" required />
+      </label>
+      <div id="accessError" class="access-error hidden" role="alert"></div>
+      <button class="primary access-submit" type="submit">进入查看</button>
+    </form>
+  </section>
+
+  <div id="appShell" class="app-shell hidden" aria-hidden="true">
   <header class="topbar">
     <div class="brand">
       <span class="title">万象AI经营分析</span>
@@ -372,7 +391,9 @@
     </aside>
   </div>
 
-  <script src="/dashboard-v2.js?v=20260709e"></script>
-  <script src="/app.js?v=20260710a"></script>
+  </div>
+
+  <script src="/dashboard-v2.js?v=20260713a"></script>
+  <script src="/app.js?v=20260713a"></script>
 </body>
 </html>
