@@ -10,6 +10,7 @@ const {
   expectedCoverage,
   validateDailyImportCoverage,
 } = require('../scripts/validate-daily-import-coverage');
+const { deriveTargetWeeks } = require('../scripts/derive-target-weeks');
 
 const TARGET_WEEKS = '2026-W27,2026-W28';
 const RUN_ID = 'unit_20260709T065000+0800';
@@ -75,6 +76,20 @@ test('expectedCoverage: W28 on 2026-07-09 expects 3 days through 2026-07-08', ()
   assert.equal(result.weekEnd, '2026-07-12');
   assert.equal(result.expectedDataEnd, '2026-07-08');
   assert.equal(result.expectedDays, 3);
+});
+
+test('deriveTargetWeeks: Monday cron targets the just-ended week', () => {
+  assert.deepEqual(
+    deriveTargetWeeks({ keepWeeks: 10, now: '2026-07-13T06:50:00+08:00' }),
+    ['2026-W19', '2026-W20', '2026-W21', '2026-W22', '2026-W23', '2026-W24', '2026-W25', '2026-W26', '2026-W27', '2026-W28'],
+  );
+});
+
+test('deriveTargetWeeks: next Monday cron rolls target window to W29', () => {
+  assert.deepEqual(
+    deriveTargetWeeks({ keepWeeks: 10, now: '2026-07-20T06:50:00+08:00' }),
+    ['2026-W20', '2026-W21', '2026-W22', '2026-W23', '2026-W24', '2026-W25', '2026-W26', '2026-W27', '2026-W28', '2026-W29'],
+  );
 });
 
 test('validateDailyImportCoverage: day_cnt=3 is complete for W28 on 2026-07-09', async () => {
