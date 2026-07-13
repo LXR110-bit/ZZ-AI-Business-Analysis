@@ -113,7 +113,12 @@ function readBusinessOverviewInsights(week) {
 }
 
 function getUser(req) {
-  return String(req.headers['x-user'] || 'anonymous').slice(0, 32);
+  const rawUser = String(req.headers['x-user'] || 'anonymous');
+  try {
+    return decodeURIComponent(rawUser).slice(0, 32);
+  } catch {
+    return rawUser.slice(0, 32);
+  }
 }
 
 // ---- 数据同步 ----

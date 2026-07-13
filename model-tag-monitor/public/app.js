@@ -144,7 +144,11 @@ async function bootAccessGate() {
 }
 
 async function api(url, opts = {}) {
-  const headers = { 'Content-Type': 'application/json', 'X-User': getUserName() || 'anonymous', ...(opts.headers || {}) };
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-User': encodeURIComponent(getUserName() || 'anonymous'),
+    ...(opts.headers || {}),
+  };
   const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
     const err = await res.text();
