@@ -136,7 +136,7 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
   try {
     await waitReady(child);
     const cookie = await verifyAccess();
-    const authHeaders = { Cookie: cookie };
+    const authHeaders = { Cookie: cookie, 'X-User': encodeURIComponent('测试用户') };
 
     const vocabPut = await httpJson('PUT', '/api/tag-vocab', {
       core: ['核心', '观察'],
@@ -159,6 +159,11 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
     assert.equal(tagsGet.status, 200, 'tags GET status 200');
     const tagsBody = JSON.parse(tagsGet.body);
     assert.equal(tagsBody['手机||测试机型'].dimensions.core, '核心');
+
+    const logsGet = await httpGet('/api/logs?limit=20', authHeaders);
+    assert.equal(logsGet.status, 200, 'logs GET status 200');
+    const logs = JSON.parse(logsGet.body);
+    assert.ok(logs.some((entry) => entry.user === '测试用户'), 'URI 编码的中文用户名必须解码后写入操作日志');
 
     const r = await httpGet('/api/monitor?category=%E6%89%8B%E6%9C%BA&tagDimension=custom%3A%E6%89%8B%E6%9C%BA%3Atier', authHeaders);
     assert.equal(r.status, 200, 'status 200');
