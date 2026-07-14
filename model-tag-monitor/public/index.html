@@ -4,7 +4,7 @@
   <script>
     // 本应用必须通过本地服务访问；防止误开 file:// 导致 CSS/JS/API 全部失效。
     if (location.protocol === 'file:') {
-      location.replace('http://localhost:8848/' + location.search + location.hash);
+      location.replace('/' + location.search + location.hash);
     }
   </script>
   <meta charset="UTF-8" />
