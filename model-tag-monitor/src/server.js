@@ -17,6 +17,7 @@ const { composeDashboard: composeDashboardV2, mergeBusinessOverviewInsights } = 
 
 const app = express();
 const PORT = process.env.PORT || 8848;
+const HOST = process.env.HOST || '0.0.0.0';
 const UPSTREAM = (process.env.PROXY_UPSTREAM || '').trim();
 const ACCESS_CODE = process.env.ACCESS_CODE || '';
 const ACCESS_COOKIE = 'wxfx_access';
@@ -397,6 +398,6 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
-  console.log(`[server] listening on http://0.0.0.0:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`[server] listening on http://${HOST}:${PORT}`);
 });

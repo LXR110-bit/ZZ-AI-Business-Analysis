@@ -76,11 +76,12 @@ npm ci --omit=dev
 ```bash
 cp deploy/ai-incubation/templates/model-tag-monitor.env.example /opt/soft/model-tag-monitor/conf/model-tag-monitor.env
 cp deploy/ai-incubation/templates/model-tag-monitor-nginx.conf /etc/nginx/conf.d/model-tag-monitor.conf
+cp deploy/ai-incubation/templates/model-tag-monitor-api.service /etc/systemd/system/model-tag-monitor-api.service
 cp deploy/ai-incubation/templates/model-tag-monitor-refresh.service /etc/systemd/system/model-tag-monitor-refresh.service
 cp deploy/ai-incubation/templates/model-tag-monitor-refresh.timer /etc/systemd/system/model-tag-monitor-refresh.timer
 ```
 
-`/opt/soft/model-tag-monitor/conf/model-tag-monitor.env` 中填入真实 secrets；不要提交回 Git。
+`/opt/soft/model-tag-monitor/conf/model-tag-monitor.env` 中填入真实 secrets；不要提交回 Git。API service 使用 `HOST=127.0.0.1`，只供本机刷新脚本调用，办公网入口由 Nginx 提供。
 
 ## 5. 静态看板发布
 

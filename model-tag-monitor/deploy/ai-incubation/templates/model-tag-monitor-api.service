@@ -1,0 +1,19 @@
+[Unit]
+Description=model-tag-monitor local API service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/soft/model-tag-monitor/conf/model-tag-monitor.env
+WorkingDirectory=/opt/soft/model-tag-monitor/app/model-tag-monitor
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/opt/log/model-tag-monitor/worker/api.log
+StandardError=append:/opt/log/model-tag-monitor/worker/api.err.log
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
