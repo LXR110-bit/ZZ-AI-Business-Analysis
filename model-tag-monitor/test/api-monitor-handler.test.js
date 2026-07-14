@@ -82,7 +82,7 @@ async function waitReady(child, maxMs = 5000) {
 }
 
 async function verifyAccess() {
-  const r = await httpJson('POST', '/api/access/verify', { name: '测试用户', code: 'WXFX2026' });
+  const r = await httpJson('POST', '/api/access/verify', { name: '测试用户', code: 'TEST_ACCESS_CODE_20260714' });
   assert.equal(r.status, 200, r.body);
   const setCookie = r.headers['set-cookie'];
   assert.ok(Array.isArray(setCookie) && setCookie.length, '门禁校验后必须设置 cookie');
@@ -118,7 +118,7 @@ test('/api/monitor handler: cache.json 存在时归一化 + Cache-Control 三连
   writeTinyMonitorFixture(tmpDataDir);
 
   // 起 server.js 子进程（不带 PROXY_UPSTREAM → 走 handler 路径，跟生产一致）
-  const env = { ...process.env, PORT: String(PORT), DATA_DIR: tmpDataDir };
+  const env = { ...process.env, PORT: String(PORT), DATA_DIR: tmpDataDir, ACCESS_CODE: 'TEST_ACCESS_CODE_20260714' };
   delete env.PROXY_UPSTREAM; // 显式清空，防继承
   const child = spawn(process.execPath, ['src/server.js'], {
     cwd: REPO_ROOT,

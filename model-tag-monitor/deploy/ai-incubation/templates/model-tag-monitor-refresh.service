@@ -1,0 +1,17 @@
+[Unit]
+Description=model-tag-monitor daily dashboard refresh
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/soft/model-tag-monitor/conf/model-tag-monitor.env
+WorkingDirectory=/opt/soft/model-tag-monitor/app/model-tag-monitor
+ExecStart=/bin/bash -lc './scripts/refresh-dashboard-daily.sh && node scripts/publish-dashboard-json.js --api-base "$API_BASE" --out-dir "$DASHBOARD_PUBLIC_DIR"'
+StandardOutput=append:/opt/log/model-tag-monitor/worker/refresh.log
+StandardError=append:/opt/log/model-tag-monitor/worker/refresh.err.log
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

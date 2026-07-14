@@ -55,7 +55,7 @@ async function fetchAccessCookie(baseUrl) {
   const resp = await fetch(`${baseUrl}/api/access/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: '测试用户', code: 'WXFX2026' }),
+    body: JSON.stringify({ name: '测试用户', code: 'TEST_ACCESS_CODE_20260714' }),
   });
   assert.equal(resp.status, 200, await resp.text());
   const setCookie = resp.headers.get('set-cookie');
@@ -910,7 +910,7 @@ test('api dashboard: W27 weekly frozen cache has priority over latest cache and 
   const port = 21000 + Math.floor(Math.random() * 1000);
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'src', 'server.js')], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, DATA_DIR: tmp, PORT: String(port) },
+    env: { ...process.env, DATA_DIR: tmp, PORT: String(port), ACCESS_CODE: 'TEST_ACCESS_CODE_20260714' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

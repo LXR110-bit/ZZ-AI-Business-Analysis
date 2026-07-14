@@ -14,12 +14,15 @@ const apiBase = String(arg('api-base', process.env.API_BASE || 'http://127.0.0.1
 const out = arg('out', process.env.PAYLOAD_OUT || 'weekly-card-payload.json');
 const dashboardUrl = arg('dashboard-url', process.env.DASHBOARD_URL || 'http://47.84.94.234:8848/?tab=dashboard');
 const reportUrl = arg('report-url', process.env.REPORT_URL || dashboardUrl);
+const apiCookie = String(process.env.API_COOKIE || '').trim();
 
 async function getJson(pathname, timeoutMs = 300000) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    const res = await fetch(`${apiBase}${pathname}`, { headers: { Accept: 'application/json' }, signal: ac.signal });
+    const headers = { Accept: 'application/json' };
+    if (apiCookie) headers.Cookie = apiCookie;
+    const res = await fetch(`${apiBase}${pathname}`, { headers, signal: ac.signal });
     const text = await res.text();
     if (!res.ok) throw new Error(`${pathname} HTTP ${res.status}: ${text.slice(0, 500)}`);
     return JSON.parse(text);

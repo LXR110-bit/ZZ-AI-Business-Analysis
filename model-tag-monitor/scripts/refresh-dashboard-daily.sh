@@ -78,6 +78,10 @@ if [[ "${LOAD_SECRETS:-1}" != "0" && -f /root/secrets/.env ]]; then
 fi
 FEISHU_CHAT_ID="${FEISHU_CHAT_ID:-${WEEKLY_REPORT_CHAT_ID:-}}"
 FEISHU_OPEN_ID="${FEISHU_OPEN_ID:-${MY_OPEN_ID:-}}"
+ACCESS_CODE="${ACCESS_CODE:-}"
+API_COOKIE_JAR="$LOG_DIR/.api-cookie-$RUN_ID"
+API_COOKIE=""
+trap 'rm -f "$API_COOKIE_JAR"' EXIT
 
 log() { printf '[%s] %s\n' "$(date '+%F %T%z')" "$*" | tee -a "$LOG_FILE" >&2; }
 
@@ -136,13 +140,32 @@ cleanup_retained_artifacts() {
 post_json() {
   local path="$1"
   log "POST $path"
-  curl -fsS --max-time 900 -H 'Content-Type: application/json' -X POST "$API_BASE$path" | tee -a "$LOG_FILE" >/dev/null
+  curl -fsS --max-time 900 -b "$API_COOKIE_JAR" -H 'Content-Type: application/json' -X POST "$API_BASE$path" | tee -a "$LOG_FILE" >/dev/null
 }
 
 get_json() {
   local path="$1"
   log "GET $path"
-  curl -fsS --max-time 300 "$API_BASE$path"
+  curl -fsS --max-time 300 -b "$API_COOKIE_JAR" "$API_BASE$path"
+}
+
+authenticate_api() {
+  if [[ -z "${ACCESS_CODE:-}" ]]; then
+    log "ACCESS_CODE is required for dashboard API authentication; set it via /root/secrets/.env or the service environment"
+    return 1
+  fi
+  log "authenticate dashboard API session"
+  if ! ACCESS_CODE="$ACCESS_CODE" node -e 'process.stdout.write(JSON.stringify({ name: "daily-refresh", code: process.env.ACCESS_CODE }))' \
+    | curl -fsS --max-time 30 -o /dev/null -c "$API_COOKIE_JAR" \
+      -H 'Content-Type: application/json' --data-binary @- "$API_BASE/api/access/verify"; then
+    return 1
+  fi
+  API_COOKIE="$(awk '$6 == "wxfx_access" { print $6 "=" $7 }' "$API_COOKIE_JAR" | tail -n 1)"
+  if [[ -z "$API_COOKIE" ]]; then
+    log "dashboard API authentication returned no access cookie"
+    return 1
+  fi
+  export API_COOKIE
 }
 
 write_alert_payload() {
@@ -232,6 +255,10 @@ fail_stage() {
   send_alert "$stage" "$message" "$detail_file"
   exit "$code"
 }
+
+if ! authenticate_api; then
+  fail_stage "auth" "dashboard API authentication failed; dashboard cache was not touched" "" 4
+fi
 
 log "model-tag-monitor refresh start version=$VERSION api=$API_BASE import_dir=$IMPORT_DIR staging_import_dir=$STAGING_IMPORT_DIR target_weeks=$TARGET_WEEKS feishu_repo=${FEISHU_REPO_DIR:-<not-found>} run_id=$RUN_ID target_week=$TARGET_WEEK target_month=$TARGET_MONTH data_ready_attempts=$DATA_READY_MAX_ATTEMPTS retry_seconds=$DATA_READY_RETRY_SECONDS"
 

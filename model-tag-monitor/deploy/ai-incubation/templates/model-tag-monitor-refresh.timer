@@ -1,0 +1,10 @@
+[Unit]
+Description=Run model-tag-monitor refresh every day at 06:50 Asia/Shanghai
+
+[Timer]
+OnCalendar=*-*-* 06:50:00
+Persistent=true
+Unit=model-tag-monitor-refresh.service
+
+[Install]
+WantedBy=timers.target

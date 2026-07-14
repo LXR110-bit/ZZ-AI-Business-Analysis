@@ -18,9 +18,12 @@ const { composeDashboard: composeDashboardV2, mergeBusinessOverviewInsights } = 
 const app = express();
 const PORT = process.env.PORT || 8848;
 const UPSTREAM = (process.env.PROXY_UPSTREAM || '').trim();
-const ACCESS_CODE = process.env.ACCESS_CODE || 'WXFX2026';
+const ACCESS_CODE = process.env.ACCESS_CODE || '';
 const ACCESS_COOKIE = 'wxfx_access';
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || ACCESS_CODE;
+if (!ACCESS_CODE && process.env.NODE_ENV === 'production') {
+  throw new Error('ACCESS_CODE is required in production; do not rely on hard-coded access codes.');
+}
 const ACCESS_TOKEN = crypto
   .createHmac('sha256', ACCESS_TOKEN_SECRET)
   .update('model-tag-monitor-access')

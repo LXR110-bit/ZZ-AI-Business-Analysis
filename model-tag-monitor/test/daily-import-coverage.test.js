@@ -18,7 +18,7 @@ const STARTED_AT = '2026-07-09T06:50:00+08:00';
 const GENERATED_AT = '2026-07-09T06:51:00+08:00';
 const NOW = '2026-07-09T08:00:00+08:00';
 
-function writeImportFixture({ dayCnt = 3, includeTargetRows = true, runId = RUN_ID, generatedAt = GENERATED_AT } = {}) {
+function writeImportFixture({ dayCnt = 3, includeTargetRows = true, runId = RUN_ID, generatedAt = GENERATED_AT, weekStart = '2026-07-06' } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-import-coverage-'));
   const manifestDir = path.join(dir, 'manifests');
   fs.mkdirSync(manifestDir, { recursive: true });
@@ -28,14 +28,14 @@ function writeImportFixture({ dayCnt = 3, includeTargetRows = true, runId = RUN_
     const file = path.join(dir, `${key}_2026-07.csv`);
     if (key === 'category_daily_avg') {
       fs.writeFileSync(file, includeTargetRows
-        ? `week_start_date,品类名称,day_cnt,成交gmv\n2026-07-06,组装自行车,${dayCnt},30000\n`
+        ? `week_start_date,品类名称,day_cnt,成交gmv\n${weekStart},组装自行车,${dayCnt},30000\n`
         : 'week_start_date,品类名称,day_cnt,成交gmv\n2026-06-29,组装自行车,7,20000\n', 'utf8');
     } else if (key === 'model_daily_avg') {
       fs.writeFileSync(file, includeTargetRows
-        ? `week_start_date,品类名称,机型名称,day_cnt,成交gmv\n2026-07-06,组装自行车,测试机型,${dayCnt},30000\n`
+        ? `week_start_date,品类名称,机型名称,day_cnt,成交gmv\n${weekStart},组装自行车,测试机型,${dayCnt},30000\n`
         : 'week_start_date,品类名称,机型名称,day_cnt,成交gmv\n2026-06-29,组装自行车,测试机型,7,20000\n', 'utf8');
     } else {
-      fs.writeFileSync(file, 'week_start_date,day_cnt\n2026-07-06,3\n', 'utf8');
+      fs.writeFileSync(file, `week_start_date,day_cnt\n${weekStart},${dayCnt}\n`, 'utf8');
     }
     outputs[key] = file;
     manifestOutputs[key] = { path: file, filename: path.basename(file), row_count: 1 };
@@ -133,11 +133,11 @@ test('validateDailyImportCoverage: active manifest before script start is stale'
   assert.match(result.message, /generated_at is stale/);
 });
 
-test('promoteLocalImports: copies staged CSVs and rewrites active/manifest paths to dest dir', () => {
+test('promoteLocalImports: copies staged CSVs and rewrites active/manifest paths to dest dir', async () => {
   const sourceDir = writeImportFixture({ dayCnt: 3 });
   const destDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-import-promote-'));
   const { promoteLocalImports } = require('../scripts/promote-local-imports');
-  const promoted = promoteLocalImports({ sourceDir, destDir, runId: RUN_ID });
+  const promoted = await promoteLocalImports({ sourceDir, destDir, runId: RUN_ID });
   assert.equal(promoted.ok, true);
   const active = JSON.parse(fs.readFileSync(path.join(destDir, 'active.json'), 'utf8'));
   assert.equal(active.run_id, RUN_ID);
@@ -146,4 +146,29 @@ test('promoteLocalImports: copies staged CSVs and rewrites active/manifest paths
   const manifest = JSON.parse(fs.readFileSync(active.manifest, 'utf8'));
   assert.equal(manifest.outputs.category_daily_avg.path, active.outputs.category_daily_avg);
   assert.ok(manifest.manifest_path.startsWith(destDir));
+});
+
+test('promoteLocalImports: replaces current week partition and preserves earlier weeks in the same month', async () => {
+  const sourceDir = writeImportFixture({ dayCnt: 1, weekStart: '2026-07-13' });
+  const destDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-import-promote-merge-'));
+  const destFile = path.join(destDir, 'category_daily_avg_2026-07.csv');
+  fs.writeFileSync(destFile, [
+    'week_start_date,品类名称,day_cnt,成交gmv',
+    '2026-07-06,组装自行车,7,20000',
+    '2026-07-13,组装自行车,1,99999',
+    '',
+  ].join('\n'), 'utf8');
+
+  const { promoteLocalImports } = require('../scripts/promote-local-imports');
+  await promoteLocalImports({ sourceDir, destDir, runId: RUN_ID });
+
+  const lines = fs.readFileSync(destFile, 'utf8').trim().split(/\r?\n/);
+  assert.deepEqual(lines, [
+    'week_start_date,品类名称,day_cnt,成交gmv',
+    '2026-07-06,组装自行车,7,20000',
+    '2026-07-13,组装自行车,1,30000',
+  ]);
+  const active = JSON.parse(fs.readFileSync(path.join(destDir, 'active.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(active.manifest, 'utf8'));
+  assert.equal(manifest.outputs.category_daily_avg.row_count, 2);
 });

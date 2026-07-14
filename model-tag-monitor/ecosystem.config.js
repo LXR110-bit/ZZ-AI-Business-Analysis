@@ -14,7 +14,8 @@ module.exports = {
         FEISHU_APP_ID: 'cli_aab4e49b7bb95bd3',
         IMPORT_DIR: '/root/workspace/ZZ-AI-Business-Analysis-base-migration/data/imports',
         KEEP_WEEKS: '10',
-        TARGET_WEEKS: '2026-W19,2026-W20,2026-W21,2026-W22,2026-W23,2026-W24,2026-W25,2026-W26,2026-W27,2026-W28',
+        // Empty means each sync selects the latest KEEP_WEEKS from imported data.
+        TARGET_WEEKS: '',
         DASHBOARD_URL: 'http://47.84.94.234:8848/?tab=dashboard',
         BOARD_METRICS_FEISHU_URL: 'https://zhuanspirit.feishu.cn/wiki/BVG1wCawniHIC5kn9eacgmP3nwX?from=from_copylink',
         BOARD_METRICS_FEISHU_SHEET: '大盘数据（周日均）',

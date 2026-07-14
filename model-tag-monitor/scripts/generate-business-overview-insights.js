@@ -27,6 +27,7 @@ const outName = arg('out-name', process.env.BUSINESS_OVERVIEW_CACHE_NAME || 'bus
 const strategyFile = arg('strategy-file', process.env.BUSINESS_OVERVIEW_STRATEGY_FILE || '');
 const timeoutMs = Number(arg('timeout-ms', process.env.BUSINESS_OVERVIEW_AI_TIMEOUT_MS || '240000'));
 const aiEnabled = process.env.BUSINESS_OVERVIEW_AI_ENABLED === '1';
+const apiCookie = String(process.env.API_COOKIE || '').trim();
 const allowFinalRefresh = flag('allow-final-refresh', 'BUSINESS_OVERVIEW_ALLOW_FINAL_REFRESH');
 const repoRoot = path.resolve(__dirname, '..', '..');
 const schemaPath = path.join(__dirname, 'business-overview-insights.schema.json');
@@ -100,7 +101,8 @@ async function getJson(apiPath, timeout = 300000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
   try {
-    const resp = await fetch(`${apiBase}${apiPath}`, { signal: ctrl.signal });
+    const headers = apiCookie ? { Cookie: apiCookie } : undefined;
+    const resp = await fetch(`${apiBase}${apiPath}`, { headers, signal: ctrl.signal });
     if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
     return await resp.json();
   } finally {
