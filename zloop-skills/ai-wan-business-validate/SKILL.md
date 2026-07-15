@@ -1,5 +1,5 @@
 ---
-name: 小万经营校验
+name: 小万经营校验 v1.5.5
 description: AI 小万 v1.5.5 四阶段流水线第 4 阶段：消费 Process 与 Analyze 产物，执行 evidence_id、schema、known_gap、LLM 白名单、history_weeks、过度归因和核心机型遗漏校验，输出 validation_report 与 final_status。
 version: 1.5.5
 ---

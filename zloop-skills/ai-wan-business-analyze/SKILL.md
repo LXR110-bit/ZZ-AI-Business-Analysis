@@ -1,5 +1,5 @@
 ---
-name: 小万经营分析
+name: 小万经营分析 v1.5.5
 description: AI 小万 v1.5.5 四阶段流水线第 3 阶段：消费 Process 阶段的 analysis_history 与 model_tag_knowledge，先生成 evidence_pack，再按 daily/deep_dive 双模型策略产出 insights、summary、review_notes、analysis_trace。
 version: 1.5.5
 ---

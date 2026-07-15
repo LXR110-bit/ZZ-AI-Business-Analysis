@@ -1,5 +1,5 @@
 ---
-name: 小万数据处理
+name: 小万数据处理 v1.5.5
 description: AI 小万 v1.5.5 四阶段流水线第 2 阶段：消费 Fetch raw_cache，复制旧服务器 refresh-dashboard-daily.sh 的数据处理语义，产出 imports、processed_cache、server_cache_bundle、analysis_history、data_quality_report 和 active_process_manifest；不调用 LLM。
 version: 0.1.2
 ---

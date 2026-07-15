@@ -1,5 +1,5 @@
 ---
-name: 小万经营取数
+name: 小万经营取数 v1.5.5
 description: AI 小万 v1.5.5 四阶段流水线第 1 阶段：只负责委托 xinghe-data-explore 执行聚合回收 Hive SQL，落 raw CSV、sql_status、raw_manifest、raw_cache 和 active_fetch_manifest；不做数据处理、不调用 LLM。
 version: 0.1.2
 ---
