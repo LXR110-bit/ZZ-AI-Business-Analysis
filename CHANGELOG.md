@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-16
+
+- **model-tag-monitor v1.6.0 APIHub/zloop 多阶段桥接**：新增 `/api/aiwan/read` 与 `/api/aiwan/write` 统一读写接口，以 `run_id + stage` 管理 `read/process/analyze/validate` 阶段状态；阶段结果落盘到 `data/aiwan-runs/{run_id}/`，支持 revision 覆盖策略、旧 dashboard/context/history/rules 封装和 previous stage 校验。
+- **AI 小万 v1.6 zloop Skill 拓扑**：新增单 Loop 入口主编排 Skill 与四个独立阶段 Skill（数据读取、数据处理、经营分析、结果校验），主 Skill 通过 `$` 调用阶段 Skill，阶段间只通过 APIHub/server state 传递。
+- **生产部署口径**：显式要求生产 `ACCESS_CODE`，避免硬编码门禁码；proxy 模式排除 `/api/aiwan/read` 与 `/api/aiwan/write`，确保本地桥接接口不被转发到旧上游。
+
 ## 2026-07-10
 
 - **model-tag-monitor v1.4.7 日更产物保留策略**：日更链路启动时自动清理超过 `ARTIFACT_RETENTION_DAYS`（默认 30 天）的 local-imports、运行日志、覆盖校验文件、卡片 payload、源附件 cache 和 dry-run outbox，避免 50GB 生产盘被历史日更产物打满；支持 `ARTIFACT_CLEANUP_ENABLED=0` 关闭和 `ARTIFACT_CLEANUP_DRY_RUN=1` 演练。

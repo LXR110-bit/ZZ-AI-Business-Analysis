@@ -1,0 +1,34 @@
+{
+  "version": "1",
+  "skill_kind": "tool",
+  "skill_md": "SKILL.md",
+  "runtime": {
+    "target": "remote_sandbox"
+  },
+  "dependencies": {
+    "skills": [],
+    "runtime": [
+      "zloop_runtime"
+    ]
+  },
+  "verification": {
+    "smoke_prompt": "说明 AI小万数据处理 v1.6 如何只通过 /api/aiwan/read 和 /api/aiwan/write 执行 process 阶段，并在失败时写 checkpoint；不要依赖上一阶段聊天上下文。",
+    "side_effect_policy": "apihub_read_write_only",
+    "user_scenarios": [
+      "AI 小万 v1.6 多阶段 Loop 自动执行。",
+      "手动单独重跑或检查某个阶段。"
+    ]
+  },
+  "zloop": {
+    "generated_by": "codex",
+    "candidate_schema_version": "1"
+  },
+  "contracts": {
+    "stage": "process",
+    "contract_version": "ai-wan-v1.6-apihub-stage",
+    "api_bridge": {
+      "read": "POST /api/aiwan/read",
+      "write": "POST /api/aiwan/write"
+    }
+  }
+}

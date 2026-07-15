@@ -14,6 +14,7 @@ const { DEFAULT_TAG_VOCAB, normalizeTagRecord, normalizeTagsStore, normalizeTagV
 const { getDashboard, getDashboardFromUpstream, invalidateDashboardCache, normalizeMonitor } = require('./dashboard');
 const { createProxy } = require('./proxy');
 const { composeDashboard: composeDashboardV2, mergeBusinessOverviewInsights } = require('./compose-dashboard');
+const aiwanRunStore = require('./aiwan-run-store');
 
 const app = express();
 const PORT = process.env.PORT || 8848;
@@ -384,6 +385,28 @@ app.get('/api/dashboard', async (req, res) => {
   } catch (e) {
     console.error('[/api/dashboard] failed:', e);
     res.status(502).json({ error: 'dashboard 组装失败', detail: e.message });
+  }
+});
+
+
+// ---- AI 小万 v1.6 APIHub 读写桥 ----
+// 统一读写接口是 zloop 多阶段 Skill 的状态边界：每个阶段只凭 run_id + stage
+// 从服务器读取输入、写回输出，不依赖上一个 Skill 的对话上下文。
+app.post('/api/aiwan/read', (req, res) => {
+  try {
+    const result = aiwanRunStore.buildReadResponse(req.body || {});
+    if (result.ok === false) return res.status(409).json(result);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/aiwan/write', (req, res) => {
+  try {
+    res.json(aiwanRunStore.writeStageResult(req.body || {}));
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
   }
 });
 

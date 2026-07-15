@@ -4,7 +4,7 @@
 //
 // 简单实现：Node 18+ 原生 fetch。不依赖 http-proxy-middleware。
 
-const EXCLUDE_PATHS = new Set(['/api/dashboard']);
+const EXCLUDE_PATHS = new Set(['/api/dashboard', '/api/aiwan/read', '/api/aiwan/write']);
 
 // 逐 hop 头不要透传；这些由目标端 / 我方 fetch 自己维护
 const HOP_BY_HOP = new Set([

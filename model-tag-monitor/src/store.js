@@ -28,6 +28,7 @@ function readJSON(name, fallback) {
 function writeJSON(name, data) {
   ensureDir();
   const p = filePath(name);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
   const tmp = p + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
   fs.renameSync(tmp, p);
