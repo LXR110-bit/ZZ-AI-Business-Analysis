@@ -1,0 +1,67 @@
+{
+  "version": "1",
+  "skill_kind": "tool",
+  "skill_md": "SKILL.md",
+  "runtime": {
+    "target": "remote_sandbox"
+  },
+  "dependencies": {
+    "skills": [],
+    "runtime": [
+      "zloop_runtime"
+    ]
+  },
+  "verification": {
+    "smoke_prompt": "说明如何基于 analysis_history 与 model_tag_knowledge 先生成 evidence_pack，再按 daily 模式用 GLM-5.2 主生成、DeepSeek V4 Pro 复核；effective_history_weeks 不足时降级 wow_only；不要跑 SQL、不要使用其他模型。",
+    "side_effect_policy": "read_only",
+    "user_scenarios": [
+      "基于 10 周 analysis_history 输出经营洞察。",
+      "effective_history_weeks 不足 8 周时降级为 wow_only。",
+      "deep_dive 模式用 DeepSeek V4 Pro 深挖、GLM-5.2 结构化。"
+    ]
+  },
+  "llm_policy": {
+    "uses_llm": true,
+    "allowed_llms": [
+      "GLM-5.2",
+      "DeepSeek V4 Pro"
+    ],
+    "fallback_to_other_llm": false,
+    "daily": {
+      "primary_writer": "GLM-5.2",
+      "reviewer": "DeepSeek V4 Pro"
+    },
+    "deep_dive": {
+      "primary_analyst": "DeepSeek V4 Pro",
+      "formatter": "GLM-5.2"
+    }
+  },
+  "zloop": {
+    "generated_by": "zloop-skill-forge",
+    "candidate_schema_version": "1"
+  },
+  "contracts": {
+    "stage": "analysis",
+    "contract_version": "ai-wan-v1.5.5-analysis",
+    "inputs": [
+      "active_process_manifest.json",
+      "analysis_history_<run_dt>.json",
+      "model_tag_knowledge_<run_dt>.json"
+    ],
+    "outputs": [
+      "evidence_pack_<run_dt>.json",
+      "insights_<run_dt>.json",
+      "summary_<run_dt>.md",
+      "review_notes_<run_dt>.md",
+      "analysis_trace_<run_dt>.json",
+      "active_analysis_manifest.json"
+    ],
+    "min_history_weeks_for_trend": 8,
+    "history_insufficient_policy": "downgrade_to_wow_only",
+    "evidence_policy": {
+      "generate_evidence_pack_first": true,
+      "require_evidence_id": true,
+      "do_not_send_full_excel_to_llm": true
+    }
+  }
+}

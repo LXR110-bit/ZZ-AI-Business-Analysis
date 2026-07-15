@@ -1,0 +1,98 @@
+{
+  "version": "1",
+  "skill_kind": "tool",
+  "skill_md": "SKILL.md",
+  "runtime": {
+    "target": "remote_sandbox"
+  },
+  "dependencies": {
+    "skills": [],
+    "runtime": [
+      "zloop_runtime"
+    ]
+  },
+  "verification": {
+    "smoke_prompt": "说明如何调用 bin/process-raw-cache.js 消费 active_fetch_manifest/raw_cache，确定性生成 imports、processed_cache、server_cache_bundle、analysis_history、data_quality_report、model_tag_snapshot/model_tag_knowledge 和 active_process_manifest；必须覆盖 day_cnt 周日均、rolling/final、KEEP_WEEKS=10、标签快照接入；不要跑 SQL、不要调用 LLM。",
+    "side_effect_policy": "read_only",
+    "user_scenarios": [
+      "把 raw_cache 处理成近 10 周历史缓存和服务器展示缓存。",
+      "当 history_weeks 不足 8 周或 board_metrics 缺失时输出 warn 并限制趋势分析。",
+      "接入 tags/tag-vocab/category-taxonomy 快照并生成 server_cache_bundle。"
+    ]
+  },
+  "llm_policy": {
+    "uses_llm": false,
+    "forbidden": [
+      "GLM-5.2",
+      "DeepSeek V4 Pro",
+      "other_llm"
+    ]
+  },
+  "zloop": {
+    "generated_by": "zloop-skill-forge",
+    "candidate_schema_version": "1"
+  },
+  "contracts": {
+    "stage": "process",
+    "contract_version": "ai-wan-v1.5.5-process",
+    "inputs": [
+      "active_fetch_manifest.json",
+      "raw_cache_<run_dt>.zip"
+    ],
+    "outputs": [
+      "imports_<run_dt>.zip",
+      "AI小万_聚合回收经营分析_<run_dt>.xlsx",
+      "manifest_<run_dt>.json",
+      "processed_cache_<run_dt>.zip",
+      "server_cache_bundle_<run_dt>.zip",
+      "analysis_history_<run_dt>.json",
+      "data_quality_report_<run_dt>.json",
+      "model_tag_snapshot_<run_dt>.json",
+      "model_tag_knowledge_<run_dt>.json",
+      "model_tag_feishu_summary_<run_dt>.md",
+      "model_tag_sync_manifest_<run_dt>.json",
+      "active_process_manifest.json"
+    ],
+    "history_weeks": 10,
+    "min_history_weeks_for_trend": 8,
+    "tag_sync": {
+      "source_of_truth": "model-tag-monitor-server-front-end-tags",
+      "inputs": [
+        "tags.json",
+        "tag-vocab.json",
+        "rules.json"
+      ],
+      "failure_policy": "warn_do_not_block_data_package",
+      "outputs": [
+        "model_tag_snapshot_<run_dt>.json",
+        "model_tag_knowledge_<run_dt>.json",
+        "model_tag_feishu_summary_<run_dt>.md",
+        "model_tag_sync_manifest_<run_dt>.json"
+      ],
+      "active_process_manifest_merge": [
+        "snapshot_file",
+        "knowledge_file",
+        "sha256",
+        "source",
+        "stats",
+        "feishu_sync",
+        "known_gaps"
+      ]
+    }
+  },
+  "data_analysis": {
+    "business_code": "d_c2b_union",
+    "source_business_name": "聚合回收",
+    "core_task": "AI 小万 v1.5.5 raw_cache 到 server/display/analysis cache 的确定性数据处理",
+    "scope": "single_business",
+    "analysis_mode": "process_only_no_llm"
+  },
+  "artifacts": {
+    "executables": [
+      "bin/process-raw-cache.js"
+    ],
+    "libraries": [
+      "lib/process-pipeline.js"
+    ]
+  }
+}

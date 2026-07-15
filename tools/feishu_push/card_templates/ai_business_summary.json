@@ -1,0 +1,63 @@
+{
+  "msg_type": "interactive",
+  "card": {
+    "config": {"wide_screen_mode": true},
+    "header": {
+      "title": {"tag": "plain_text", "content": "{{title}}"},
+      "template": "{{status_color}}"
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**{{status_label}}**\n{{subtitle}}"
+        }
+      },
+      {"tag": "hr"},
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**四层摘要**\n**大盘**：{{four_layer_summary.overall}}\n**品类**：{{four_layer_summary.category}}\n**机型**：{{four_layer_summary.model}}\n**履约**：{{four_layer_summary.fulfillment}}"
+        }
+      },
+      {"tag": "hr"},
+      {
+        "tag": "div",
+        "text": {"tag": "lark_md", "content": "**重点发现**"}
+      },
+      {"__loop__": "top_findings", "item_template": "ai_business_summary_finding_item"},
+      {"tag": "hr"},
+      {
+        "tag": "div",
+        "text": {"tag": "lark_md", "content": "**行动建议**"}
+      },
+      {"__loop__": "action_items", "item_template": "ai_business_summary_action_item"},
+      {"tag": "hr"},
+      {
+        "tag": "div",
+        "text": {"tag": "lark_md", "content": "**已知缺口**"}
+      },
+      {"__loop__": "known_gaps", "item_template": "ai_business_summary_gap_item"},
+      {"tag": "hr"},
+      {
+        "tag": "action",
+        "actions": [
+          {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "查看摘要产物"},
+            "type": "primary",
+            "url": "{{report_url}}"
+          },
+          {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "进入经营看板"},
+            "type": "default",
+            "url": "{{dashboard_url}}"
+          }
+        ]
+      }
+    ]
+  }
+}

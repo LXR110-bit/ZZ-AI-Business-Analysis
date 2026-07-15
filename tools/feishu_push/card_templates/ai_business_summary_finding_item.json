@@ -1,0 +1,7 @@
+{
+  "tag": "div",
+  "text": {
+    "tag": "lark_md",
+    "content": "**{{rank}}. [{{level_label}}] {{entity}} · {{metric_label}} {{direction_label}}（{{severity_label}}）**\n{{finding}}\n_证据：{{evidence}}_\n_建议：{{action}}_"
+  }
+}

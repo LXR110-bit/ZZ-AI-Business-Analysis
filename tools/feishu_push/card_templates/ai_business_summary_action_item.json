@@ -1,0 +1,7 @@
+{
+  "tag": "div",
+  "text": {
+    "tag": "lark_md",
+    "content": "**{{rank}}. {{priority}} · {{owner_hint}}**：{{action}}\n_原因：{{reason}}_"
+  }
+}

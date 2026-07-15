@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+'use strict';
+const { packageRawCache, parseArgs } = require('../lib/package-raw-cache');
+function usage(){return `Usage: node bin/package-raw-cache.js --run-dt YYYY-MM-DD --input-dir DIR --out-dir DIR\n\nPackages six xinghe-exported raw CSVs plus rendered SQL files into raw_cache/sql_status/raw_manifest/active_fetch_manifest. No processing and no LLM calls.`;}
+try{const args=parseArgs();if(args.help){console.log(usage());process.exit(0);}const res=packageRawCache({runDt:args.runDt||process.env.RUN_DT,inputDir:args.inputDir||process.env.INPUT_DIR||'.',outDir:args.outDir||process.env.OUT_DIR||'.',runId:args.runId||process.env.RUN_ID,knownGaps:args.knownGaps||process.env.KNOWN_GAPS});console.log(JSON.stringify(res,null,2));if(!res.ok)process.exitCode=1;}catch(err){console.error(err.stack||err.message);process.exit(1);}

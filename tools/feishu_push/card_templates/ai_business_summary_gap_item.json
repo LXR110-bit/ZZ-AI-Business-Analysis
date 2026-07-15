@@ -1,0 +1,7 @@
+{
+  "tag": "div",
+  "text": {
+    "tag": "lark_md",
+    "content": "{{rank}}. {{text}}"
+  }
+}

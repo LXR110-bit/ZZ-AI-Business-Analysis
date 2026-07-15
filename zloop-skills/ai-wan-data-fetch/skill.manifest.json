@@ -1,0 +1,69 @@
+{
+  "version": "1",
+  "skill_kind": "explore",
+  "skill_md": "SKILL.md",
+  "runtime": {
+    "target": "remote_sandbox"
+  },
+  "dependencies": {
+    "skills": [
+      {
+        "name": "xinghe-data-explore",
+        "kind": "exact"
+      }
+    ],
+    "runtime": [
+      "zloop_runtime"
+    ]
+  },
+  "verification": {
+    "smoke_prompt": "说明如何用 xinghe-data-explore 完成 6 份 SQL 后，调用 bin/package-raw-cache.js 只产出 raw_cache/sql_status/raw_manifest/active_fetch_manifest；不要生成 imports、不要做周日均或缓存处理、不要调用 LLM。",
+    "side_effect_policy": "read_only",
+    "user_scenarios": [
+      "生成 AI 小万 v1.5.5 聚合回收 raw SQL 结果包。",
+      "检查 6 个 SQL 的 execute_id、raw 行数、sha256 和 active_fetch_manifest。"
+    ]
+  },
+  "data_analysis": {
+    "business_code": "d_c2b_union",
+    "source_business_name": "聚合回收",
+    "core_task": "AI 小万 v1.5.5 聚合回收 Hive SQL raw 取数",
+    "scope": "single_business",
+    "analysis_mode": "fetch_only_raw_cache"
+  },
+  "llm_policy": {
+    "uses_llm": false,
+    "forbidden": [
+      "GLM-5.2",
+      "DeepSeek V4 Pro",
+      "other_llm"
+    ]
+  },
+  "zloop": {
+    "generated_by": "zloop-skill-forge",
+    "candidate_schema_version": "1"
+  },
+  "contracts": {
+    "stage": "fetch",
+    "contract_version": "ai-wan-v1.5.5-fetch",
+    "outputs": [
+      "raw_cache_<run_dt>.zip",
+      "sql_status_<run_dt>.json",
+      "raw_manifest_<run_dt>.json",
+      "active_fetch_manifest.json"
+    ],
+    "forbidden_outputs": [
+      "processed_cache_<run_dt>.zip",
+      "server_cache_bundle_<run_dt>.zip",
+      "analysis_history_<run_dt>.json"
+    ]
+  },
+  "artifacts": {
+    "executables": [
+      "bin/package-raw-cache.js"
+    ],
+    "libraries": [
+      "lib/package-raw-cache.js"
+    ]
+  }
+}

@@ -12,7 +12,8 @@
     "test": "node --test test/*.test.js",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
-    "version:major": "npm version major --no-git-tag-version"
+    "version:major": "npm version major --no-git-tag-version",
+    "export:model-tags": "node scripts/export-model-tag-snapshot.js"
   },
   "dependencies": {
     "compression": "^1.8.1",

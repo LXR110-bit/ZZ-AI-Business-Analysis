@@ -1,0 +1,75 @@
+{
+  "version": "1",
+  "skill_kind": "tool",
+  "skill_md": "SKILL.md",
+  "runtime": {
+    "target": "remote_sandbox"
+  },
+  "dependencies": {
+    "skills": [],
+    "runtime": [
+      "zloop_runtime"
+    ]
+  },
+  "verification": {
+    "smoke_prompt": "说明如何校验 active_process_manifest、active_analysis_manifest、evidence_pack、insights.json、known_gap、LLM 白名单、effective_history_weeks、过度归因和核心机型遗漏，并输出 validation_report/final_status；不要跑 SQL、不要自动发布。",
+    "side_effect_policy": "read_only",
+    "user_scenarios": [
+      "校验 AI 小万经营洞察是否可以被信任。",
+      "effective_history_weeks 不足时阻止趋势结论通过。",
+      "发现核心机型高波动遗漏时给出 failed/warn 裁决。"
+    ]
+  },
+  "llm_policy": {
+    "uses_llm": "optional_review_only",
+    "allowed_llms": [
+      "GLM-5.2",
+      "DeepSeek V4 Pro"
+    ],
+    "semantic_review_model": "DeepSeek V4 Pro",
+    "formatter_model": "GLM-5.2",
+    "fallback_to_other_llm": false
+  },
+  "zloop": {
+    "generated_by": "zloop-skill-forge",
+    "candidate_schema_version": "1"
+  },
+  "contracts": {
+    "stage": "validation",
+    "contract_version": "ai-wan-v1.5.5-validation",
+    "inputs": [
+      "active_process_manifest.json",
+      "active_analysis_manifest.json",
+      "data_quality_report_<run_dt>.json",
+      "model_tag_knowledge_<run_dt>.json",
+      "evidence_pack_<run_dt>.json",
+      "insights_<run_dt>.json",
+      "summary_<run_dt>.md",
+      "review_notes_<run_dt>.md",
+      "analysis_trace_<run_dt>.json"
+    ],
+    "outputs": [
+      "validation_report_<run_dt>.json",
+      "final_status_<run_dt>.json",
+      "active_validation_manifest.json"
+    ],
+    "checks": [
+      "data_quality",
+      "history_window",
+      "evidence_id",
+      "insights_schema",
+      "model_tag_knowledge",
+      "known_gap",
+      "llm_policy",
+      "over_attribution",
+      "output_safety",
+      "card_payload_readiness",
+      "core_model_omission",
+      "high_severity_anomaly_omission"
+    ],
+    "publish_policy": {
+      "publish_allowed_default": false,
+      "push_allowed_default": false
+    }
+  }
+}
