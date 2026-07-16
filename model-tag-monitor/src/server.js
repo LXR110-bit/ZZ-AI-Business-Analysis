@@ -50,7 +50,6 @@ function parseCookies(req) {
 function hasAccess(req) {
   return parseCookies(req)[ACCESS_COOKIE] === ACCESS_TOKEN;
 }
-
 function setAccessCookie(res) {
   res.setHeader(
     'Set-Cookie',
@@ -87,6 +86,9 @@ app.post('/api/access/logout', (req, res) => {
 
 app.use('/api', (req, res, next) => {
   if (req.path === '/health') return next();
+  // AI 小万 v1.6 APIHub 读写桥由 APIHub/调用方链路控制访问；
+  // 不再依赖页面门禁 cookie，否则远端 Skill/runtime 直连会被 401 拦截。
+  if (req.path === '/aiwan/read' || req.path === '/aiwan/write') return next();
   if (hasAccess(req)) return next();
   res.status(401).json({ error: '需要先通过门禁验证' });
 });

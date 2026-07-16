@@ -93,6 +93,18 @@ test('/api/aiwan/read + /api/aiwan/write provide stage state bridge', async () =
 
   try {
     await waitReady(child);
+
+    const publicRead = await httpJson('POST', '/api/aiwan/read', { run_id: 'public-aiwan-test', week: '2026-W28', stage: 'read', include: ['run_meta', 'rules'] });
+    assert.equal(publicRead.status, 200, publicRead.body);
+    assert.equal(publicRead.json.run_id, 'public-aiwan-test');
+
+    const publicWrite = await httpJson('POST', '/api/aiwan/write', { run_id: 'public-aiwan-test', week: '2026-W28', stage: 'read', status: 'success', payload: { authenticated_via: 'public-aiwan-bridge' } });
+    assert.equal(publicWrite.status, 200, publicWrite.body);
+    assert.equal(publicWrite.json.output.payload.authenticated_via, 'public-aiwan-bridge');
+
+    const publicDashboard = await httpGet('/api/dashboard');
+    assert.equal(publicDashboard.status, 401, '页面业务 API 仍保留门禁，只有 aiwan API 放行');
+
     const cookie = await verifyAccess();
     const headers = { Cookie: cookie };
 
