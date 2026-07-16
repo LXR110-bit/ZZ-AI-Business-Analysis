@@ -146,7 +146,6 @@ test('/api/aiwan/read + /api/aiwan/write provide stage state bridge', async () =
       week: '2026-W28',
       stage: 'validate',
       status: 'warn',
-      output_type: 'validation_result',
       payload: {
         processed_data: { status: 'success', week: '2026-W28' },
         analysis_result: {
@@ -180,10 +179,10 @@ test('/api/aiwan/read + /api/aiwan/write provide stage state bridge', async () =
 
     const validateRead = await httpJson('POST', '/api/aiwan/read', { run_id: '2026-W28-weekly', week: '2026-W28', stage: 'validate', include: ['run_meta', 'previous_stage_outputs'] }, headers);
     assert.equal(validateRead.status, 200, validateRead.body);
-    assert.equal(validateRead.json.context.run_meta.stages.validate.output_type, 'validation_result');
+    assert.equal(validateRead.json.context.run_meta.stages.validate.output_type, 'validate_result');
     assert.equal(validateRead.json.context.run_meta.status, 'success');
     assert.equal(validateRead.json.context.run_meta.overall_status, 'warn');
-    assert.equal(validateRead.json.current_output.output_type, 'validation_result');
+    assert.equal(validateRead.json.current_output.output_type, 'validate_result');
     assert.equal(validateRead.json.current_output.payload.validation_result.publish_allowed, true);
 
     const dashboardWithoutCookie = await httpGet('/api/dashboard');

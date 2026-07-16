@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AIWanBusinessInsightsV163",
+  "type": "object",
+  "required": [
+    "run_id",
+    "week",
+    "analysis_mode",
+    "analysis_scope",
+    "history_weeks",
+    "summary",
+    "key_findings",
+    "risks",
+    "opportunities",
+    "actions",
+    "data_quality_notes",
+    "known_gaps"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "run_id": {"type": "string"},
+    "week": {"type": "string"},
+    "run_dt": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "target_month": {"type": "string"},
+    "analysis_mode": {"enum": ["daily", "deep_dive"]},
+    "analysis_scope": {"enum": ["trend_10w", "wow_only"]},
+    "history_weeks": {"type": "integer", "minimum": 0},
+    "evidence_pack_id": {"type": "string"},
+    "summary": {"type": ["string", "object"]},
+    "key_findings": {"type": "array", "items": {"$ref": "#/$defs/insight"}},
+    "risks": {"type": "array", "items": {"$ref": "#/$defs/insight"}},
+    "opportunities": {"type": "array", "items": {"$ref": "#/$defs/insight"}},
+    "actions": {"type": "array", "items": {"$ref": "#/$defs/action"}},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "display_contract": {"const": "dashboard-business-overview-insights-map/v1"},
+    "display_insights": {"$ref": "#/$defs/displayInsights"},
+    "data_quality_notes": {"type": "array", "items": {"type": "string"}},
+    "known_gaps": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "displayInsights": {
+      "type": "object",
+      "required": ["board", "tiers", "secondaryCategories", "categories", "category", "monitor", "warnings"],
+      "additionalProperties": false,
+      "properties": {
+        "board": {"type": "string", "minLength": 1},
+        "tiers": {
+          "type": "object",
+          "required": ["发展", "孵化", "种子"],
+          "properties": {
+            "发展": {"type": "string", "minLength": 1},
+            "孵化": {"type": "string", "minLength": 1},
+            "种子": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": true
+        },
+        "secondaryCategories": {"type": "object", "additionalProperties": {"type": "string"}},
+        "categories": {"type": "object", "additionalProperties": {"type": "string"}},
+        "category": {"type": "string", "minLength": 1},
+        "monitor": {"type": "string", "minLength": 1},
+        "warnings": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "insight": {
+      "type": "object",
+      "required": [
+        "level",
+        "entity",
+        "metric",
+        "direction",
+        "severity",
+        "evidence_ids",
+        "evidence",
+        "likely_causes",
+        "recommended_actions",
+        "confidence",
+        "rule_status",
+        "model_trace"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "level": {"enum": ["overall", "cluster", "category", "model", "fulfillment"]},
+        "entity": {"type": "string"},
+        "metric": {"type": "string"},
+        "direction": {"enum": ["up", "down", "flat", "mixed", "unknown"]},
+        "severity": {"enum": ["high", "medium", "low", "watch"]},
+        "evidence_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^(CAT|CLUSTER|MODEL|FULFILL|TREND|DQ|GAP|CORE)_[A-Z0-9_]+$"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "likely_causes": {"type": "array", "items": {"type": "string"}},
+        "recommended_actions": {"type": "array", "items": {"type": "string"}},
+        "recommended_drilldowns": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "rule_status": {"enum": ["confirmed", "pending_business_confirmation"]},
+        "model_trace": {
+          "type": "object",
+          "required": ["mode", "primary"],
+          "additionalProperties": true,
+          "properties": {
+            "mode": {"enum": ["daily", "deep_dive"]},
+            "primary": {"enum": ["GLM-5.2", "DeepSeek V4 Pro"]},
+            "reviewer": {"enum": ["GLM-5.2", "DeepSeek V4 Pro"]},
+            "formatter": {"enum": ["GLM-5.2", "DeepSeek V4 Pro"]}
+          }
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "level",
+        "entity_type",
+        "entity_name",
+        "metric",
+        "direction",
+        "severity",
+        "confidence",
+        "evidence_ids",
+        "evidence",
+        "recommended_drilldowns",
+        "data_warnings",
+        "rule_status"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "level": {"enum": ["overall", "cluster", "category", "model", "fulfillment"]},
+        "entity_type": {"enum": ["overall", "cluster", "category", "model", "fulfillment"]},
+        "entity_name": {"type": "string"},
+        "metric": {"type": "string"},
+        "direction": {"enum": ["up", "down", "flat", "mixed", "unknown"]},
+        "severity": {"enum": ["high", "medium", "low", "watch"]},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "evidence_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^(CAT|CLUSTER|MODEL|FULFILL|TREND|DQ|GAP|CORE)_[A-Z0-9_]+$"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "evidence": {"type": "array"},
+        "likely_causes": {"type": "array", "items": {"type": "string"}},
+        "recommended_drilldowns": {"type": "array", "items": {"type": "string"}},
+        "data_warnings": {"type": "array", "items": {"type": "string"}},
+        "rule_status": {"enum": ["confirmed", "pending_business_confirmation"]}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["source"],
+      "additionalProperties": true,
+      "properties": {
+        "current_value": {"type": ["number", "null"]},
+        "previous_value": {"type": ["number", "null"]},
+        "delta": {"type": ["number", "null"]},
+        "wow_pct": {"type": ["number", "null"]},
+        "source": {"type": "string"},
+        "week": {"type": "string"},
+        "week_start_date": {"type": "string"},
+        "previous_week_start_date": {"type": "string"}
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["owner_hint", "action", "reason", "priority"],
+      "additionalProperties": true,
+      "properties": {
+        "owner_hint": {"type": "string"},
+        "action": {"type": "string"},
+        "reason": {"type": "string"},
+        "priority": {"enum": ["high", "medium", "low"]},
+        "evidence_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^(CAT|CLUSTER|MODEL|FULFILL|TREND|DQ|GAP|CORE)_[A-Z0-9_]+$"},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

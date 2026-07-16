@@ -17,7 +17,7 @@
     ]
   },
   "verification": {
-    "smoke_prompt": "说明 AI小万数据读取 v1.6.5 如何加载 query-playbook 和 6 份 SQL，委托 xinghe-data-explore 取数，保存 SQL 模板与渲染 SQL，并调用 bin/package-raw-cache.js 打包 raw_cache/read_result；不得读写 AIWAN 服务器/APIHub。",
+    "smoke_prompt": "说明 AI小万数据读取 v1.6.8 如何加载 query-playbook 和 6 份 SQL，委托 xinghe-data-explore 取数，保存 SQL 模板与渲染 SQL，并调用 bin/package-raw-cache.js 打包 raw_cache/read_result；履约两表空 CSV 降级 known_gaps/warn；不得读写 AIWAN 服务器/APIHub。",
     "side_effect_policy": "read_only",
     "user_scenarios": [
       "AI 小万 v1.6 多阶段 Loop 自动执行到 read 阶段。",
@@ -31,7 +31,7 @@
   },
   "contracts": {
     "stage": "read",
-    "contract_version": "ai-wan-v1.6.5-read",
+    "contract_version": "ai-wan-v1.6.8-read",
     "fetch_core_contract_version": "ai-wan-v1.5.5-fetch",
     "server_usage": "none",
     "data_runtime": "xinghe-data-explore",

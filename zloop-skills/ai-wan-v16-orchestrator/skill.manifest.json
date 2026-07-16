@@ -8,19 +8,7 @@
   "dependencies": {
     "skills": [
       {
-        "name": "AI小万数据读取 v1.6",
-        "kind": "exact"
-      },
-      {
-        "name": "AI小万数据处理 v1.6",
-        "kind": "exact"
-      },
-      {
-        "name": "AI小万经营分析 v1.6",
-        "kind": "exact"
-      },
-      {
-        "name": "AI小万结果校验 v1.6",
+        "name": "xinghe-data-explore",
         "kind": "exact"
       }
     ],
@@ -29,7 +17,7 @@
     ]
   },
   "verification": {
-    "smoke_prompt": "说明 AI小万主编排 v1.6.5 如何在一次 Loop invocation 内串联 read(xinghe SQL+raw_cache)→process(品类映射+process pipeline)→analyze(APIHub read 上下文+display_insights)→validate(display 校验+APIHub write)，且 read/process 不读写服务器。",
+    "smoke_prompt": "说明 AI小万主编排 v1.6.15 如何先运行 scripts/aiwan_inline_state_machine.py，真实执行 read(xinghe runtime SQL+单次 materialize 响应+快速 URL 下载 Excel/CSV 转换+raw_cache；履约空 CSV 降级 known_gaps/warn)→process(Node 以 --max-old-space-size=${AIWAN_PROCESS_NODE_OLD_SPACE_MB:-8192} 处理大 CSV+品类映射+process pipeline)→analyze(APIHub read 上下文+display_insights)→validate(display 校验+APIHub write 且 output_type=validation_result)；物化失败时必须输出 debug/materialize 响应并 failed，不能被 Bash 600 秒后台化吞掉。",
     "side_effect_policy": "allow_write_with_confirmation",
     "user_scenarios": [
       "AI 小万 v1.6 多阶段 Loop 自动执行。",
@@ -42,7 +30,7 @@
   },
   "contracts": {
     "stage": "orchestrator",
-    "contract_version": "ai-wan-v1.6.5-stage",
+    "contract_version": "ai-wan-v1.6.15-stage",
     "stage_order": [
       "read",
       "process",

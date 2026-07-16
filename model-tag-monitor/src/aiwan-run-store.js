@@ -354,9 +354,10 @@ function isValidateFinalRecord(record) {
   const payload = record && record.payload && typeof record.payload === 'object' && !Array.isArray(record.payload)
     ? record.payload
     : {};
+  const outputType = String(record && record.output_type || '');
   return record
     && record.stage === 'validate'
-    && record.output_type === 'validation_result'
+    && (outputType === 'validation_result' || outputType === 'validate_result')
     && ['success', 'warn', 'failed'].includes(record.status)
     && payload.processed_data
     && payload.analysis_result
