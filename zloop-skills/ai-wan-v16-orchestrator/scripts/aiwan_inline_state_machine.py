@@ -608,6 +608,175 @@ def hub_post(path: str, body: dict[str, Any], timeout: float = 90.0) -> dict[str
     return data
 
 
+def read_zip_json(zip_path: str | Path | None, member: str) -> Any:
+    if not zip_path:
+        return None
+    path = Path(zip_path)
+    if not path.exists():
+        return None
+    with zipfile.ZipFile(path) as zf:
+        try:
+            with zf.open(member) as f:
+                return json.loads(f.read().decode("utf-8"))
+        except KeyError:
+            return None
+
+
+def read_cache_json(processed: dict[str, Any], member: str) -> Any:
+    artifacts = processed.get("artifacts") or {}
+    for bundle_key, prefix in (("server_cache_bundle", ""), ("processed_cache", "cache/")):
+        data = read_zip_json(artifacts.get(bundle_key), f"{prefix}{member}")
+        if data is not None:
+            return data
+    process_dir_value = artifacts.get("process_dir")
+    process_dir = Path(str(process_dir_value)) if process_dir_value else None
+    if process_dir and process_dir.exists():
+        direct = process_dir / member
+        if direct.exists():
+            return read_json(direct)
+    return None
+
+
+def latest_category_rows(category_cache: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    rows = category_cache.get("rows") if isinstance(category_cache, dict) else []
+    if not isinstance(rows, list):
+        return {}
+    weeks = [str(row.get("week") or "") for row in rows if isinstance(row, dict) and row.get("week")]
+    latest_week = sorted(set(weeks))[-1] if weeks else ""
+    latest: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("week") or "") != latest_week:
+            continue
+        category = str(row.get("category") or "").strip()
+        if category:
+            latest[category] = row
+    return latest
+
+
+def latest_top_models_by_category(model_cache: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    rows = model_cache.get("rows") if isinstance(model_cache, dict) else []
+    if not isinstance(rows, list):
+        return {}
+    weeks = [str(row.get("week") or "") for row in rows if isinstance(row, dict) and row.get("week")]
+    latest_week = sorted(set(weeks))[-1] if weeks else ""
+    top: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("week") or "") != latest_week:
+            continue
+        category = str(row.get("category") or "").strip()
+        if not category:
+            continue
+        if category not in top or num(row.get("gmv")) > num(top[category].get("gmv")):
+            top[category] = row
+    return top
+
+
+def num(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def money(value: Any) -> str:
+    amount = num(value)
+    if amount >= 10000:
+        return f"{amount / 10000:.1f}万"
+    return f"{amount:.0f}"
+
+
+def pct(value: Any) -> str:
+    return f"{num(value) * 100:.1f}%"
+
+
+def metric_line(metric: dict[str, Any]) -> str:
+    rates = metric.get("rates") if isinstance(metric.get("rates"), dict) else {}
+    return (
+        f"机况UV{num(metric.get('jkuv')):.0f}、估价UV{num(metric.get('evaUv')):.0f}、下单UV{num(metric.get('orderUv')):.0f}，"
+        f"发货数{num(metric.get('shipCnt')):.1f}、成交订单{num(metric.get('dealCnt')):.1f}、成交GMV约{money(metric.get('gmv'))}，"
+        f"下单率{pct(rates.get('orderRate'))}、发货率{pct(rates.get('shipRate'))}、成交率{pct(rates.get('dealRate'))}"
+    )
+
+
+def build_category_display_maps(processed: dict[str, Any]) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    taxonomy = read_cache_json(processed, "category-taxonomy.json") or {}
+    category_cache = read_cache_json(processed, "category-cache.json") or {}
+    model_cache = read_cache_json(processed, "model-cache.json") or {}
+    taxonomy_rows = taxonomy.get("rows") if isinstance(taxonomy, dict) else []
+    if not isinstance(taxonomy_rows, list):
+        taxonomy_rows = []
+    latest_by_category = latest_category_rows(category_cache if isinstance(category_cache, dict) else {})
+    latest_models = latest_top_models_by_category(model_cache if isinstance(model_cache, dict) else {})
+    categories_in_cache = set((category_cache.get("categories") or []) if isinstance(category_cache, dict) else [])
+    usable_rows = []
+    for raw in taxonomy_rows:
+        if not isinstance(raw, dict):
+            continue
+        category = str(raw.get("category") or "").strip()
+        tier = str(raw.get("tier") or "").strip()
+        if not category or tier == "自营(非聚合)" or str(raw.get("status") or "") == "已下线":
+            continue
+        if categories_in_cache and category not in categories_in_cache:
+            continue
+        usable_rows.append(raw)
+
+    board_groups: dict[str, list[dict[str, Any]]] = {}
+    categories: dict[str, str] = {}
+    tier_order = {"发展": 0, "孵化": 1, "种子": 2}
+    usable_rows.sort(key=lambda r: (tier_order.get(str(r.get("tier") or ""), 9), -num(r.get("lastWeekGmv")), str(r.get("category") or "")))
+    for row in usable_rows:
+        category = str(row.get("category") or "").strip()
+        board = str(row.get("board") or "未分组").strip() or "未分组"
+        tier = str(row.get("tier") or "待归类").strip() or "待归类"
+        metric = latest_by_category.get(category, {})
+        board_groups.setdefault(board, []).append(row)
+        top_model = latest_models.get(category, {})
+        model_hint = ""
+        if top_model:
+            model_name = str(top_model.get("modelName") or "").strip()
+            if model_name:
+                model_hint = f"；机型观察优先看{model_name}，对应成交GMV约{money(top_model.get('gmv'))}、成交订单{num(top_model.get('dealCnt')):.1f}"
+        if metric:
+            categories[category] = (
+                f"{category}当前归属{tier}层/{board}，本周按AIWAN处理产物生成指标短评；"
+                f"{metric_line(metric)}{model_hint}。建议继续下钻机型、标签和履约明细，低基数波动先按数据风险观察。"
+            )
+        else:
+            categories[category] = (
+                f"{category}当前归属{tier}层/{board}，本轮只取得合法品类分层快照，未取得可稳定聚合的最新周指标。"
+                "该对象保留在页面 map 中作为数据风险，后续需补齐品类指标后再判断归因。"
+            )
+
+    secondary: dict[str, str] = {}
+    for board, rows in sorted(board_groups.items(), key=lambda item: (-sum(num(r.get("lastWeekGmv")) for r in item[1]), item[0])):
+        tier_counts: dict[str, int] = {}
+        gmv = 0.0
+        active_metrics = 0
+        for row in rows:
+            tier = str(row.get("tier") or "待归类")
+            tier_counts[tier] = tier_counts.get(tier, 0) + 1
+            category = str(row.get("category") or "")
+            metric = latest_by_category.get(category)
+            if metric:
+                active_metrics += 1
+                gmv += num(metric.get("gmv"))
+        tier_text = "、".join(f"{k}{v}个" for k, v in sorted(tier_counts.items(), key=lambda kv: (tier_order.get(kv[0], 9), kv[0])))
+        metric_text = f"本周聚合成交GMV约{money(gmv)}，覆盖{active_metrics}个有指标品类" if active_metrics else "本轮仅有分层快照，缺少稳定最新周指标"
+        secondary[board] = (
+            f"{board}覆盖{len(rows)}个品类（{tier_text}），本条由AIWAN处理产物按二级板块聚合生成；"
+            f"{metric_text}。建议优先查看贡献最高的品类和机型标签，映射或样本不足时维持观察。"
+        )
+
+    warnings: list[str] = []
+    if not secondary or not categories:
+        warnings.append("display_category_maps_empty")
+    elif not latest_by_category:
+        warnings.append("display_category_maps_snapshot_only")
+    if (processed.get("category_mapping_manifest") or {}).get("source", {}).get("type") in {"package_category_taxonomy_snapshot_json", "feishu_base_mapping_snapshot_json", "feishu_base_mapping_snapshot_csv"}:
+        warnings.append("category_mapping_source_not_realtime")
+    return secondary, categories, warnings
+
+
 def build_display_insights(processed: dict[str, Any], server_context: dict[str, Any]) -> dict[str, Any]:
     dq = processed.get("data_quality_report") or {}
     warnings = []
@@ -622,13 +791,15 @@ def build_display_insights(processed: dict[str, Any], server_context: dict[str, 
         "孵化": "孵化层关注估价UV到下单UV的转化变化，重点观察下单率、发货率、成交率是否同步波动；低基数对象只作为数据风险保留。",
         "种子": "种子层关注机况UV与估价UV的早期信号，若成交订单不足，需要先确认样本量和品类映射，再判断是否继续跟踪。",
     }
+    secondary, categories, map_warnings = build_category_display_maps(processed)
+    warnings.extend(map_warnings)
     return {
         "board": board,
         "tiers": tiers,
-        "secondaryCategories": {},
-        "categories": {},
-        "category": "品类层以真实 dashboard/category snapshot 与品类映射表为准，未匹配或低置信度品类不进入页面层级 map，保留在 warnings 中观察。",
-        "monitor": "本轮由 AIWAN v1.6.8 内联状态机生成，服务器 bridge 只发布 display_insights；若飞书映射、履约数据或历史窗口不足，结论按数据风险降级。",
+        "secondaryCategories": secondary,
+        "categories": categories,
+        "category": "品类层以AIWAN process产物、server_cache_bundle和dashboard聚合快照为准；分层/品类短评会标明来源策略，未匹配或低置信度对象保留在 warnings 中观察。",
+        "monitor": "本轮由 AIWAN v1.6 内联状态机生成，服务器 bridge 只发布 display_insights；二级类目和品类文案若来自dashboard聚合快照，会按聚合观察口径展示，不伪装为AI小万独立归因。",
         "warnings": warnings,
     }
 
@@ -686,6 +857,8 @@ def execute_validate(args: argparse.Namespace, run_dir: Path, processed: dict[st
         check(f"tier_{tier}_non_empty", isinstance(tiers.get(tier), str) and bool(tiers.get(tier).strip()))
     check("secondary_map", isinstance(display.get("secondaryCategories"), dict))
     check("categories_map", isinstance(display.get("categories"), dict))
+    check("secondary_map_non_empty", isinstance(display.get("secondaryCategories"), dict) and bool(display.get("secondaryCategories")))
+    check("categories_map_non_empty", isinstance(display.get("categories"), dict) and bool(display.get("categories")))
     publish_allowed = not failed
     validation_result = {
         "stage": "validate",

@@ -1,7 +1,7 @@
 ---
 name: AI小万主编排 v1.6
 description: AI 小万 v1.6/v1.7 单 Loop 入口 Skill：串联 read SQL 取数、process 品类映射与模板处理、analyze 生成 display_insights、validate 最终写服务器。
-version: 1.6.18
+version: 1.6.19
 ---
 
 # AI小万主编排 v1.6
@@ -65,7 +65,7 @@ python scripts/aiwan_inline_state_machine.py \
 - 禁止把带 `+0800` 的时间戳直接作为 `run_id`；必须改成 `_0800` 或省略时区符号。
 - 规范化后的 `run_id` 必须贯穿四阶段，禁止中途漂移。
 
-## 新阶段职责契约（v1.6.5）
+## 新阶段职责契约（v1.6.19）
 
 APIHub 不再是每阶段 checkpoint 中心。四阶段职责如下：
 
@@ -89,8 +89,8 @@ APIHub 不再是每阶段 checkpoint 中心。四阶段职责如下：
 9. `read` 阶段必须触发 `$xinghe-data-explore` 执行 6 份已确认 SQL，并返回 `raw_cache/active_fetch_manifest/sql_status/raw_manifest`。6 个 execute_id 成功但未落成 raw CSV/raw_cache 时仍视为 `failed`。
 10. `process` 阶段必须消费 read 阶段产物，运行确定性 process pipeline；不得把 read 的 raw SQL 结果直接传给 analyze。
 11. `process` 阶段必须产出 `category_mapping_manifest`；飞书品类映射读取失败时允许用最近快照，但必须把非实时风险传给 analyze/validate。
-12. `analyze` 阶段必须产出 `analysis_result.display_contract=dashboard-business-overview-insights-map/v1` 和完整 `display_insights`；服务器 bridge 不会从 findings 生成页面文案。
-13. `validate` 阶段必须校验 `display_insights` 后再写服务器；display 不合法时 `publish_allowed=false`。
+12. `analyze` 阶段必须产出 `analysis_result.display_contract=dashboard-business-overview-insights-map/v1` 和完整 `display_insights`；服务器 bridge 不会从 findings 生成页面文案。`display_insights.secondaryCategories/categories` 必须由 process 产物、`server_cache_bundle`、dashboard 聚合快照或经验证 AI 结论填充，不能留空后依赖 dashboard 兜底。
+13. `validate` 阶段必须校验 `display_insights` 后再写服务器；display 不合法或二级类目/品类 map 为空时 `publish_allowed=false`。
 14. 如果 assistant 准备输出最终答复，但 `stage_results.process/analyze/validate` 任一缺失，必须立刻停止最终答复，继续调用下一个阶段 Skill。
 15. Loop 平台 `succeeded` 不等于业务成功；只有 `validation_result.server_write_confirmed=true` 且复读确认包含同一 `run_id`，才能把 `overall_status` 标为 `success|warn`。
 
