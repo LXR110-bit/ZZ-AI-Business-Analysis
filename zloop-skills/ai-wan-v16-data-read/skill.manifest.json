@@ -6,17 +6,23 @@
     "target": "remote_sandbox"
   },
   "dependencies": {
-    "skills": [],
+    "skills": [
+      {
+        "name": "xinghe-data-explore",
+        "kind": "exact"
+      }
+    ],
     "runtime": [
       "zloop_runtime"
     ]
   },
   "verification": {
-    "smoke_prompt": "说明 AI小万数据读取 v1.6 如何只通过 /api/aiwan/read 和 /api/aiwan/write 执行 read 阶段，并在失败时写 checkpoint；不要依赖上一阶段聊天上下文。",
-    "side_effect_policy": "apihub_read_write_only",
+    "smoke_prompt": "说明 AI小万数据读取 v1.6.5 如何加载 query-playbook 和 6 份 SQL，委托 xinghe-data-explore 取数，保存 SQL 模板与渲染 SQL，并调用 bin/package-raw-cache.js 打包 raw_cache/read_result；不得读写 AIWAN 服务器/APIHub。",
+    "side_effect_policy": "read_only",
     "user_scenarios": [
-      "AI 小万 v1.6 多阶段 Loop 自动执行。",
-      "手动单独重跑或检查某个阶段。"
+      "AI 小万 v1.6 多阶段 Loop 自动执行到 read 阶段。",
+      "手动单独重跑 read 阶段并检查 6 份 SQL 的 execute_id、row_count、raw_cache 和 active_fetch_manifest。",
+      "任一 SQL 失败时 read 阶段返回 failed，不继续 process。"
     ]
   },
   "zloop": {
@@ -25,10 +31,10 @@
   },
   "contracts": {
     "stage": "read",
-    "contract_version": "ai-wan-v1.6-apihub-stage",
-    "api_bridge": {
-      "read": "POST /api/aiwan/read",
-      "write": "POST /api/aiwan/write"
-    }
+    "contract_version": "ai-wan-v1.6.5-read",
+    "fetch_core_contract_version": "ai-wan-v1.5.5-fetch",
+    "server_usage": "none",
+    "data_runtime": "xinghe-data-explore",
+    "output_type": "sql_result"
   }
 }

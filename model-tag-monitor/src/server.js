@@ -50,6 +50,7 @@ function parseCookies(req) {
 function hasAccess(req) {
   return parseCookies(req)[ACCESS_COOKIE] === ACCESS_TOKEN;
 }
+
 function setAccessCookie(res) {
   res.setHeader(
     'Set-Cookie',

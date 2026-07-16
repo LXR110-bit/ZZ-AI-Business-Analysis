@@ -1,44 +1,55 @@
-## APIHub 读写桥契约
+# AI小万 v1.6.5 Analyze APIHub 只读契约
 
-所有 v1.6 Skill 必须把服务器/APIHub 当作唯一状态中心，禁止依赖上一阶段的聊天上下文或临时口头结论。
+## 边界
 
-### 统一读接口
+本阶段是四阶段中唯一读取服务器上下文的分析阶段。
 
-`POST /api/aiwan/read`
+- 输入主数据来自 `processed_data`。
+- APIHub read 只用于补充服务器上下文、历史窗口、规则、标签知识和已有配置。
+- 禁止写服务器；最终写入只由 `AI小万结果校验 v1.6` 完成。
 
-必传：
+## Runtime Client Gate
+
+- 唯一 runtime client：`zloop_runtime.hub`。
+- 只允许相对 path `/v2/aiwan/api/aiwan/read`。
+- 禁止 `/gw/`、完整网关域名、Authorization、APIHub token、自定义上游凭证头。
+- 本包脚本为 read-only；不得在 analyze 阶段调用 write。
+
+## Read 请求
+
+```bash
+python scripts/aiwan_apihub.py read \
+  --run-id "$RUN_ID" \
+  --stage analyze \
+  --week "$WEEK" \
+  --history-weeks 10 \
+  --include run_meta,history_10w,rules,previous_stage_outputs
+```
+
+只允许发送：`run_id`、`stage`、`week`、`include`、`history_weeks`。
+
+## 期望 server_context
+
+read 响应中可消费的上下文包括：
 
 ```json
 {
-  "run_id": "2026-W28-weekly",
+  "ok": true,
+  "run_id": "",
   "stage": "analyze",
-  "week": "2026-W28",
-  "scope": { "type": "weekly", "category": null },
-  "include": ["run_meta", "history_10w", "metric_snapshot", "candidate_anomalies", "rules", "previous_stage_outputs"]
+  "context": {
+    "run_meta": {},
+    "history_10w": {},
+    "rules": {},
+    "previous_stage_outputs": {},
+    "model_tag_knowledge": {}
+  },
+  "warnings": []
 }
 ```
 
-### 统一写接口
+字段缺失时不得补造；必须在 `evidence_pack.known_gaps` 与 `analysis_result.warnings` 记录。
 
-`POST /api/aiwan/write`
+## run_id 规范
 
-必传：
-
-```json
-{
-  "run_id": "2026-W28-weekly",
-  "stage": "analyze",
-  "status": "success",
-  "output_type": "analysis_result",
-  "payload": {},
-  "warnings": [],
-  "started_at": "",
-  "finished_at": ""
-}
-```
-
-### 阶段名
-
-只使用以下阶段名：`read`、`process`、`analyze`、`validate`。
-
-每个阶段成功、失败、跳过都必须写回 `/api/aiwan/write`。失败时 `status=failed`，`payload.error` 必须说明失败原因和可重跑建议。
+后端只允许 `run_id` 包含：`0-9 A-Z a-z . _ : -`；`+0800` 必须改成 `_0800`。

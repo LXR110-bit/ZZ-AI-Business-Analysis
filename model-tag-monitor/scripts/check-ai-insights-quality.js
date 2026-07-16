@@ -75,8 +75,8 @@ function validateAiInsightsQuality(cache, options = {}) {
   for (const key of ['version', 'week', 'generatedAt', 'generatedBy', 'mode', 'inputHash', 'insights']) {
     if (!(key in cache)) errors.push(`cache.${key} missing`);
   }
-  if (!['ai', 'deterministic'].includes(cache.mode)) errors.push(`cache.mode invalid: ${cache.mode || '<missing>'}`);
-  if (options.requireAi && cache.mode !== 'ai') errors.push(`cache.mode must be ai when --require-ai is set; got ${cache.mode || '<missing>'}`);
+  if (!['ai', 'aiwan_loop', 'deterministic'].includes(cache.mode)) errors.push(`cache.mode invalid: ${cache.mode || '<missing>'}`);
+  if (options.requireAi && !['ai', 'aiwan_loop'].includes(cache.mode)) errors.push(`cache.mode must be ai or aiwan_loop when --require-ai is set; got ${cache.mode || '<missing>'}`);
   if (cache.mode === 'deterministic') warnings.push('AI cache is deterministic fallback; allowed but should be reviewed if BUSINESS_OVERVIEW_AI_ENABLED=1');
 
   const insights = cache.insights;

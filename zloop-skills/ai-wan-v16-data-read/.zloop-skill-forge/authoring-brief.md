@@ -1,0 +1,25 @@
+# Authoring Brief — ai-wan-v16-data-read
+
+- source_type: from-existing-skill
+- mode: update
+- route_decision: update-owned
+- route_evidence: 用户要求修复现有 AI小万 v1.6/v1.7 read Skill：保留 6 份 SQL 模板、渲染 SQL 和 raw_cache/read_result 契约，委托 xinghe-data-explore 取数。
+- route_next_action: package-check；API 注册契约修复后 trial-run；通过后 apply。
+- target_skill_public_id: 6802c4db-c48f-4ecd-bc85-a58eac807c8d
+- base_skill_version_id: e5e5bb2f824c490b9bad74f16e8c8bda
+- stage: read
+- runtime_client_gate: xinghe
+- api_binding_status: not_required
+- call_sequence_status: pending_trial
+- API read: not allowed in read
+- API write: not allowed in read
+- permission_gaps:
+  - none for local package authoring
+- known_gaps:
+  - real data-analysis-sandbox trial-run is pending.
+  - call sequence cannot be marked verified until xinghe-data-explore completes 6 SQL and raw_cache/read_result artifacts pass process.
+- compatibility:
+  - preserve existing Skill public_id and baseline platform fields.
+  - read must delegate xinghe-data-explore and must not read/write AIWAN server.
+  - SQL templates and rendered SQL must be preserved for process/validate traceability.
+- verification scenario: 使用唯一 run_id 执行 read；6 份 SQL 均有 execute_id/row_count/rendered_sql_sha256；raw_cache、active_fetch_manifest、sql_status、raw_manifest 均存在。

@@ -737,6 +737,71 @@ test('business overview generator: rolling week refreshes daily instead of prese
   assert.notEqual(cache.insights.board, '昨日 W28 AI 不应冻结复用');
 });
 
+test('business overview generator: preserves same-week aiwan_loop cache before fallback or legacy AI refresh', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-aiwan-preserve-test-'));
+  const dashboardFile = path.join(tmp, 'dashboard.json');
+  const w28 = composeDashboard({
+    ...baseOpts,
+    week: '2026-W28',
+    prevWeek: '2026-W27',
+    analysisNow: '2026-07-09T02:30:00.000Z',
+  });
+  fs.writeFileSync(dashboardFile, JSON.stringify(w28), 'utf8');
+  const aiwanCache = completeAiCacheForDashboard(w28, {
+    generatedAt: '2026-07-09T01:00:00.000Z',
+    generatedBy: 'aiwan-v1.6.2-loop',
+    mode: 'aiwan_loop',
+    inputHash: 'aiwan:loop-v162-2026-W28:1',
+    insights: {
+      ...completeAiCacheForDashboard(w28).insights,
+      board: 'AIWAN W28 rolling cache must be preserved',
+      tiers: { 发展: 'AIWAN 发展', 孵化: 'AIWAN 孵化', 种子: 'AIWAN 种子' },
+      category: 'AIWAN category',
+      monitor: 'AIWAN monitor',
+    },
+    analysisStatus: {
+      ...w28.analysisStatus,
+      generatedAt: '2026-07-09T01:00:00.000Z',
+      generatedBy: 'aiwan-v1.6.2-loop',
+      mode: 'aiwan_loop',
+      inputHash: 'aiwan:loop-v162-2026-W28:1',
+    },
+    warnings: ['AIWAN warning'],
+  });
+  fs.writeFileSync(path.join(tmp, 'business-overview-insights-2026-W28.json'), JSON.stringify(aiwanCache), 'utf8');
+
+  const proc = spawnSync(process.execPath, [
+    path.join(__dirname, '..', 'scripts', 'generate-business-overview-insights.js'),
+    '--dashboard-file', dashboardFile,
+    '--out-name', 'business-overview-insights.json',
+  ], {
+    cwd: path.join(__dirname, '..'),
+    env: { ...process.env, DATA_DIR: tmp, BUSINESS_OVERVIEW_AI_ENABLED: '0' },
+    encoding: 'utf8',
+  });
+  assert.equal(proc.status, 0, proc.stderr || proc.stdout);
+  const stdout = JSON.parse(proc.stdout);
+  assert.equal(stdout.preserved, true);
+  assert.equal(stdout.preservedReason, 'aiwan_loop');
+  assert.equal(stdout.mode, 'aiwan_loop');
+  assert.deepEqual(outputBasenames(stdout.out), [
+    'business-overview-insights-2026-W28.json',
+    'business-overview-insights.json',
+  ]);
+
+  const weekly = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights-2026-W28.json'), 'utf8'));
+  const latest = JSON.parse(fs.readFileSync(path.join(tmp, 'business-overview-insights.json'), 'utf8'));
+  assert.deepEqual(latest, weekly);
+  assert.equal(weekly.mode, 'aiwan_loop');
+  assert.equal(weekly.generatedBy, 'aiwan-v1.6.2-loop');
+  assert.equal(weekly.insights.board, 'AIWAN W28 rolling cache must be preserved');
+  assert.equal(weekly.inputHash, 'aiwan:loop-v162-2026-W28:1');
+  assert.deepEqual(weekly.warnings, ['AIWAN warning']);
+
+  const quality = validateAiInsightsQuality(weekly, { dashboard: w28, requireAi: true });
+  assert.equal(quality.ok, true, quality.errors.join('\n'));
+});
+
 test('business overview generator: completed week preserves frozen AI when final cache hash matches', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'business-overview-final-freeze-test-'));
   const dashboardFile = path.join(tmp, 'dashboard.json');

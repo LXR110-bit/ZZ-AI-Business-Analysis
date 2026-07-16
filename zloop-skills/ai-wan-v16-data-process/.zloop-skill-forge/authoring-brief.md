@@ -1,0 +1,25 @@
+# Authoring Brief — ai-wan-v16-data-process
+
+- source_type: from-existing-skill
+- mode: update
+- route_decision: update-owned
+- route_evidence: 用户要求修复现有 AI小万 v1.6/v1.7 process Skill：复用旧服务器 v1.5.5 数据处理语义，并新增飞书品类映射表读取/快照契约。
+- route_next_action: package-check；API 注册契约修复后 trial-run；通过后 apply。
+- target_skill_public_id: 516b20a3-a672-4c39-b8ab-ffa2f200e3fe
+- base_skill_version_id: 1468e921a883456fa8ae5b1ab0222f2f
+- stage: process
+- runtime_client_gate: none
+- api_binding_status: not_required
+- call_sequence_status: pending_trial
+- API read: not allowed in process
+- API write: not allowed in process
+- permission_gaps:
+  - none for local package authoring
+- known_gaps:
+  - real data-analysis-sandbox trial-run is pending.
+  - call sequence cannot be marked verified until read → process → analyze → validate succeeds in data-analysis-sandbox.
+- compatibility:
+  - preserve existing Skill public_id and baseline platform fields.
+  - process must not read/write AIWAN server.
+  - category mapping source is Feishu Base; fallback snapshot is allowed with warning.
+- verification scenario: 使用唯一 run_id 执行 process；消费 read_result/raw_cache，生成 processed_data、category_mapping_manifest、analysis_history、server_cache_bundle、data_quality_report；不执行 SQL、不读写服务器。

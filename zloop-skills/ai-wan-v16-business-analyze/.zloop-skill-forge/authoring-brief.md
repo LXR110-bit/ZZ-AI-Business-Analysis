@@ -1,0 +1,26 @@
+# Authoring Brief — ai-wan-v16-business-analyze
+
+- source_type: from-existing-skill
+- mode: update
+- route_decision: update-owned
+- route_evidence: 用户要求修复现有 AI小万 v1.6/v1.7 analyze Skill：保留 v1.6 阶段边界，融合飞书五层分析法，并稳定产出旧 dashboard bridge 直接消费的 display_insights。
+- route_next_action: package-check --mode update；确认后使用 upload --mode update --route-decision update-owned。
+- target_skill_public_id: 9d0548c8-2443-477d-8200-597ffca7f886
+- base_skill_version_id: 78f81f249a354377b18460f1305bd814
+- stage: analyze
+- runtime_client_gate: hub
+- api_binding_status: bound
+- call_sequence_status: pending_trial
+- API read: aiwan:run:read / f3f2a89f-3c54-4f3d-92a0-04d2a25a6b8d / POST /api/aiwan/read
+- API write: not allowed in analyze; validate stage owns final write
+- permission_gaps:
+  - none for local package authoring
+- known_gaps:
+  - latest real data-analysis-sandbox trial-run is pending after this package update.
+  - call sequence cannot be marked verified until APIHub read succeeds and analysis_result passes validate-stage checks.
+- compatibility:
+  - preserve existing Skill public_id and baseline platform fields.
+  - keep v1.6 input/output contract: `processed_data + server_context -> analysis_result`.
+  - analysis_result must include `display_contract=dashboard-business-overview-insights-map/v1` and complete `display_insights`.
+  - no SQL, no local JSON fallback, no server write in analyze.
+- verification scenario: 使用唯一 run_id 执行 analyze；APIHub read 成功或显式 warn 降级；analysis_result 包含 evidence_pack、insights、findings、display_insights、review_notes、analysis_trace；全部 finding 的 evidence_ids 可在 evidence_index 回链；未执行 write。

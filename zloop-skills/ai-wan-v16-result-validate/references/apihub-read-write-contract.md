@@ -1,44 +1,49 @@
-## APIHub 读写桥契约
+# AI小万 v1.6.2 Validate APIHub 最终写入契约
 
-所有 v1.6 Skill 必须把服务器/APIHub 当作唯一状态中心，禁止依赖上一阶段的聊天上下文或临时口头结论。
+## 边界
 
-### 统一读接口
+本阶段负责最终写服务器：
 
-`POST /api/aiwan/read`
+- 输入：`processed_data` + `analysis_result`。
+- 校验后生成 `validation_result`。
+- 通过 APIHub write 写入最终数据和分析结果。
+- 写入后通过 APIHub read 复读确认。
 
-必传：
+禁止重新跑 SQL、重做 process、重写 analyze 结论。
 
-```json
-{
-  "run_id": "2026-W28-weekly",
-  "stage": "analyze",
-  "week": "2026-W28",
-  "scope": { "type": "weekly", "category": null },
-  "include": ["run_meta", "history_10w", "metric_snapshot", "candidate_anomalies", "rules", "previous_stage_outputs"]
-}
-```
+## Runtime Client Gate
 
-### 统一写接口
+- 唯一 runtime client：`zloop_runtime.hub`。
+- 只允许相对 path `/v2/aiwan/api/aiwan/write` 和 `/v2/aiwan/api/aiwan/read`。
+- 禁止 `/gw/`、完整网关域名、Authorization、APIHub token、自定义上游凭证头。
 
-`POST /api/aiwan/write`
-
-必传：
+## Write 请求
 
 ```json
 {
-  "run_id": "2026-W28-weekly",
-  "stage": "analyze",
-  "status": "success",
-  "output_type": "analysis_result",
-  "payload": {},
+  "run_id": "<same-run-id>",
+  "week": "2026-W29",
+  "stage": "validate",
+  "status": "success|warn|failed",
+  "output_type": "validation_result",
+  "payload": {
+    "processed_data": {},
+    "analysis_result": {},
+    "validation_result": {}
+  },
   "warnings": [],
-  "started_at": "",
-  "finished_at": ""
+  "artifacts": []
 }
 ```
 
-### 阶段名
+## 复读确认
 
-只使用以下阶段名：`read`、`process`、`analyze`、`validate`。
+写入成功后 read `stage=validate`，确认：
 
-每个阶段成功、失败、跳过都必须写回 `/api/aiwan/write`。失败时 `status=failed`，`payload.error` 必须说明失败原因和可重跑建议。
+- `run_meta.stages.validate` 或等价返回中存在 validate 结果；
+- `status/output_type/revision` 与写入响应一致；
+- `run_id/week` 未漂移。
+
+## run_id 规范
+
+后端只允许 `run_id` 包含：`0-9 A-Z a-z . _ : -`；`+0800` 必须改成 `_0800`。

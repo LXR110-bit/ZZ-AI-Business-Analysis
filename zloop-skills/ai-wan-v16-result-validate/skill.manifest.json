@@ -12,8 +12,8 @@
     ]
   },
   "verification": {
-    "smoke_prompt": "说明 AI小万结果校验 v1.6 如何只通过 /api/aiwan/read 和 /api/aiwan/write 执行 validate 阶段，并在失败时写 checkpoint；不要依赖上一阶段聊天上下文。",
-    "side_effect_policy": "apihub_read_write_only",
+    "smoke_prompt": "说明 AI小万结果校验 v1.6.5 如何按旧服务器/v1.5.5 深度校验 lineage、数据质量、history_weeks、evidence_id、schema、display_insights、known_gap、LLM 白名单、过度归因、核心机型遗漏和输出安全，再通过 APIHub write 最终写服务器并 reread 确认。",
+    "side_effect_policy": "allow_write_with_confirmation",
     "user_scenarios": [
       "AI 小万 v1.6 多阶段 Loop 自动执行。",
       "手动单独重跑或检查某个阶段。"
@@ -25,10 +25,29 @@
   },
   "contracts": {
     "stage": "validate",
-    "contract_version": "ai-wan-v1.6-apihub-stage",
+    "contract_version": "ai-wan-v1.6.5-validate",
+    "validation_core_contract_version": "ai-wan-v1.5.5-validation",
+    "server_usage": "final_write",
+    "input": [
+      "processed_data",
+      "analysis_result"
+    ],
+    "output_type": "validation_result",
     "api_bridge": {
       "read": "POST /api/aiwan/read",
-      "write": "POST /api/aiwan/write"
-    }
+      "write": "POST /api/aiwan/write",
+      "runtime_client": "zloop_runtime.hub",
+      "read_runtime_path": "/v2/aiwan/api/aiwan/read",
+      "write_runtime_path": "/v2/aiwan/api/aiwan/write"
+    },
+    "display_contract": "dashboard-business-overview-insights-map/v1",
+    "server_bridge_publish_source": "analysis_result.display_insights",
+    "publish_blockers": [
+      "missing_display_contract",
+      "missing_display_insights",
+      "missing_tiers",
+      "invalid_secondary_or_category_key",
+      "invalid_display_copy"
+    ]
   }
 }

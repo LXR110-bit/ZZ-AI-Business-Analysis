@@ -12,11 +12,12 @@
     ]
   },
   "verification": {
-    "smoke_prompt": "说明 AI小万数据处理 v1.6 如何只通过 /api/aiwan/read 和 /api/aiwan/write 执行 process 阶段，并在失败时写 checkpoint；不要依赖上一阶段聊天上下文。",
-    "side_effect_policy": "apihub_read_write_only",
+    "smoke_prompt": "说明 AI小万数据处理 v1.6.5 如何消费 read_result/raw_cache，读取飞书品类映射或快照，调用 bin/process-raw-cache.js 生成 processed_data、category_mapping_manifest、analysis_history、server_cache_bundle、data_quality_report；不得跑 SQL、不得读写 AIWAN 服务器/APIHub。",
+    "side_effect_policy": "read_only",
     "user_scenarios": [
-      "AI 小万 v1.6 多阶段 Loop 自动执行。",
-      "手动单独重跑或检查某个阶段。"
+      "AI 小万 v1.6 多阶段 Loop 自动执行到 process 阶段。",
+      "手动检查 process 阶段是否复用 v1.5.5 的 day_cnt 周日均、rolling/final、KEEP_WEEKS=10 和标签快照语义。",
+      "history_weeks 不足 8 周或 board_metrics 缺失时返回 warn 并写入 known_gaps。"
     ]
   },
   "zloop": {
@@ -25,10 +26,17 @@
   },
   "contracts": {
     "stage": "process",
-    "contract_version": "ai-wan-v1.6-apihub-stage",
-    "api_bridge": {
-      "read": "POST /api/aiwan/read",
-      "write": "POST /api/aiwan/write"
+    "contract_version": "ai-wan-v1.6.5-process",
+    "process_core_contract_version": "ai-wan-v1.5.5-process",
+    "server_usage": "none",
+    "input": "read_result",
+    "output_type": "processed_data",
+    "category_mapping": {
+      "source": "feishu_base",
+      "base_token": "NKw4b2eKxaKhDTsOrD9cONklnGb",
+      "table": "品类映射",
+      "fallback": "latest_snapshot_with_warning",
+      "manifest": "category_mapping_manifest"
     }
   }
 }

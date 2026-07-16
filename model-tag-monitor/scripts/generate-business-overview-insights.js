@@ -513,8 +513,23 @@ function isReusableAiCache(cache, expectedWeek = null) {
     && typeof cache === 'object'
     && cache.week
     && (!expectedWeek || cache.week === expectedWeek)
-    && cache.mode === 'ai'
-    && cache.generatedBy === 'codex-cli-read-only'
+    && (
+      (cache.mode === 'ai' && cache.generatedBy === 'codex-cli-read-only')
+      || (cache.mode === 'aiwan_loop' && cache.generatedBy === 'aiwan-v1.6.2-loop')
+    )
+    && cache.insights
+    && typeof cache.insights === 'object'
+  );
+}
+
+function isAiwanLoopCache(cache, expectedWeek = null) {
+  return Boolean(
+    cache
+    && typeof cache === 'object'
+    && cache.week
+    && (!expectedWeek || cache.week === expectedWeek)
+    && cache.mode === 'aiwan_loop'
+    && cache.generatedBy === 'aiwan-v1.6.2-loop'
     && cache.insights
     && typeof cache.insights === 'object'
   );
@@ -718,6 +733,26 @@ async function main() {
   const rolling = isRollingDashboard(dashboard);
   const existing = readExistingAiCacheForWeek(dashboard.week);
 
+  if (existing && isAiwanLoopCache(existing.cache, dashboard.week)) {
+    const refreshed = attachCacheAnalysisStatus(existing.cache, dashboard);
+    const written = writeCacheForWeek(refreshed);
+    console.log(JSON.stringify({
+      ok: true,
+      mode: refreshed.mode,
+      aiEnabled,
+      preserved: true,
+      preservedReason: 'aiwan_loop',
+      refreshedAnalysisStatus: true,
+      out: written.map((name) => store.filePath(name)),
+      week: refreshed.week,
+      dashboardWeek: dashboard.week,
+      analysisState: (summary.analysisStatus && summary.analysisStatus.state) || null,
+      cacheAnalysisState: (refreshed.analysisStatus && refreshed.analysisStatus.state) || null,
+      warnings: refreshed.warnings || [],
+    }, null, 2));
+    return;
+  }
+
   // 已结束周的 AI 结论默认冻结：即使生产脚本打开 AI，也不覆盖 W27 这类周结文件。
   // 当前未结束周（如 W28）则按每日刷新滚动重算。
   if (existing && !rolling && !allowFinalRefresh && isFinalCacheFreshForDashboard(existing.cache, summary)) {
@@ -770,6 +805,7 @@ module.exports = {
   buildPrompt,
   fallbackInsights,
   isGeneratedInsight,
+  isAiwanLoopCache,
   isReusableAiCache,
   isRollingDashboard,
   localizeMetricLabels,

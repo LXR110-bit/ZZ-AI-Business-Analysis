@@ -67,6 +67,26 @@ async function verifyAccess() {
   return r.headers['set-cookie'].map((c) => c.split(';')[0]).join('; ');
 }
 
+function displayInsightsFixture() {
+  return {
+    board: 'AIWAN 大盘概览：机况UV增长但下单率下降0.80个百分点，优先下钻下单UV到发货数链路。',
+    tiers: {
+      发展: '发展层基于当前 dashboard 聚合指标判断，成交GMV承压但成交订单稳定，先看内存条下单率。',
+      孵化: '孵化层当前样本较少，成交GMV波动需要结合二级类目继续观察。',
+      种子: '种子层低基数品类较多，先按数据风险维持观察，不放大经营动作。',
+    },
+    secondaryCategories: {
+      电脑办公: '电脑办公二级类目由内存条贡献主要成交GMV，需观察下单率和发货数承接。',
+    },
+    categories: {
+      内存条: '内存条成交GMV下降，估价UV到下单UV转化偏弱，建议先查下单链路。',
+    },
+    category: 'AIWAN 全局品类概览：当前重点关注内存条，其他品类等待更多数据。',
+    monitor: 'AIWAN 监测说明：validate 已完成，机型层本次没有独立输出，保留监测页结构化明细。',
+    warnings: ['AIWAN display smoke warning'],
+  };
+}
+
 function writeAiwanFixture(dir) {
   const weeks = ['2026-W27', '2026-W28'];
   const categoryRows = [
@@ -93,20 +113,7 @@ test('/api/aiwan/read + /api/aiwan/write provide stage state bridge', async () =
 
   try {
     await waitReady(child);
-
-    const publicRead = await httpJson('POST', '/api/aiwan/read', { run_id: 'public-aiwan-test', week: '2026-W28', stage: 'read', include: ['run_meta', 'rules'] });
-    assert.equal(publicRead.status, 200, publicRead.body);
-    assert.equal(publicRead.json.run_id, 'public-aiwan-test');
-
-    const publicWrite = await httpJson('POST', '/api/aiwan/write', { run_id: 'public-aiwan-test', week: '2026-W28', stage: 'read', status: 'success', payload: { authenticated_via: 'public-aiwan-bridge' } });
-    assert.equal(publicWrite.status, 200, publicWrite.body);
-    assert.equal(publicWrite.json.output.payload.authenticated_via, 'public-aiwan-bridge');
-
-    const publicDashboard = await httpGet('/api/dashboard');
-    assert.equal(publicDashboard.status, 401, '页面业务 API 仍保留门禁，只有 aiwan API 放行');
-
-    const cookie = await verifyAccess();
-    const headers = { Cookie: cookie };
+    const headers = {};
 
     const missing = await httpJson('POST', '/api/aiwan/read', { run_id: '2026-W28-weekly', week: '2026-W28', stage: 'process', include: ['previous_stage_outputs'] }, headers);
     assert.equal(missing.status, 409, missing.body);
@@ -133,8 +140,63 @@ test('/api/aiwan/read + /api/aiwan/write provide stage state bridge', async () =
     assert.equal(stagePayload.payload.candidate_count, 2);
     assert.equal(stagePayload.overwritten_previous_revision, true);
 
-    const dashboard = await httpGet('/api/dashboard', headers);
-    assert.equal(dashboard.status, 200, '旧 /api/dashboard 不受 aiwan API 影响');
+    await httpJson('POST', '/api/aiwan/write', { run_id: '2026-W28-weekly', week: '2026-W28', stage: 'analyze', status: 'success', output_type: 'analysis_result', payload: { findings_count: 1 } }, headers);
+    const validateWrite = await httpJson('POST', '/api/aiwan/write', {
+      run_id: '2026-W28-weekly',
+      week: '2026-W28',
+      stage: 'validate',
+      status: 'warn',
+      output_type: 'validation_result',
+      payload: {
+        processed_data: { status: 'success', week: '2026-W28' },
+        analysis_result: {
+          status: 'warn',
+          week: '2026-W28',
+          display_contract: 'dashboard-business-overview-insights-map/v1',
+          display_insights: displayInsightsFixture(),
+          findings: [],
+        },
+        validation_result: { overall_status: 'warn', checks: { smoke: true }, warnings: ['validate warning'], publish_allowed: true },
+      },
+      warnings: ['record warning'],
+    }, headers);
+    assert.equal(validateWrite.status, 200, validateWrite.body);
+    assert.equal(validateWrite.json.run.status, 'success');
+    assert.equal(validateWrite.json.run.overall_status, 'warn');
+    assert.deepEqual(validateWrite.json.bridge, {
+      ok: true,
+      cache_name: 'business-overview-insights-2026-W28.json',
+      mode: 'aiwan_loop',
+      generatedBy: 'aiwan-v1.6.2-loop',
+    });
+
+    const aiwanCache = JSON.parse(fs.readFileSync(path.join(tmpDataDir, 'business-overview-insights-2026-W28.json'), 'utf8'));
+    assert.equal(aiwanCache.mode, 'aiwan_loop');
+    assert.equal(aiwanCache.generatedBy, 'aiwan-v1.6.2-loop');
+    assert.equal(aiwanCache.insights.board, displayInsightsFixture().board);
+    assert.equal(aiwanCache.insights.tiers.发展, displayInsightsFixture().tiers.发展);
+    assert.equal(aiwanCache.insights.secondaryCategories.电脑办公, displayInsightsFixture().secondaryCategories.电脑办公);
+    assert.equal(aiwanCache.insights.categories.内存条, displayInsightsFixture().categories.内存条);
+
+    const validateRead = await httpJson('POST', '/api/aiwan/read', { run_id: '2026-W28-weekly', week: '2026-W28', stage: 'validate', include: ['run_meta', 'previous_stage_outputs'] }, headers);
+    assert.equal(validateRead.status, 200, validateRead.body);
+    assert.equal(validateRead.json.context.run_meta.stages.validate.output_type, 'validation_result');
+    assert.equal(validateRead.json.context.run_meta.status, 'success');
+    assert.equal(validateRead.json.context.run_meta.overall_status, 'warn');
+    assert.equal(validateRead.json.current_output.output_type, 'validation_result');
+    assert.equal(validateRead.json.current_output.payload.validation_result.publish_allowed, true);
+
+    const dashboardWithoutCookie = await httpGet('/api/dashboard');
+    assert.equal(dashboardWithoutCookie.status, 401, '页面业务 API 仍保留门禁，只有 aiwan API 放行');
+
+    const cookie = await verifyAccess();
+    const dashboard = await httpGet('/api/dashboard?week=2026-W28', { Cookie: cookie });
+    assert.equal(dashboard.status, 200, dashboard.body);
+    const dashboardJson = JSON.parse(dashboard.body);
+    assert.equal(dashboardJson.insights.board, displayInsightsFixture().board);
+    assert.equal(dashboardJson.insights.mode, 'aiwan_loop');
+    assert.equal(dashboardJson.insights.generatedBy, 'aiwan-v1.6.2-loop');
+    assert.equal(dashboardJson.insights.categories.内存条, displayInsightsFixture().categories.内存条);
   } finally {
     if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
     await Promise.race([exitPromise, new Promise((resolve) => setTimeout(resolve, 3000))]);

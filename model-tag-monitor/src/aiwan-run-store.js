@@ -5,6 +5,7 @@ const store = require('./store');
 const { DEFAULT_RULES } = require('./monitor');
 const { composeDashboard: composeDashboardV2 } = require('./compose-dashboard');
 const { getDashboard } = require('./dashboard');
+const { publishAiwanInsightsFromValidate } = require('./aiwan-insights-bridge');
 
 const STAGE_ORDER = ['read', 'process', 'analyze', 'validate'];
 const STAGE_ALIASES = {
@@ -249,6 +250,10 @@ function buildReadResponse(body = {}) {
       response.warnings.push(`missing previous stage outputs: ${missing.join(',')}`);
     }
   }
+  if (stage === 'validate' || include.includes('current_stage_output') || include.includes('stage_output')) {
+    const currentOutput = safeReadStage(runId, stage);
+    if (currentOutput) response.current_output = currentOutput;
+  }
   return response;
 }
 
@@ -300,8 +305,9 @@ function writeStageResult(body = {}) {
   const record = buildWriteRecord(body);
   store.writeJSON(stageFile(record.run_id, record.stage), record);
   const run = updateRunFromStage(record);
+  const bridge = tryPublishValidateInsights(record);
   store.appendLog({ action: 'aiwan-stage-write', run_id: record.run_id, stage: record.stage, status: record.status, revision: record.revision });
-  return { ok: true, run_id: record.run_id, stage: record.stage, status: record.status, revision: record.revision, run, output: record };
+  return { ok: true, run_id: record.run_id, stage: record.stage, status: record.status, revision: record.revision, run, bridge, output: record };
 }
 
 function updateRunFromStage(record) {
@@ -321,18 +327,59 @@ function updateRunFromStage(record) {
     written_at: record.written_at,
     warnings_count: record.warnings.length,
   };
+  const validateFinal = isValidateFinalRecord(record);
   const failed = Object.values(stages).some((s) => s.status === 'failed');
   const allDone = STAGE_ORDER.every((s) => stages[s] && ['success', 'warn', 'skipped'].includes(stages[s].status));
+  const status = failed
+    ? 'failed'
+    : validateFinal
+      ? 'success'
+      : allDone
+        ? 'success'
+        : 'running';
   const run = {
     ...current,
     week: record.week || current.week || null,
-    status: failed ? 'failed' : allDone ? 'success' : 'running',
+    status,
+    overall_status: validateFinal ? record.status : (failed ? 'failed' : current.overall_status || null),
     current_stage: record.stage,
     stages,
     updated_at: new Date().toISOString(),
   };
   store.writeJSON(runFile(record.run_id, 'run.json'), run);
   return run;
+}
+
+function isValidateFinalRecord(record) {
+  const payload = record && record.payload && typeof record.payload === 'object' && !Array.isArray(record.payload)
+    ? record.payload
+    : {};
+  return record
+    && record.stage === 'validate'
+    && record.output_type === 'validation_result'
+    && ['success', 'warn', 'failed'].includes(record.status)
+    && payload.processed_data
+    && payload.analysis_result
+    && payload.validation_result;
+}
+
+function tryPublishValidateInsights(record) {
+  if (!isValidateFinalRecord(record) || !['success', 'warn'].includes(record.status)) return null;
+  try {
+    const result = publishAiwanInsightsFromValidate(record);
+    return { ok: true, cache_name: result.name, mode: result.cache.mode, generatedBy: result.cache.generatedBy };
+  } catch (e) {
+    const message = e && e.message ? e.message : String(e);
+    store.appendLog({
+      action: 'aiwan-insights-bridge-failed',
+      run_id: record.run_id,
+      week: record.week,
+      status: record.status,
+      revision: record.revision,
+      error: message,
+    });
+    return { ok: false, error: message };
+  }
 }
 
 module.exports = {
@@ -343,4 +390,5 @@ module.exports = {
   sanitizeId,
   runFile,
   stageFile,
+  isValidateFinalRecord,
 };

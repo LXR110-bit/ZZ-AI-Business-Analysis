@@ -1,0 +1,26 @@
+# Authoring Brief — ai-wan-v16-orchestrator
+
+- source_type: from-existing-skill
+- mode: update
+- route_decision: update-owned
+- route_evidence: 用户要求修复现有 AI小万 v1.6/v1.7 orchestrator Skill：单 Loop 串联 read/process/analyze/validate，并保证 analyze 产出 display_insights、validate 最终写服务器。
+- route_next_action: package-check；API 注册契约修复后 trial-run；通过后 apply。
+- target_skill_public_id: b28e30d2-b8c6-456f-888d-57c48785286f
+- base_skill_version_id: 7c32f87c520646fe9180ac81a49afa7e
+- stage: orchestrator
+- runtime_client_gate: hub
+- api_binding_status: bound
+- call_sequence_status: pending_trial
+- API read: aiwan:run:read / f3f2a89f-3c54-4f3d-92a0-04d2a25a6b8d / POST /api/aiwan/read
+- API write: aiwan:run:write / c7af7d71-d114-44f4-87ac-8d225ad0b6c4 / POST /api/aiwan/write
+- permission_gaps:
+  - none for local package authoring
+- known_gaps:
+  - real data-analysis-sandbox trial-run is pending.
+  - call sequence cannot be marked verified until read → process → analyze → validate → server bridge dashboard cache succeeds.
+- compatibility:
+  - preserve existing Skill public_id and baseline platform fields.
+  - read/process do not read/write AIWAN server.
+  - analyze is read-only; validate owns final write.
+  - server bridge only publishes analysis_result.display_insights.
+- verification scenario: 使用唯一 run_id 执行四阶段；read 生成 raw_cache/sql_status；process 生成 processed_data/category_mapping_manifest；analyze 生成 findings/display_insights；validate write/reread 成功并核对 revision/output_type/publish_allowed。

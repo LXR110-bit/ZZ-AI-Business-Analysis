@@ -29,8 +29,8 @@
     ]
   },
   "verification": {
-    "smoke_prompt": "说明 AI小万主编排 v1.6 如何只通过 /api/aiwan/read 和 /api/aiwan/write 执行 orchestrator 阶段，并在失败时写 checkpoint；不要依赖上一阶段聊天上下文。",
-    "side_effect_policy": "apihub_read_write_only",
+    "smoke_prompt": "说明 AI小万主编排 v1.6.5 如何在一次 Loop invocation 内串联 read(xinghe SQL+raw_cache)→process(品类映射+process pipeline)→analyze(APIHub read 上下文+display_insights)→validate(display 校验+APIHub write)，且 read/process 不读写服务器。",
+    "side_effect_policy": "allow_write_with_confirmation",
     "user_scenarios": [
       "AI 小万 v1.6 多阶段 Loop 自动执行。",
       "手动单独重跑或检查某个阶段。"
@@ -42,16 +42,31 @@
   },
   "contracts": {
     "stage": "orchestrator",
-    "contract_version": "ai-wan-v1.6-apihub-stage",
-    "api_bridge": {
-      "read": "POST /api/aiwan/read",
-      "write": "POST /api/aiwan/write"
-    },
+    "contract_version": "ai-wan-v1.6.5-stage",
     "stage_order": [
       "read",
       "process",
       "analyze",
       "validate"
-    ]
+    ],
+    "server_usage": {
+      "read": "none",
+      "process": "none",
+      "analyze": "read_only",
+      "validate": "final_write"
+    },
+    "api_bridge": {
+      "read": "POST /api/aiwan/read",
+      "write": "POST /api/aiwan/write",
+      "runtime_client": "zloop_runtime.hub",
+      "read_runtime_path": "/v2/aiwan/api/aiwan/read",
+      "write_runtime_path": "/v2/aiwan/api/aiwan/write"
+    },
+    "required_stage_outputs": {
+      "read": ["read_result", "raw_cache", "sql_status"],
+      "process": ["processed_data", "category_mapping_manifest"],
+      "analyze": ["analysis_result.findings", "analysis_result.display_insights"],
+      "validate": ["validation_result", "server_write_confirmed"]
+    }
   }
 }
