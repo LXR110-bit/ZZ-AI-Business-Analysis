@@ -20,7 +20,20 @@ const RAW_SCRIPTS = [
   'model_summary',
 ];
 const PREFIXES = RAW_SCRIPTS;
+const MATERIALIZE_SCRIPTS = new Set(RAW_SCRIPTS.filter((script) => script !== 'model_summary'));
 const METRIC_HEADERS = ['机况uv', '估价uv', '下单uv', '下单量', '发货量', '签收量', '质检量', '成交量', '退回量', '成交gmv'];
+const METRIC_ALIASES = {
+  '机况uv': ['机况uv', '机况UV', 'ji_kuang_uv', 'jkuv', 'jk_uv'],
+  '估价uv': ['估价uv', '估价UV', 'gu_jia_uv', 'eva_uv', 'evaUv'],
+  '下单uv': ['下单uv', '下单UV', 'xia_dan_uv', 'order_uv', 'orderUv'],
+  '下单量': ['下单量', 'xia_dan_cnt', 'order_cnt', 'orderCnt'],
+  '发货量': ['发货量', 'fa_huo_cnt', 'ship_cnt', 'shipCnt'],
+  '签收量': ['签收量', 'qian_shou_cnt', 'sign_cnt', 'signCnt'],
+  '质检量': ['质检量', 'zhi_jian_cnt', 'qc_cnt', 'qcCnt'],
+  '成交量': ['成交量', 'cheng_jiao_cnt', 'deal_cnt', 'dealCnt'],
+  '退回量': ['退回量', 'tui_hui_cnt', 'return_cnt', 'returnCnt'],
+  '成交gmv': ['成交gmv', '成交GMV', 'cheng_jiao_gmv', 'deal_gmv', 'gmv'],
+};
 const CACHE_METRICS = ['jkuv', 'evaUv', 'orderUv', 'orderCnt', 'shipCnt', 'signCnt', 'qcCnt', 'dealCnt', 'returnCnt', 'gmv'];
 const MODEL_DETAIL_HEADERS = ['核心属性（估价）', '成色等级（估价）', '核心属性（质检）', '成色等级（质检）', '履约方式（只取线上流程）'];
 const DEFAULT_VOCAB = {
@@ -29,6 +42,8 @@ const DEFAULT_VOCAB = {
   price: ['高价段', '中价段', '低价段'],
   custom: {},
 };
+const PACKAGE_SNAPSHOT_DIR = path.resolve(__dirname, '../references/server-snapshot');
+const LOW_VOLUME_BASELINE_THRESHOLDS = { gmv: 1000, dealCnt: 2, orderCnt: 5, evaUv: 20 };
 
 function nowIso() { return new Date().toISOString(); }
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
@@ -39,6 +54,24 @@ function sha256File(file) { return sha256Buffer(fs.readFileSync(file)); }
 function sha256Json(value) { return sha256Buffer(Buffer.from(JSON.stringify(sortObject(value)), 'utf8')); }
 function rel(from, file) { return path.relative(from, file).split(path.sep).join('/'); }
 function safeReadJson(file, fallback) { return fs.existsSync(file) ? readJson(file) : fallback; }
+function uniqueExistingDirs(dirs) {
+  const out = [];
+  const seen = new Set();
+  for (const dir of dirs.filter(Boolean).map((d) => path.resolve(d))) {
+    if (!seen.has(dir) && fs.existsSync(dir)) { seen.add(dir); out.push(dir); }
+  }
+  return out;
+}
+function snapshotCandidateDirs(snapshotDir) {
+  return uniqueExistingDirs([snapshotDir, PACKAGE_SNAPSHOT_DIR, path.resolve(__dirname, '../../../model-tag-monitor/data')]);
+}
+function firstExistingFile(dirs, name) {
+  for (const dir of dirs) {
+    const file = path.join(dir, name);
+    if (fs.existsSync(file)) return file;
+  }
+  return '';
+}
 function sortObject(value) {
   if (Array.isArray(value)) return value.map(sortObject);
   if (!value || typeof value !== 'object') return value;
@@ -132,7 +165,7 @@ function parseCsvFile(file, options = {}) {
   if (!rawLines.length) return { headers: [], rows: [], repair: { fixed_rows: 0, bad_rows: 0 } };
   const originalHeaders = parseCsvLine(rawLines[0]).map((h) => h.trim());
   const headers = disambiguateHeaders(originalHeaders);
-  const modelNameIndex = headers.findIndex((h) => normalizeHeader(h) === normalizeHeader('机型名称') || normalizeHeader(h) === 'modelname');
+  const modelNameIndex = headers.findIndex((h) => ['机型名称', '型号名称', '型号', 'model_name', 'model_name_label', 'modelName'].some((candidate) => normalizeHeader(h) === normalizeHeader(candidate)));
   const rows = [];
   const repair = { fixed_rows: 0, bad_rows: 0 };
   for (const line of rawLines.slice(1)) {
@@ -214,23 +247,23 @@ function canonicalImportRows(script, parsed, runDt) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) continue;
     const info = rollingInfo(weekStart, runDt);
     const base = { week_start_date: weekStart };
-    if (script.includes('category')) base['品类名称'] = String(first(raw, ['品类名称', '品类', '三级品类', 'cate_name'])).trim();
-    if (script.includes('fulfill')) base['履约方式（只取线上流程）'] = String(first(raw, ['履约方式（只取线上流程）', '履约方式', 'order_source_name', 'fulfillmentMethod'])).trim();
+    if (script.includes('category')) base['品类名称'] = String(first(raw, ['品类名称', '品类', '三级品类', 'cate_name', 'cate_name_label', 'category_name', 'category_name_label'])).trim();
+    if (script.includes('fulfill')) base['履约方式（只取线上流程）'] = String(first(raw, ['履约方式（只取线上流程）', '履约方式', 'order_source_name', 'fulfillmentMethod', 'fulfill_type', 'fulfillment_type'])).trim();
     if (script.includes('model')) {
-      base['品类名称'] = String(first(raw, ['品类名称', '品类', 'cate_name'])).trim();
-      base['机型id'] = String(first(raw, ['机型id', '机型ID', '型号ID', 'model_id'])).trim().replace(/^(\d+)\.0+$/, '$1');
-      base['机型名称'] = String(first(raw, ['机型名称', '型号名称', '型号', 'model_name'])).trim();
+      base['品类名称'] = String(first(raw, ['品类名称', '品类', 'cate_name', 'cate_name_label', 'category_name', 'category_name_label'])).trim();
+      base['机型id'] = String(first(raw, ['机型id', '机型ID', '型号ID', 'model_id', 'model_id_col', 'modelId'])).trim().replace(/^(\d+)\.0+$/, '$1');
+      base['机型名称'] = String(first(raw, ['机型名称', '型号名称', '型号', 'model_name', 'model_name_label', 'modelName'])).trim();
       base['核心属性（估价）'] = String(first(raw, ['核心属性（估价）', '核心属性_估价', 'ev_param_name'])).trim();
       base['成色等级（估价）'] = String(first(raw, ['成色等级（估价）', '成色等级_估价', 'ev_grade_name'])).trim();
-      base['品类名称.1'] = String(first(raw, ['品类名称.1', '品类名称', '品类', 'cate_name'])).trim();
-      base['机型id.1'] = String(first(raw, ['机型id.1', '机型ID.1', '机型id', '机型ID', 'model_id'])).trim().replace(/^(\d+)\.0+$/, '$1');
+      base['品类名称.1'] = String(first(raw, ['品类名称.1', '品类名称', '品类', 'cate_name', 'cate_name_label', 'category_name', 'category_name_label'])).trim();
+      base['机型id.1'] = String(first(raw, ['机型id.1', '机型ID.1', '机型id', '机型ID', 'model_id', 'model_id_col', 'modelId'])).trim().replace(/^(\d+)\.0+$/, '$1');
       base['核心属性（质检）'] = String(first(raw, ['核心属性（质检）', '核心属性_质检', 'qc_param_name'])).trim();
       base['成色等级（质检）'] = String(first(raw, ['成色等级（质检）', '成色等级_质检', 'qc_grade_name'])).trim();
-      base['履约方式（只取线上流程）'] = String(first(raw, ['履约方式（只取线上流程）', '履约方式', 'order_source_name', 'fulfillmentMethod'])).trim();
+      base['履约方式（只取线上流程）'] = String(first(raw, ['履约方式（只取线上流程）', '履约方式', 'order_source_name', 'fulfillmentMethod', 'fulfill_type', 'fulfillment_type'])).trim();
     }
     base.day_cnt = String(toNum(first(raw, ['day_cnt', '已收到天数', 'daysReceived'])) || info.day_cnt);
     for (const h of METRIC_HEADERS) {
-      const value = first(raw, [h, h.replace('uv', 'UV'), h.replace('gmv', 'GMV')]);
+      const value = first(raw, METRIC_ALIASES[h] || [h, h.replace('uv', 'UV'), h.replace('gmv', 'GMV')]);
       base[h] = value === '' ? '' : String(value).trim();
     }
     if (base['品类名称'] === '' && script.includes('category')) continue;
@@ -252,17 +285,43 @@ function scriptRawFile(unpacked, script, runDt) {
   return hit ? path.join(rawDir, hit) : '';
 }
 function monthOf(row) { return String(row.week_start_date || '').slice(0, 7) || 'unknown'; }
-function materializeImports(unpacked, importsDir, runDt) {
+function materializeImports(unpacked, importsDir, runDt, activeKnownGaps = new Set()) {
   ensureDir(importsDir);
   const stats = {};
-  const currentRowsByScript = {};
   for (const script of RAW_SCRIPTS) {
     const file = scriptRawFile(unpacked, script, runDt);
     if (!file) throw new Error(`missing raw csv for ${script}`);
     const parsed = parseCsvFile(file, { repairModelNameCommas: script.startsWith('model') });
+    if (!MATERIALIZE_SCRIPTS.has(script)) {
+      stats[script] = {
+        raw_file: rel(unpacked, file),
+        raw_rows: parsed.rows.length,
+        import_rows: 0,
+        headers: headersFor(script),
+        months: [],
+        csv_repair: parsed.repair,
+        materialized: false,
+        skip_reason: 'unused_by_dashboard_cache',
+      };
+      continue;
+    }
     const { rows, repairs } = canonicalImportRows(script, parsed, runDt);
-    if (!rows.length) throw new Error(`raw csv ${script} has no valid rows after normalization`);
-    currentRowsByScript[script] = rows;
+    if (!rows.length) {
+      const knownGap = knownGapForEmptyRaw(script);
+      if (knownGap && activeKnownGaps.has(knownGap)) {
+        stats[script] = {
+          raw_file: rel(unpacked, file),
+          raw_rows: parsed.rows.length,
+          import_rows: 0,
+          headers: headersFor(script),
+          months: [],
+          csv_repair: repairs,
+          known_gap: knownGap,
+        };
+        continue;
+      }
+      throw new Error(`raw csv ${script} has no valid rows after normalization`);
+    }
     const byMonth = new Map();
     for (const row of rows) {
       const month = monthOf(row);
@@ -279,7 +338,7 @@ function materializeImports(unpacked, importsDir, runDt) {
       csv_repair: repairs,
     };
   }
-  return { stats, currentRowsByScript };
+  return { stats };
 }
 function rowsFromImportFiles(importsDir, prefix) {
   if (!fs.existsSync(importsDir)) return [];
@@ -386,7 +445,8 @@ function mergeRowsByKey(rows, keyFn) {
   return [...map.values()];
 }
 function readTaxonomy(snapshotDir, previousCacheDir, warnings) {
-  const csvFile = snapshotDir && fs.existsSync(path.join(snapshotDir, 'category_taxonomy.csv')) ? path.join(snapshotDir, 'category_taxonomy.csv') : '';
+  const dirs = snapshotCandidateDirs(snapshotDir);
+  const csvFile = firstExistingFile(dirs, 'category_taxonomy.csv');
   if (csvFile) {
     const parsed = parseCsvFile(csvFile);
     const rows = parsed.rows.map((r) => ({
@@ -399,6 +459,8 @@ function readTaxonomy(snapshotDir, previousCacheDir, warnings) {
     })).filter((r) => r.category);
     return { syncedAt: nowIso(), version: '1.5.5-zloop', source: { type: 'snapshot_csv', file: path.resolve(csvFile) }, rows };
   }
+  const jsonFile = firstExistingFile(dirs, 'category-taxonomy.json');
+  if (jsonFile) return { ...readJson(jsonFile), source: { ...(readJson(jsonFile).source || {}), fallback: 'snapshot_json', file: path.resolve(jsonFile) } };
   const prev = previousCacheDir ? path.join(previousCacheDir, 'cache', 'category-taxonomy.json') : '';
   if (prev && fs.existsSync(prev)) return { ...readJson(prev), source: { ...(readJson(prev).source || {}), fallback: 'previous_processed_cache' } };
   const seed = path.resolve(__dirname, '../../../model-tag-monitor/config/category_taxonomy_seed.csv');
@@ -415,8 +477,9 @@ function readTaxonomy(snapshotDir, previousCacheDir, warnings) {
     return { syncedAt: nowIso(), version: '1.5.5-zloop', source: { type: 'seed_csv', file: seed }, rows };
   }
   warnings.push('taxonomy_snapshot_missing');
-  return { syncedAt: nowIso(), version: '1.5.5-zloop', source: { type: 'empty_fallback' }, rows: [] };
+  return { syncedAt: nowIso(), version: '1.5.5-zloop', source: { type: 'empty' }, rows: [] };
 }
+
 function buildCaches(importsDir, cacheDir, runDt, snapshotDir, previousCacheDir, warnings, knownGaps) {
   ensureDir(cacheDir);
   const taxonomy = readTaxonomy(snapshotDir, previousCacheDir, warnings);
@@ -439,9 +502,9 @@ function buildCaches(importsDir, cacheDir, runDt, snapshotDir, previousCacheDir,
   const modelCache = { syncedAt: nowIso(), version: '1.5.5-zloop', source: { dir: importsDir, prefix: 'model_daily_avg_', grain: 'model_main_daily_avg' }, categories: [...new Set(modelMain.map((r) => r.category))].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')), weeks: [...new Set(modelMain.map((r) => r.week))].sort(), rows: modelMain };
 
   let boardCache;
-  const boardCsv = snapshotDir && fs.existsSync(path.join(snapshotDir, 'board_metrics_feishu.csv')) ? path.join(snapshotDir, 'board_metrics_feishu.csv') : '';
+  const boardCsv = firstExistingFile(snapshotCandidateDirs(snapshotDir), 'board_metrics_feishu.csv');
   if (boardCsv) {
-    const boardRows = parseCsvFile(boardCsv).rows.map((r) => ({ week: String(first(r, ['week', '统计周', '周次'])).trim() || dateToISOWeek(String(first(r, ['week_start_date', '开始日期', '周开始'])).trim()), startDate: String(first(r, ['week_start_date', '开始日期', '周开始'])).trim(), dau: toNum(first(r, ['dau', 'DAU'])), entryUv: toNum(first(r, ['entryUv', '入口uv', '入口UV'])) })).filter((r) => r.week);
+    const boardRows = parseCsvFile(boardCsv).rows.map((r) => ({ week: String(first(r, ['week', '统计周', '周次'])).trim() || dateToISOWeek(String(first(r, ['week_start_date', '开始日期', '周开始'])).trim()), startDate: String(first(r, ['week_start_date', '开始日期', '周开始'])).trim(), dau: toNum(first(r, ['dau', 'DAU', 'APP日均DAU', 'app_dau', 'appDailyDau'])), entryUv: toNum(first(r, ['entryUv', '入口uv', '入口UV', '回收入口UV', 'recycle_entry_uv'])) })).filter((r) => r.week);
     boardCache = { syncedAt: nowIso(), version: '1.5.5-zloop', source: { prefixes: ['board_metrics', 'board_metrics_feishu'], file: path.resolve(boardCsv) }, weeks: [...new Set(boardRows.map((r) => r.week))].sort(), rows: boardRows };
   } else {
     knownGaps.push('board_metrics_feishu.csv pending');
@@ -468,9 +531,10 @@ function normalizeTags(tags) {
 }
 function normalizeVocab(vocab) { return { ...DEFAULT_VOCAB, ...(vocab && typeof vocab === 'object' ? vocab : {}), custom: (vocab && vocab.custom) || {} }; }
 function buildTagArtifacts(snapshotDir, cacheDir, artifactDir, runDt, runId, warnings, knownGaps) {
-  const tagSourceDir = snapshotDir && fs.existsSync(snapshotDir) ? snapshotDir : path.resolve(__dirname, '../../../model-tag-monitor/data');
-  const tagsFile = path.join(tagSourceDir, 'tags.json');
-  const vocabFile = path.join(tagSourceDir, 'tag-vocab.json');
+  const candidateDirs = snapshotCandidateDirs(snapshotDir);
+  const tagsFile = firstExistingFile(candidateDirs, 'tags.json');
+  const vocabFile = firstExistingFile(candidateDirs, 'tag-vocab.json');
+  const tagSourceDir = path.dirname(tagsFile || vocabFile || firstExistingFile(candidateDirs, 'rules.json') || path.join(candidateDirs[0] || PACKAGE_SNAPSHOT_DIR, 'missing'));
   const tags = normalizeTags(safeReadJson(tagsFile, {}));
   const vocab = normalizeVocab(safeReadJson(vocabFile, DEFAULT_VOCAB));
   if (!fs.existsSync(tagsFile)) { warnings.push('tag_snapshot_missing'); knownGaps.push('tag_snapshot_missing'); }
@@ -563,6 +627,10 @@ function buildMetricBaseline(categoryRows) {
   }
   return out;
 }
+function isLowVolumeWtd(metric, baseline) {
+  const threshold = LOW_VOLUME_BASELINE_THRESHOLDS[metric];
+  return threshold != null && toNum(baseline) < threshold;
+}
 function compareWtd(categoryRows) {
   const warnings = [];
   const errors = [];
@@ -580,13 +648,19 @@ function compareWtd(categoryRows) {
     for (const metric of ['gmv', 'dealCnt', 'orderCnt', 'evaUv']) {
       if (toNum(prev[metric]) <= 0) continue;
       const ratio = toNum(cur[metric]) / toNum(prev[metric]);
-      comparisons.push({ category: cat, metric, current: cur[metric], baseline: prev[metric], ratio });
-      if (cur.daysReceived >= prev.daysReceived && ratio < 0.5) errors.push(`${cat} ${metric} WTD ratio ${ratio.toFixed(3)} < 0.5`);
+      const lowVolume = isLowVolumeWtd(metric, prev[metric]);
+      comparisons.push({ category: cat, metric, current: cur[metric], baseline: prev[metric], ratio, low_volume_baseline: lowVolume });
+      if (cur.daysReceived >= prev.daysReceived && ratio < 0.5) {
+        const msg = `${cat} ${metric} WTD ratio ${ratio.toFixed(3)} < 0.5`;
+        if (lowVolume) warnings.push(`${msg} (low_volume_baseline=${toNum(prev[metric])}, warn_only)`);
+        else errors.push(msg);
+      }
       else if (cur.daysReceived >= prev.daysReceived && ratio < 0.8) warnings.push(`${cat} ${metric} WTD ratio ${ratio.toFixed(3)} < 0.8`);
     }
   }
-  return { comparisons, warnings, errors };
+  return { comparisons, warnings, errors, low_volume_baseline_thresholds: LOW_VOLUME_BASELINE_THRESHOLDS };
 }
+
 function writeServerBundle(serverDir, caches, tagArtifacts, rollingStatus, manifestBase) {
   ensureDir(serverDir);
   for (const name of ['cache.json', 'model-cache.json', 'category-cache.json', 'category-fulfill-cache.json', 'category-taxonomy.json', 'board-metrics.json', 'tags.json', 'tag-vocab.json', 'tag_snapshot_manifest.json']) {
@@ -626,7 +700,7 @@ function validateFetch(inputDir, runDt) {
   const active = readJson(activeFile);
   if (active.contract_version && active.contract_version !== FETCH_CONTRACT_VERSION) throw new Error(`unexpected fetch contract_version=${active.contract_version}`);
   if (active.stage !== 'fetch') throw new Error(`active_fetch_manifest.stage must be fetch`);
-  if (active.status !== 'success') throw new Error(`active_fetch_manifest.status must be success`);
+  if (!isAcceptableFetchStatus(active)) throw new Error(`active_fetch_manifest.status must be success or warn with only fulfillment empty known gaps`);
   if (active.run_dt !== runDt) throw new Error(`active_fetch_manifest.run_dt ${active.run_dt} != ${runDt}`);
   const rawCache = path.resolve(inputDir, active.raw_cache || `raw_cache_${runDt}.zip`);
   if (!fs.existsSync(rawCache)) throw new Error(`missing raw_cache: ${rawCache}`);
@@ -635,17 +709,35 @@ function validateFetch(inputDir, runDt) {
   if (expectedSha && expectedSha !== actualSha) throw new Error(`raw_cache sha256 mismatch expected=${expectedSha} actual=${actualSha}`);
   return { active, rawCache, actualSha };
 }
+
+function isAcceptableFetchStatus(active) {
+  if (active.status === 'success') return true;
+  if (active.status !== 'warn') return false;
+  const allowed = new Set(['category_fulfill_daily_avg_empty', 'category_fulfill_summary_empty']);
+  const gaps = Array.isArray(active.known_gaps) ? active.known_gaps.map(String) : [];
+  return gaps.length > 0 && gaps.every((gap) => allowed.has(gap));
+}
+function knownGapForEmptyRaw(script) {
+  if (script === 'category_fulfill_daily_avg') return 'category_fulfill_daily_avg_empty';
+  if (script === 'category_fulfill_summary') return 'category_fulfill_summary_empty';
+  return '';
+}
 function validateUnpackedRaw(unpacked, active, runDt) {
   const rawManifestFile = path.join(unpacked, active.raw_manifest || `raw_manifest_${runDt}.json`);
   const sqlStatusFile = path.join(unpacked, active.sql_status || `sql_status_${runDt}.json`);
   const rawManifest = fs.existsSync(rawManifestFile) ? readJson(rawManifestFile) : {};
   const sqlStatus = fs.existsSync(sqlStatusFile) ? readJson(sqlStatusFile) : {};
   if (rawManifest.run_id && rawManifest.run_id !== active.run_id) throw new Error(`raw_manifest.run_id ${rawManifest.run_id} != active_fetch_manifest.run_id ${active.run_id}`);
+  const activeKnownGaps = new Set(Array.isArray(active.known_gaps) ? active.known_gaps.map(String) : []);
   for (const script of RAW_SCRIPTS) {
     const file = scriptRawFile(unpacked, script, runDt);
     if (!file) throw new Error(`missing raw/${script}_${runDt}.csv`);
     const parsed = parseCsvFile(file, { repairModelNameCommas: script.startsWith('model') });
-    if (parsed.rows.length <= 0) throw new Error(`raw ${script} row_count=0`);
+    if (parsed.rows.length <= 0) {
+      const knownGap = knownGapForEmptyRaw(script);
+      if (knownGap && activeKnownGaps.has(knownGap)) continue;
+      throw new Error(`raw ${script} row_count=0`);
+    }
   }
   return { rawManifest, sqlStatus };
 }
@@ -664,11 +756,18 @@ async function processRawCache(options = {}) {
   const warnings = [];
   const knownGaps = [];
   try {
+    for (const gap of Array.isArray(fetch.active.known_gaps) ? fetch.active.known_gaps.map(String) : []) {
+      if (knownGapForEmptyRaw('category_fulfill_daily_avg') === gap || knownGapForEmptyRaw('category_fulfill_summary') === gap) {
+        knownGaps.push(gap);
+        warnings.push(gap);
+      }
+    }
     const unpacked = path.join(workDir, 'raw_cache');
     unzip(fetch.rawCache, unpacked);
     const upstream = validateUnpackedRaw(unpacked, fetch.active, runDt);
     const stagingImports = path.join(workDir, 'staging_imports');
-    const importBuild = materializeImports(unpacked, stagingImports, runDt);
+    const fetchKnownGaps = new Set(Array.isArray(fetch.active.known_gaps) ? fetch.active.known_gaps.map(String) : []);
+    const importBuild = materializeImports(unpacked, stagingImports, runDt, fetchKnownGaps);
     const previousProcessedCache = resolvePreviousProcessedCache(inputDir, outDir, options.previousProcessedCache);
     const previousCacheDir = previousProcessedCache ? path.join(workDir, 'prev_processed') : '';
     if (previousProcessedCache && !fs.existsSync(previousCacheDir)) unzip(previousProcessedCache, previousCacheDir);
@@ -761,4 +860,4 @@ function writeMinimalXlsx(file, manifest) {
   }
 }
 
-module.exports = { processRawCache, parseArgs, parseCsvFile, writeCsv, dateToISOWeek, rollingInfo, canonicalImportRows, computeRates, normalizeTags, normalizeVocab, sha256File, sha256Json, KEEP_WEEKS };
+module.exports = { processRawCache, parseArgs, parseCsvFile, writeCsv, dateToISOWeek, rollingInfo, canonicalImportRows, computeRates, normalizeTags, normalizeVocab, compareWtd, sha256File, sha256Json, KEEP_WEEKS };

@@ -23,6 +23,7 @@ const RAW_SCRIPTS = [
   'model_summary',
 ];
 const PREFIXES = RAW_SCRIPTS;
+const MATERIALIZE_SCRIPTS = new Set(RAW_SCRIPTS.filter((script) => script !== 'model_summary'));
 const METRIC_HEADERS = ['机况uv', '估价uv', '下单uv', '下单量', '发货量', '签收量', '质检量', '成交量', '退回量', '成交gmv'];
 const METRIC_ALIASES = {
   '机况uv': ['机况uv', '机况UV', 'ji_kuang_uv', 'jkuv', 'jk_uv'],
@@ -300,17 +301,43 @@ function scriptRawFile(unpacked, script, runDt) {
   return hit ? path.join(rawDir, hit) : '';
 }
 function monthOf(row) { return String(row.week_start_date || '').slice(0, 7) || 'unknown'; }
-function materializeImports(unpacked, importsDir, runDt) {
+function materializeImports(unpacked, importsDir, runDt, activeKnownGaps = new Set()) {
   ensureDir(importsDir);
   const stats = {};
-  const currentRowsByScript = {};
   for (const script of RAW_SCRIPTS) {
     const file = scriptRawFile(unpacked, script, runDt);
     if (!file) throw new Error(`missing raw csv for ${script}`);
     const parsed = parseCsvFile(file, { repairModelNameCommas: script.startsWith('model') });
+    if (!MATERIALIZE_SCRIPTS.has(script)) {
+      stats[script] = {
+        raw_file: rel(unpacked, file),
+        raw_rows: parsed.rows.length,
+        import_rows: 0,
+        headers: headersFor(script),
+        months: [],
+        csv_repair: parsed.repair,
+        materialized: false,
+        skip_reason: 'unused_by_dashboard_cache',
+      };
+      continue;
+    }
     const { rows, repairs } = canonicalImportRows(script, parsed, runDt);
-    if (!rows.length) throw new Error(`raw csv ${script} has no valid rows after normalization`);
-    currentRowsByScript[script] = rows;
+    if (!rows.length) {
+      const knownGap = knownGapForEmptyRaw(script);
+      if (knownGap && activeKnownGaps.has(knownGap)) {
+        stats[script] = {
+          raw_file: rel(unpacked, file),
+          raw_rows: parsed.rows.length,
+          import_rows: 0,
+          headers: headersFor(script),
+          months: [],
+          csv_repair: repairs,
+          known_gap: knownGap,
+        };
+        continue;
+      }
+      throw new Error(`raw csv ${script} has no valid rows after normalization`);
+    }
     const byMonth = new Map();
     for (const row of rows) {
       const month = monthOf(row);
@@ -327,7 +354,7 @@ function materializeImports(unpacked, importsDir, runDt) {
       csv_repair: repairs,
     };
   }
-  return { stats, currentRowsByScript };
+  return { stats };
 }
 function rowsFromImportFiles(importsDir, prefix) {
   if (!fs.existsSync(importsDir)) return [];
@@ -826,17 +853,27 @@ function isAcceptableFetchStatus(active) {
   const gaps = Array.isArray(active.known_gaps) ? active.known_gaps.map(String) : [];
   return gaps.length > 0 && gaps.every((gap) => allowed.has(gap));
 }
+function knownGapForEmptyRaw(script) {
+  if (script === 'category_fulfill_daily_avg') return 'category_fulfill_daily_avg_empty';
+  if (script === 'category_fulfill_summary') return 'category_fulfill_summary_empty';
+  return '';
+}
 function validateUnpackedRaw(unpacked, active, runDt) {
   const rawManifestFile = path.join(unpacked, active.raw_manifest || `raw_manifest_${runDt}.json`);
   const sqlStatusFile = path.join(unpacked, active.sql_status || `sql_status_${runDt}.json`);
   const rawManifest = fs.existsSync(rawManifestFile) ? readJson(rawManifestFile) : {};
   const sqlStatus = fs.existsSync(sqlStatusFile) ? readJson(sqlStatusFile) : {};
   if (rawManifest.run_id && rawManifest.run_id !== active.run_id) throw new Error(`raw_manifest.run_id ${rawManifest.run_id} != active_fetch_manifest.run_id ${active.run_id}`);
+  const activeKnownGaps = new Set(Array.isArray(active.known_gaps) ? active.known_gaps.map(String) : []);
   for (const script of RAW_SCRIPTS) {
     const file = scriptRawFile(unpacked, script, runDt);
     if (!file) throw new Error(`missing raw/${script}_${runDt}.csv`);
     const parsed = parseCsvFile(file, { repairModelNameCommas: script.startsWith('model') });
-    if (parsed.rows.length <= 0) throw new Error(`raw ${script} row_count=0`);
+    if (parsed.rows.length <= 0) {
+      const knownGap = knownGapForEmptyRaw(script);
+      if (knownGap && activeKnownGaps.has(knownGap)) continue;
+      throw new Error(`raw ${script} row_count=0`);
+    }
   }
   return { rawManifest, sqlStatus };
 }
@@ -855,11 +892,18 @@ async function processRawCache(options = {}) {
   const warnings = [];
   const knownGaps = [];
   try {
+    for (const gap of Array.isArray(fetch.active.known_gaps) ? fetch.active.known_gaps.map(String) : []) {
+      if (knownGapForEmptyRaw('category_fulfill_daily_avg') === gap || knownGapForEmptyRaw('category_fulfill_summary') === gap) {
+        knownGaps.push(gap);
+        warnings.push(gap);
+      }
+    }
     const unpacked = path.join(workDir, 'raw_cache');
     unzip(fetch.rawCache, unpacked);
     const upstream = validateUnpackedRaw(unpacked, fetch.active, runDt);
     const stagingImports = path.join(workDir, 'staging_imports');
-    const importBuild = materializeImports(unpacked, stagingImports, runDt);
+    const fetchKnownGaps = new Set(Array.isArray(fetch.active.known_gaps) ? fetch.active.known_gaps.map(String) : []);
+    const importBuild = materializeImports(unpacked, stagingImports, runDt, fetchKnownGaps);
     const previousProcessedCache = resolvePreviousProcessedCache(inputDir, outDir, options.previousProcessedCache);
     const previousCacheDir = previousProcessedCache ? path.join(workDir, 'prev_processed') : '';
     if (previousProcessedCache && !fs.existsSync(previousCacheDir)) unzip(previousProcessedCache, previousCacheDir);

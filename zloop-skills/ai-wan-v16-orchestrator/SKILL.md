@@ -1,7 +1,7 @@
 ---
 name: AI小万主编排 v1.6
 description: AI 小万 v1.6/v1.7 单 Loop 入口 Skill：串联 read SQL 取数、process 品类映射与模板处理、analyze 生成 display_insights、validate 最终写服务器。
-version: 1.6.15
+version: 1.6.18
 ---
 
 # AI小万主编排 v1.6
