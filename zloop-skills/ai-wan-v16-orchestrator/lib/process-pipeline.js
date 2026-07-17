@@ -543,11 +543,12 @@ function resolveCategoryMapping({ categoryMappingFile, snapshotDir, previousCach
   const explicit = readCategoryMappingFile(categoryMappingFile);
   if (explicit) return explicit;
   const dirs = snapshotCandidateDirs(snapshotDir);
-  const snapshotJson = firstExistingFile(dirs, 'category-mapping.json');
+  const snapshotJson = firstExistingFile(dirs, 'category-mapping.json') || firstExistingFile(dirs, 'category-taxonomy.json');
   const snapshotCsv = firstExistingFile(dirs, 'category_mapping.csv') || firstExistingFile(dirs, 'category_taxonomy.csv');
   const snapshot = readCategoryMappingFile(snapshotJson || snapshotCsv);
   if (snapshot) {
     snapshot.source.type = snapshotJson ? 'feishu_base_mapping_snapshot_json' : 'feishu_base_mapping_snapshot_csv';
+    if (snapshotJson && path.basename(snapshotJson) === 'category-taxonomy.json') snapshot.source.type = 'package_category_taxonomy_snapshot_json';
     warnings.push('category_mapping_feishu_read_failed_used_snapshot');
     knownGaps.push('category_mapping_source_not_realtime');
     return snapshot;
