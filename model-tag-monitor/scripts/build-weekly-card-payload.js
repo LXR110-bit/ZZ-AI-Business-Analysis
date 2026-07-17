@@ -2,7 +2,10 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const APP_VERSION = require('../package.json').version;
+const { monitor, DEFAULT_RULES } = require('../src/monitor');
+const { DEFAULT_TAG_VOCAB, normalizeTagsStore, normalizeTagVocab } = require('../src/tagging');
 
 function arg(name, fallback) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -14,6 +17,8 @@ const apiBase = String(arg('api-base', process.env.API_BASE || 'http://127.0.0.1
 const out = arg('out', process.env.PAYLOAD_OUT || 'weekly-card-payload.json');
 const dashboardUrl = arg('dashboard-url', process.env.DASHBOARD_URL || 'http://47.84.94.234:8848/?tab=dashboard');
 const reportUrl = arg('report-url', process.env.REPORT_URL || dashboardUrl);
+const dashboardFile = arg('dashboard-file', process.env.DASHBOARD_FILE || '');
+const dataDir = arg('data-dir', process.env.DATA_DIR || path.join(__dirname, '..', 'data'));
 const apiCookie = String(process.env.API_COOKIE || '').trim();
 
 async function getJson(pathname, timeoutMs = 300000) {
@@ -107,13 +112,31 @@ function formatWan(v) {
   return String(Math.round(n));
 }
 
+function readJson(file, fallback) {
+  if (!fs.existsSync(file)) return fallback;
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function buildOfflineMonitor(week) {
+  const cache = readJson(path.join(dataDir, 'cache.json'), null);
+  if (!cache || !Array.isArray(cache.rows) || !cache.rows.length) return null;
+  const rules = readJson(path.join(dataDir, 'rules.json'), DEFAULT_RULES);
+  const tagVocab = normalizeTagVocab(readJson(path.join(dataDir, 'tag-vocab.json'), DEFAULT_TAG_VOCAB));
+  const tagsMap = normalizeTagsStore(readJson(path.join(dataDir, 'tags.json'), {}), { vocab: tagVocab });
+  return monitor(cache, rules, tagsMap, { week: week || null, tagVocab });
+}
+
 (async function main() {
-  const dashboard = await getJson('/api/dashboard', 300000);
+  const dashboard = dashboardFile
+    ? JSON.parse(fs.readFileSync(dashboardFile, 'utf8'))
+    : await getJson('/api/dashboard', 300000);
   let monitor = null;
   try {
-    monitor = await getJson(`/api/monitor?week=${encodeURIComponent(dashboard.week || '')}`, 600000);
+    monitor = dashboardFile
+      ? buildOfflineMonitor(dashboard.week || '')
+      : await getJson(`/api/monitor?week=${encodeURIComponent(dashboard.week || '')}`, 600000);
   } catch (e) {
-    console.warn(`[build-weekly-card-payload] /api/monitor failed, fallback to dashboard categories: ${e.message}`);
+    console.warn(`[build-weekly-card-payload] monitor unavailable, fallback to dashboard categories: ${e.message}`);
   }
 
   const watchCount = monitor && Array.isArray(monitor.watchList)

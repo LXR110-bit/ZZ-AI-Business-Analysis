@@ -12,6 +12,7 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 8848,
         FEISHU_APP_ID: 'cli_aab4e49b7bb95bd3',
+        DATA_DIR: '/root/model-tag-monitor/data/current',
         IMPORT_DIR: '/root/workspace/ZZ-AI-Business-Analysis-base-migration/data/imports',
         KEEP_WEEKS: '10',
         // Empty means each sync selects the latest KEEP_WEEKS from imported data.

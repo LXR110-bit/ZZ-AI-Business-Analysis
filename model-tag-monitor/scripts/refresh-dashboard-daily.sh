@@ -16,6 +16,10 @@ KEEP_WEEKS="${KEEP_WEEKS:-10}"
 TARGET_WEEKS="${TARGET_WEEKS:-$(KEEP_WEEKS="$KEEP_WEEKS" node "$SCRIPT_DIR/derive-target-weeks.js")}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-14}"
 LOG_DIR="${LOG_DIR:-$MONITOR_DIR/logs}"
+RELEASE_ROOT="${RELEASE_ROOT:-$MONITOR_DIR/releases}"
+CURRENT_DATA_DIR="${CURRENT_DATA_DIR:-$MONITOR_DIR/data/current}"
+LEGACY_COMPAT_DATA_DIR="${LEGACY_COMPAT_DATA_DIR:-}"
+SOURCE_DATA_DIR="${SOURCE_DATA_DIR:-$CURRENT_DATA_DIR}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 DATA_READY_MAX_ATTEMPTS="${DATA_READY_MAX_ATTEMPTS:-3}"
 DATA_READY_RETRY_SECONDS="${DATA_READY_RETRY_SECONDS:-600}"
@@ -23,10 +27,14 @@ ARTIFACT_RETENTION_DAYS="${ARTIFACT_RETENTION_DAYS:-30}"
 ARTIFACT_CLEANUP_ENABLED="${ARTIFACT_CLEANUP_ENABLED:-1}"
 ARTIFACT_CLEANUP_DRY_RUN="${ARTIFACT_CLEANUP_DRY_RUN:-0}"
 SOURCE_CACHE_DIR="${SOURCE_CACHE_DIR:-/tmp/机型周数据_zip_cache}"
-mkdir -p "$LOG_DIR"
 
 SCRIPT_STARTED_AT="$(date -Iseconds)"
 RUN_ID="$(date +%Y%m%dT%H%M%S%z)"
+RELEASE_DIR="$RELEASE_ROOT/$RUN_ID"
+RELEASE_IMPORT_DIR="$RELEASE_DIR/imports"
+RELEASE_DATA_DIR="$RELEASE_DIR/data"
+RELEASE_CHECKS_DIR="$RELEASE_DIR/checks"
+RELEASE_LOG_DIR="$RELEASE_DIR/logs"
 TARGET_WEEK="$(TARGET_WEEKS="$TARGET_WEEKS" node - <<'NODE'
 const weeks = String(process.env.TARGET_WEEKS || '').split(',').map((w) => w.trim()).filter(Boolean);
 if (!weeks.length) process.exit(1);
@@ -38,17 +46,19 @@ const { isoWeekToRange } = require(`${process.env.MONITOR_DIR}/src/week-utils`);
 process.stdout.write(isoWeekToRange(process.env.TARGET_WEEK).monday.slice(0, 7));
 NODE
 )"
-PAYLOAD_FILE="$LOG_DIR/weekly-card-payload-$RUN_ID.json"
-ALERT_PAYLOAD_FILE="$LOG_DIR/daily-refresh-alert-$RUN_ID.json"
-COVERAGE_FILE="$LOG_DIR/daily-import-coverage-$RUN_ID.json"
-FINAL_COVERAGE_FILE="$LOG_DIR/daily-import-coverage-final-$RUN_ID.json"
-QUALITY_FILE="$LOG_DIR/wtd-quality-$RUN_ID.json"
-BOARD_METRICS_CHECK_FILE="$LOG_DIR/board-metrics-check-$RUN_ID.json"
-DASHBOARD_CONTRACT_FILE="$LOG_DIR/dashboard-contract-$RUN_ID.json"
-AI_QUALITY_FILE="$LOG_DIR/ai-insights-quality-$RUN_ID.json"
-CARD_QUALITY_FILE="$LOG_DIR/card-payload-quality-$RUN_ID.json"
-LOG_FILE="$LOG_DIR/refresh-dashboard-daily-$RUN_ID.log"
+mkdir -p "$LOG_DIR" "$RELEASE_IMPORT_DIR" "$RELEASE_DATA_DIR" "$RELEASE_CHECKS_DIR" "$RELEASE_LOG_DIR"
+PAYLOAD_FILE="$RELEASE_CHECKS_DIR/weekly-card-payload-$RUN_ID.json"
+ALERT_PAYLOAD_FILE="$RELEASE_CHECKS_DIR/daily-refresh-alert-$RUN_ID.json"
+COVERAGE_FILE="$RELEASE_CHECKS_DIR/daily-import-coverage-$RUN_ID.json"
+FINAL_COVERAGE_FILE="$RELEASE_CHECKS_DIR/daily-import-coverage-final-$RUN_ID.json"
+QUALITY_FILE="$RELEASE_CHECKS_DIR/wtd-quality-$RUN_ID.json"
+BOARD_METRICS_CHECK_FILE="$RELEASE_CHECKS_DIR/board-metrics-check-$RUN_ID.json"
+DASHBOARD_CONTRACT_FILE="$RELEASE_CHECKS_DIR/dashboard-contract-$RUN_ID.json"
+AI_QUALITY_FILE="$RELEASE_CHECKS_DIR/ai-insights-quality-$RUN_ID.json"
+CARD_QUALITY_FILE="$RELEASE_CHECKS_DIR/card-payload-quality-$RUN_ID.json"
+LOG_FILE="$RELEASE_LOG_DIR/refresh-dashboard-daily-$RUN_ID.log"
 STAGING_IMPORT_DIR="$LOG_DIR/local-imports-$RUN_ID"
+RELEASE_DASHBOARD_FILE="$RELEASE_DATA_DIR/dashboard.json"
 
 # Production deploys model-tag-monitor as /root/model-tag-monitor, while the
 # data workflow and reusable Feishu sender live in the workspace repo.
@@ -84,6 +94,38 @@ API_COOKIE=""
 trap 'rm -f "$API_COOKIE_JAR"' EXIT
 
 log() { printf '[%s] %s\n' "$(date '+%F %T%z')" "$*" | tee -a "$LOG_FILE" >&2; }
+
+release_status() {
+  local stage="$1"
+  local status="$2"
+  local message="${3:-}"
+  local detail_file="${4:-}"
+  local code="${5:-0}"
+  node "$SCRIPT_DIR/manage-release.js" status \
+    --release-dir "$RELEASE_DIR" \
+    --stage "$stage" \
+    --status "$status" \
+    --message "$message" \
+    --detail-file "$detail_file" \
+    --code "$code" >> "$LOG_FILE" 2>&1 || log "WARN: release status update failed stage=$stage status=$status"
+}
+
+release_manifest() {
+  node "$SCRIPT_DIR/manage-release.js" manifest \
+    --release-dir "$RELEASE_DIR" "$@" >> "$LOG_FILE" 2>&1 || log "WARN: release manifest update failed"
+}
+
+release_stage_for() {
+  case "$1" in
+    data-import|coverage|quality|promote|board-metrics|board-metrics-quality|auth|config) printf 'import' ;;
+    build|sync) printf 'build' ;;
+    dashboard-contract) printf 'validate' ;;
+    ai|ai-quality|payload|payload-quality) printf 'ai' ;;
+    publish) printf 'publish' ;;
+    push|notify) printf 'notify' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
 
 cleanup_one_level_by_pattern() {
   local root="$1"
@@ -251,10 +293,26 @@ fail_stage() {
   local message="$2"
   local detail_file="${3:-}"
   local code="${4:-1}"
+  local release_stage
+  release_stage="$(release_stage_for "$stage")"
   log "FAIL stage=$stage message=$message"
+  release_status "$release_stage" "failed" "[$stage] $message" "$detail_file" "$code"
+  if [[ -n "$detail_file" ]]; then
+    release_manifest --status failed --coverage-file "$detail_file"
+  else
+    release_manifest --status failed
+  fi
   send_alert "$stage" "$message" "$detail_file"
   exit "$code"
 }
+
+node "$SCRIPT_DIR/manage-release.js" init \
+  --release-dir "$RELEASE_DIR" \
+  --run-id "$RUN_ID" \
+  --target-week "$TARGET_WEEK" \
+  --target-weeks "$TARGET_WEEKS" \
+  --started-at "$SCRIPT_STARTED_AT" \
+  --version "$VERSION" >> "$LOG_FILE" 2>&1 || fail_stage "config" "failed to initialize release manifest" "" 5
 
 if ! authenticate_api; then
   fail_stage "auth" "dashboard API authentication failed; dashboard cache was not touched" "" 4
@@ -360,6 +418,7 @@ if [[ "$DATA_READY_OK" != "1" ]]; then
   fail_stage "$LAST_READY_STAGE" "$LAST_READY_MESSAGE" "$LAST_READY_DETAIL_FILE" "$LAST_READY_CODE"
 fi
 
+release_status "import" "running" "promoting validated imports"
 log "promote staged imports into production import dir"
 if ! node "$SCRIPT_DIR/promote-local-imports.js" \
   --source-dir "$STAGING_IMPORT_DIR" \
@@ -392,48 +451,55 @@ if ! node "$SCRIPT_DIR/check-board-metrics-cache.js" \
   --out "$BOARD_METRICS_CHECK_FILE" | tee -a "$LOG_FILE"; then
   fail_stage "board-metrics-quality" "Feishu board metrics cache validation failed; dashboard cache was not touched" "$BOARD_METRICS_CHECK_FILE" 16
 fi
+release_status "import" "success" "imports ready for release"
+release_manifest --coverage-file "$FINAL_COVERAGE_FILE"
 
-# Only after local-imports and boundary validation pass can dashboard caches be refreshed.
-post_json /api/sync || fail_stage "sync" "POST /api/sync failed" "$FINAL_COVERAGE_FILE" 20
-post_json /api/sync/taxonomy || fail_stage "sync" "POST /api/sync/taxonomy failed" "$FINAL_COVERAGE_FILE" 21
-post_json /api/sync/category || fail_stage "sync" "POST /api/sync/category failed" "$FINAL_COVERAGE_FILE" 22
-post_json /api/sync/board || fail_stage "sync" "POST /api/sync/board failed" "$FINAL_COVERAGE_FILE" 23
-
-DASHBOARD_JSON="$(get_json /api/dashboard)" || fail_stage "sync" "GET /api/dashboard failed after sync" "$FINAL_COVERAGE_FILE" 24
-printf '%s' "$DASHBOARD_JSON" > "$LOG_DIR/dashboard-$RUN_ID.json"
-if ! node - <<'NODE' "$LOG_DIR/dashboard-$RUN_ID.json" "$TARGET_WEEKS" "$VERSION" | tee -a "$LOG_FILE"; then
+log "snapshot promoted imports into release dir"
+rm -rf "$RELEASE_IMPORT_DIR"
+mkdir -p "$RELEASE_IMPORT_DIR"
+node - <<'NODE' "$IMPORT_DIR" "$RELEASE_IMPORT_DIR"
 const fs = require('fs');
-const file = process.argv[2];
-const expected = process.argv[3].split(',').filter(Boolean);
-const version = process.argv[4];
-const d = JSON.parse(fs.readFileSync(file, 'utf8'));
-const weeks = d.weeks || d.weekWindow || [];
-if (d.version !== version) throw new Error(`dashboard version != ${version}: ${d.version}`);
-if (JSON.stringify(weeks) !== JSON.stringify(expected)) throw new Error(`dashboard weeks mismatch: ${weeks.join(',')} != ${expected.join(',')}`);
-if (d.week !== expected[expected.length - 1]) throw new Error(`dashboard latest week mismatch: ${d.week}`);
-if (!d.board || !Array.isArray(d.categories) || !d.categories.length) throw new Error('dashboard contract incomplete');
-console.log(`[health] dashboard ok version=${d.version} week=${d.week} weeks=${weeks.join(',')} categories=${d.categories.length}`);
+const [src, dest] = process.argv.slice(2);
+fs.cpSync(src, dest, { recursive: true, force: true });
 NODE
-  fail_stage "sync" "dashboard health check failed" "$FINAL_COVERAGE_FILE" 25
+
+if [[ ! -e "$SOURCE_DATA_DIR" ]]; then
+  SOURCE_DATA_DIR="$MONITOR_DIR/data"
 fi
 
-log "validate dashboard v2 contract"
-if ! node "$SCRIPT_DIR/check-dashboard-contract.js" \
-  --dashboard-file "$LOG_DIR/dashboard-$RUN_ID.json" \
+log "build release data offline release=$RELEASE_DIR data_dir=$RELEASE_DATA_DIR"
+if ! node "$SCRIPT_DIR/build-release-data.js" \
+  --release-dir "$RELEASE_DIR" \
+  --import-dir "$RELEASE_IMPORT_DIR" \
+  --source-data-dir "$SOURCE_DATA_DIR" \
   --target-weeks "$TARGET_WEEKS" \
-  --expected-version "$VERSION" \
-  --out "$DASHBOARD_CONTRACT_FILE" | tee -a "$LOG_FILE"; then
-  fail_stage "dashboard-contract" "dashboard contract validation failed after sync" "$DASHBOARD_CONTRACT_FILE" 26
+  --run-id "$RUN_ID" \
+  --coverage-file "$FINAL_COVERAGE_FILE" \
+  --version "$VERSION" | tee -a "$LOG_FILE"; then
+  fail_stage "build" "offline release data build failed; current dashboard was not touched" "$FINAL_COVERAGE_FILE" 20
 fi
 
-log "generate business overview insights cache after data sync success"
-if ! BUSINESS_OVERVIEW_AI_ENABLED="${BUSINESS_OVERVIEW_AI_ENABLED:-1}" \
-  node "$SCRIPT_DIR/generate-business-overview-insights.js" --api-base "$API_BASE" | tee -a "$LOG_FILE"; then
-  fail_stage "ai" "business overview insights generation failed after data sync" "$FINAL_COVERAGE_FILE" 30
+log "generate business overview insights cache inside release"
+release_status "ai" "running" "generating release AI cache"
+if ! DATA_DIR="$RELEASE_DATA_DIR" BUSINESS_OVERVIEW_AI_ENABLED="${BUSINESS_OVERVIEW_AI_ENABLED:-1}" \
+  node "$SCRIPT_DIR/generate-business-overview-insights.js" \
+    --dashboard-file "$RELEASE_DASHBOARD_FILE" \
+    --out-name business-overview-insights.json | tee -a "$LOG_FILE"; then
+  fail_stage "ai" "business overview insights generation failed; release was not published" "$FINAL_COVERAGE_FILE" 30
 fi
 log "business overview insights cache generated"
 
-AI_QUALITY_ARGS=(--dashboard-file "$LOG_DIR/dashboard-$RUN_ID.json" --data-dir "${DATA_DIR:-$MONITOR_DIR/data}" --out "$AI_QUALITY_FILE")
+log "recompose release dashboard with AI cache"
+if ! node "$SCRIPT_DIR/build-release-data.js" \
+  --release-dir "$RELEASE_DIR" \
+  --import-dir "$RELEASE_IMPORT_DIR" \
+  --target-weeks "$TARGET_WEEKS" \
+  --run-id "$RUN_ID" \
+  --dashboard-only | tee -a "$LOG_FILE"; then
+  fail_stage "ai" "dashboard recomposition after AI cache failed; release was not published" "$FINAL_COVERAGE_FILE" 32
+fi
+
+AI_QUALITY_ARGS=(--dashboard-file "$RELEASE_DASHBOARD_FILE" --data-dir "$RELEASE_DATA_DIR" --out "$AI_QUALITY_FILE")
 if [[ "${AI_QUALITY_REQUIRE_AI:-0}" == "1" ]]; then
   AI_QUALITY_ARGS+=(--require-ai)
 fi
@@ -441,9 +507,12 @@ log "validate business overview insights quality"
 if ! node "$SCRIPT_DIR/check-ai-insights-quality.js" "${AI_QUALITY_ARGS[@]}" | tee -a "$LOG_FILE"; then
   fail_stage "ai-quality" "business overview insights quality validation failed" "$AI_QUALITY_FILE" 31
 fi
+release_status "ai" "success" "release AI cache passed quality gate"
+release_manifest --status ai_ready
 
 if ! node "$SCRIPT_DIR/build-weekly-card-payload.js" \
-  --api-base "$API_BASE" \
+  --dashboard-file "$RELEASE_DASHBOARD_FILE" \
+  --data-dir "$RELEASE_DATA_DIR" \
   --dashboard-url "$DASHBOARD_URL" \
   --report-url "$REPORT_URL" \
   --out "$PAYLOAD_FILE" | tee -a "$LOG_FILE"; then
@@ -456,6 +525,26 @@ if ! node "$SCRIPT_DIR/check-card-payload.js" \
   --week "$TARGET_WEEK" \
   --out "$CARD_QUALITY_FILE" | tee -a "$LOG_FILE"; then
   fail_stage "payload-quality" "weekly card payload quality validation failed" "$CARD_QUALITY_FILE" 41
+fi
+
+log "validate release dashboard contract"
+if ! node "$SCRIPT_DIR/check-dashboard-contract.js" \
+  --dashboard-file "$RELEASE_DASHBOARD_FILE" \
+  --target-weeks "$TARGET_WEEKS" \
+  --expected-version "$VERSION" \
+  --out "$DASHBOARD_CONTRACT_FILE" | tee -a "$LOG_FILE"; then
+  fail_stage "dashboard-contract" "dashboard contract validation failed before publish" "$DASHBOARD_CONTRACT_FILE" 26
+fi
+release_status "validate" "success" "release checks passed" "$DASHBOARD_CONTRACT_FILE"
+release_manifest --status validated --coverage-file "$FINAL_COVERAGE_FILE"
+
+log "publish release atomically current=$CURRENT_DATA_DIR"
+PUBLISH_ARGS=(--release-dir "$RELEASE_DIR" --current-path "$CURRENT_DATA_DIR")
+if [[ -n "${LEGACY_COMPAT_DATA_DIR:-}" ]]; then
+  PUBLISH_ARGS+=(--compatibility-path "$LEGACY_COMPAT_DATA_DIR")
+fi
+if ! node "$SCRIPT_DIR/publish-release.js" "${PUBLISH_ARGS[@]}" | tee -a "$LOG_FILE"; then
+  fail_stage "publish" "release publish failed; previous dashboard remains active" "$DASHBOARD_CONTRACT_FILE" 45
 fi
 
 PUSH_ARGS=(--template monitor_weekly --payload "$PAYLOAD_FILE" --outbox-dir "$OUTBOX_DIR")
@@ -471,12 +560,18 @@ if [[ -z "${FEISHU_REPO_DIR:-}" || ! -f "$FEISHU_REPO_DIR/tools/feishu_push/send
   OUTBOX_FILE="$OUTBOX_DIR/$(basename "$PAYLOAD_FILE")"
   cp "$PAYLOAD_FILE" "$OUTBOX_FILE"
   log "Feishu sender module not found; wrote payload outbox=$OUTBOX_FILE"
+  release_status "notify" "success" "notification payload written to outbox"
   log "model-tag-monitor refresh done with outbox fallback"
   exit 0
 fi
 
 log "send style-2 card"
 if ! (cd "$FEISHU_REPO_DIR" && "$PYTHON_BIN" -m tools.feishu_push.send_card "${PUSH_ARGS[@]}") | tee -a "$LOG_FILE"; then
-  fail_stage "push" "weekly card push failed" "$FINAL_COVERAGE_FILE" 50
+  release_status "notify" "failed" "weekly card push failed after publish" "$CARD_QUALITY_FILE" 50
+  release_manifest --status published_notify_failed
+  send_alert "notify" "weekly card push failed after publish; dashboard release is already active" "$CARD_QUALITY_FILE"
+  exit 50
 fi
+release_status "notify" "success" "weekly card sent"
+release_manifest --status published
 log "model-tag-monitor refresh done"
