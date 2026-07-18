@@ -34,6 +34,28 @@
 | 5 | `references/sql/model_daily_avg.sql` | `raw/model_daily_avg_<run_dt>.csv` | 周 × 品类 × 机型 × 可选属性/成色/履约 | 原始机型取数；Sheet5 最细粒度由 Process 校验/提取 |
 | 6 | `references/sql/model_summary.sql` | `raw/model_summary_<run_dt>.csv` | 周 × 品类 × 机型 × 可选属性/成色/履约 | 原始机型周汇总取数 |
 
+## 沙箱调度策略
+
+zloop 沙箱磁盘与执行窗口有限，Fetch 禁止一次性提交 6 个 SQL。必须按受控并发调度：
+
+```text
+重 SQL 队列，并发 1：
+1. model_daily_avg
+2. model_summary
+
+轻 SQL 队列，并发 2：
+1. category_daily_avg
+2. category_summary
+3. category_fulfill_daily_avg
+4. category_fulfill_summary
+
+总并发最多 3。
+```
+
+同一 `run_dt + rendered_sql_sha256` 下，已成功并落成 CSV 的 SQL 可以断点复用；复用前必须校验 CSV 存在、bytes > 0、行数可读取、sha256 可记录。`run_dt` 或 SQL hash 变化时禁止复用。
+
+失败时只保留极简诊断 JSON 和可复用状态，不保留 raw CSV、raw_cache、debug 下载文件等中间大文件。validate 写服务器成功后也必须清理 read/process 大文件。
+
 ## 固定过滤口径
 
 Fetch 不改写 SQL 业务过滤；以下口径必须保留在 SQL 中：

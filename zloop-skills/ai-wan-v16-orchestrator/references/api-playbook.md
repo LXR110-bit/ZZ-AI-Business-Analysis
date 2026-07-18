@@ -9,10 +9,16 @@
 
 ## API bindings
 
-1. `aiwan:run:read` — `f3f2a89f-3c54-4f3d-92a0-04d2a25a6b8d`
-2. `aiwan:run:write` — `c7af7d71-d114-44f4-87ac-8d225ad0b6c4`
+### 阶段 A Loop1 控制面（当前 Skill 绑定）
 
-调用详情见 `references/apihub-read-write-contract.md`；v2 透明反向代理规则为 `/gw/v2/{domain}{original_path}`，在 `zloop_runtime.hub` 中传 `/v2/aiwan/api/aiwan/read|write`。
+1. `aiwan:primary:if_aiwan_jobs_read` — `2a56c817-134d-409a-b457-9ecf859217eb` — `POST /api/aiwan/jobs/read` → `/v2/aiwan/api/aiwan/jobs/read`
+2. `aiwan:primary:if_aiwan_jobs_write` — `d2d9e941-7662-4361-9ad8-f73d38cbd92b` — `POST /api/aiwan/jobs/write` → `/v2/aiwan/api/aiwan/jobs/write`
+
+调用详情见 `references/loop1-control-plane-contract.md`。Loop1 只通过这两个 capability 做跨 tick 恢复、CAS 租约、SQL checkpoint、发布复读和 handoff。
+
+### full6 兼容入口
+
+`aiwan_inline_state_machine.py` 仍保留旧 full6 read/write 代码路径用于兼容回归，但它不是阶段 A Loop1 控制面，也不作为本 v31 候选包的主调度路径。正式阶段 A 调度不得从旧 `/api/aiwan/read|write` 推断 checkpoint 状态。
 
 ## 固定调用顺序（v1.6.5）
 

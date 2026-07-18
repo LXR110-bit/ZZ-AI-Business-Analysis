@@ -17,11 +17,15 @@
     ]
   },
   "verification": {
-    "smoke_prompt": "说明 AI小万主编排 v1.6.19 如何先运行 scripts/aiwan_inline_state_machine.py，真实执行 read(xinghe runtime SQL+单次 materialize 响应+快速 URL 下载 Excel/CSV 转换+raw_cache；履约空 CSV 降级 known_gaps/warn)→process(Node 以 --max-old-space-size=${AIWAN_PROCESS_NODE_OLD_SPACE_MB:-8192} 处理大 CSV+品类映射+process pipeline，履约 known_gaps 不阻断 validateUnpackedRaw/materializeImports，model_summary 仅做 raw 校验不再二次 materialize 以降低内存峰值，包内 server-snapshot/category-taxonomy.json 提供 112 行品类分层兜底)→analyze(APIHub read 上下文+display_insights，并从 server_cache_bundle/category-taxonomy.json 与 category-cache.json 原生填充 secondaryCategories/categories 且标明来源策略)→validate(display 校验+APIHub write 且 output_type=validation_result，二级类目/品类 map 为空时不允许 publish)；物化失败时必须输出 debug/materialize 响应并 failed，不能被 Bash 600 秒后台化吞掉。",
+    "smoke_prompt": "使用当前 active Skill 根目录运行 scripts/aiwan_inline_state_machine.py --preflight --json；禁止执行 SQL 和服务器写入；确认 Loop1/full6 入口、Python PROCESS、raw package Node、zloop_runtime、6 份 SQL、build marker 和输出目录均通过，且 preflight_seconds 小于 3 秒。",
     "side_effect_policy": "allow_write_with_confirmation",
     "user_scenarios": [
-      "AI 小万 v1.6 多阶段 Loop 自动执行。",
-      "手动单独重跑或检查某个阶段。"
+      "follow-current 绑定下从 ZLOOP_ACTIVE_SKILL_DIR 启动，准备阶段不执行递归搜索。",
+      "pin-version 与 trial-run 候选包使用相同 active-root 契约。",
+      "active root 或入口缺失时 5 秒内返回结构化错误。",
+      "Loop1 只提交 4 份基础 SQL，pending tick 退出 0，下一 tick 按 execute_id 恢复。",
+      "Loop1 发布复读命中同一 analysis_key/base_revision，model_enrichment_mode=disabled 时发布 base_published 并创建 ready handoff。",
+      "full6 兼容入口保留，PROCESS 使用 v30 流式 Python pipeline 避免 4GB 沙箱 OOM。"
     ]
   },
   "zloop": {
@@ -30,7 +34,16 @@
   },
   "contracts": {
     "stage": "orchestrator",
-    "contract_version": "ai-wan-v1.6.19-stage",
+    "contract_version": "ai-wan-v1.6.26-loop1-phase-a",
+    "orchestrator_build": "v1.6.26-loop1-phase-a-python-process",
+    "entrypoint": {
+      "root_env": "ZLOOP_ACTIVE_SKILL_DIR",
+      "script": "scripts/aiwan_loop1_tick.py",
+      "compatibility_script": "scripts/aiwan_inline_state_machine.py",
+      "preflight": "<python3-or-python> scripts/aiwan_inline_state_machine.py --preflight --json",
+      "resolution_mode": "runtime_active_skill_dir",
+      "search_fallback": false
+    },
     "stage_order": [
       "read",
       "process",
@@ -38,23 +51,52 @@
       "validate"
     ],
     "server_usage": {
-      "read": "none",
-      "process": "none",
+      "loop1_control_plane": "create_get_claim_post_state",
+      "read": "sql_checkpoint_only",
+      "process": "job_checkpoint_only",
       "analyze": "read_only",
-      "validate": "final_write"
+      "validate": "final_write_reread_then_handoff"
     },
     "api_bridge": {
-      "read": "POST /api/aiwan/read",
-      "write": "POST /api/aiwan/write",
       "runtime_client": "zloop_runtime.hub",
-      "read_runtime_path": "/v2/aiwan/api/aiwan/read",
-      "write_runtime_path": "/v2/aiwan/api/aiwan/write"
+      "read_public_id": "2a56c817-134d-409a-b457-9ecf859217eb",
+      "read_registered_path": "POST /api/aiwan/jobs/read",
+      "read_runtime_path": "/v2/aiwan/api/aiwan/jobs/read",
+      "write_public_id": "d2d9e941-7662-4361-9ad8-f73d38cbd92b",
+      "write_registered_path": "POST /api/aiwan/jobs/write",
+      "write_runtime_path": "/v2/aiwan/api/aiwan/jobs/write",
+      "jobs_registration_status": "bound_two_endpoint_action_contract",
+      "jobs_read_public_id": "2a56c817-134d-409a-b457-9ecf859217eb",
+      "jobs_write_public_id": "d2d9e941-7662-4361-9ad8-f73d38cbd92b",
+      "jobs_read_runtime_path": "/v2/aiwan/api/aiwan/jobs/read",
+      "jobs_write_runtime_path": "/v2/aiwan/api/aiwan/jobs/write",
+      "legacy_full6_read_write_status": "compatibility_only_not_loop1_control_plane",
+      "jobs_runtime_paths": [
+        "POST /v2/aiwan/api/aiwan/jobs/read",
+        "POST /v2/aiwan/api/aiwan/jobs/write"
+      ]
     },
     "required_stage_outputs": {
-      "read": ["read_result", "raw_cache", "sql_status"],
-      "process": ["processed_data", "category_mapping_manifest"],
-      "analyze": ["analysis_result.findings", "analysis_result.display_insights"],
-      "validate": ["validation_result", "server_write_confirmed"]
+      "read": [
+        "read_result",
+        "raw_cache",
+        "sql_status",
+        "server_sql_checkpoints"
+      ],
+      "process": [
+        "processed_data",
+        "category_mapping_manifest"
+      ],
+      "analyze": [
+        "analysis_result.findings",
+        "analysis_result.display_insights"
+      ],
+      "validate": [
+        "validation_result",
+        "server_write_confirmed",
+        "base_job_published",
+        "handoff_ready"
+      ]
     }
   }
 }

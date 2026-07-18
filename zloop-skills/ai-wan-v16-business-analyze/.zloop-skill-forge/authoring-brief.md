@@ -3,14 +3,14 @@
 - source_type: from-existing-skill
 - mode: update
 - route_decision: update-owned
-- route_evidence: 用户要求修复现有 AI小万 v1.6/v1.7 analyze Skill：保留 v1.6 阶段边界，融合飞书五层分析法，并稳定产出旧 dashboard bridge 直接消费的 display_insights。
+- route_evidence: 用户要求修复现有 AI小万 v1.6/v1.7 analyze Skill：保留 v1.6 阶段边界，融合飞书五层分析法，并对齐 v1.5.5 旧服务器分析效果：evidence_pack、insights、summary、review_notes、analysis_trace、display_insights 全量输出。
 - route_next_action: package-check --mode update；确认后使用 upload --mode update --route-decision update-owned。
 - target_skill_public_id: 9d0548c8-2443-477d-8200-597ffca7f886
 - base_skill_version_id: 78f81f249a354377b18460f1305bd814
 - stage: analyze
 - runtime_client_gate: hub
 - api_binding_status: bound
-- call_sequence_status: pending_trial
+- call_sequence_status: local_v155_effect_contract_ready
 - API read: aiwan:run:read / f3f2a89f-3c54-4f3d-92a0-04d2a25a6b8d / POST /api/aiwan/read
 - API write: not allowed in analyze; validate stage owns final write
 - permission_gaps:

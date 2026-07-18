@@ -115,3 +115,11 @@
 - 百分点写“0.80个百分点”，不得写 `pct`、`pp`。
 - 每段保持“结论 + 关键证据 + 下钻/观察建议”。
 - 对低基数、口径异常、机型缺失，必须明确写为数据风险或维持观察。
+
+## v1.5.5 旧服务器效果对齐补充
+
+- 五层方法必须输出可审计产物，不只输出展示文案：`evidence_pack`、`insights`、`summary`、`review_notes`、`analysis_trace`、`findings`、`display_insights`。
+- 每个关键结论必须携带大写前缀 evidence_id，并能在 `evidence_pack.evidence_index` 回链。
+- daily 模式保留“GLM-5.2 主生成 + DeepSeek V4 Pro 复核 + 确定性合并”的角色语义；即使实现为确定性规则，也要在 `model_trace` 和 `analysis_trace` 中记录。
+- `display_insights` 面向 dashboard 展示，`summary/review_notes/analysis_trace` 面向 validate 与人工审计，二者缺一不可。
+- 历史不足 8 周时只能输出周环比观察和验证计划，不能输出长期趋势。

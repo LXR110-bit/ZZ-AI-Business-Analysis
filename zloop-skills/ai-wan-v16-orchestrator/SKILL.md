@@ -1,229 +1,164 @@
 ---
 name: AI小万主编排 v1.6
-description: AI 小万 v1.6/v1.7 单 Loop 入口 Skill：串联 read SQL 取数、process 品类映射与模板处理、analyze 生成 display_insights、validate 最终写服务器。
-version: 1.6.19
+description: AI 小万 v1.6/v1.7 主编排：阶段 A 以 4 SQL Loop1 通过 jobs/read+jobs/write 跨 tick 发布基础分析，并保留 full6 兼容入口。
+version: 1.6.29
+api_dependencies:
+  - 2a56c817-134d-409a-b457-9ecf859217eb
+  - d2d9e941-7662-4361-9ad8-f73d38cbd92b
 ---
 
 # AI小万主编排 v1.6
 
-## Loop 入口约束
+## 执行模式
 
-Loop 只选择本 Skill。主编排必须在**本 Skill 单次运行内**完成四阶段，不得通过 `$AI小万数据读取 v1.6`、`$AI小万数据处理 v1.6`、`$AI小万经营分析 v1.6`、`$AI小万结果校验 v1.6` 切换到子 Skill。
-
-远端 zloop 的 `$Skill` 激活会让子 Skill 接管整轮 assistant 响应，无法可靠返回主编排。因此 Loop 入口必须使用本包内置模块执行：
+正式阶段 A Loop 使用 `scripts/aiwan_loop1_tick.py`，每次调度只执行一个 tick。analyze 阶段**由本沙箱主 agent（Claude Sonnet）亲自撰写**，不是确定性模板：
 
 ```text
-scripts/aiwan_inline_state_machine.py
-→ read 内联模块：references/read/* + $xinghe-data-explore + raw_cache
-→ process 内联模块：bin/process-raw-cache.js + references/process/*
-→ analyze 内联模块：references/analyze/* + scripts/aiwan_apihub.py read
-→ validate 内联模块：references/validate/* + scripts/aiwan_apihub.py write/read
+tick(base):  4 个基础 SQL submit/poll → 服务器 checkpoint → process → 落确定性 evidence → 返回 analyze_pending
+  ↓
+agent(Claude): 读 analyze_input.json，按「AI小万经营分析 v1.6」的 rubric + few-shot 分批写 display_insights → 落 analysis_result.json
+  ↓
+tick(finalize): current_stage==analyze → 机器闸门校验 agent 产物 → validate 写服务器 → base_published → ready handoff
 ```
 
-执行前必须读取：
+- 每个 `execute_id` 提交后立即 CAS 到服务器；SQL 未完成 tick 返回 `business_status=pending` 并退出 0。
+- **`business_status=analyze_pending` 时（read+process 已完成、`analyze_input.json` 已生成）**：agent 必须立刻读取 `analyze_input.json`（其中 `evidence_pack` 是确定性数字来源），加载 `AI小万经营分析 v1.6` 的 `analyze-parity-rubric.md` + `golden-fewshot.md`，**分批**（board+三层一次；categories 每 20–30 个一批）产出 `display_insights`，把结果写到 `analysis_result.json` 的 `display_insights` 字段；数字只能来自 evidence_pack，禁止编造；随后**再跑一次 `aiwan_loop1_tick.py`** 进入 finalize。
+- finalize tick 的机器闸门校验 schema/三层齐全/品类覆盖/带数/受控标签；不合规返回 `retryable_failed`，**不退回模板、不静默通过**。
+- `run_id/analysis_key/worker_id` 必须按 `week + data_end_date + base_revision` 跨 tick 稳定，不得带本次执行时间或随机串。
+- 阶段 A 固定 `model_enrichment_mode=disabled`，dashboard 发布状态为 `base_published`，交接任务不启动 Loop2 SLA。
 
-- `references/api-playbook.md`
-- `references/apihub-read-write-contract.md`
+`scripts/aiwan_inline_state_machine.py` 仅作为 full6 兼容入口，仍在同一次运行内完成：
 
-## 运行入口（必须先执行）
-
-命中本 Skill 后，第一步必须运行包内状态机脚本，不能先用自然语言模拟四阶段，也不能只完成 READ 后总结：
-
-```bash
-python scripts/aiwan_inline_state_machine.py \
-  --run-id <run_id> \
-  --week <week> \
-  --run-dt <run_dt> \
-  --data-end-date <data_end_date>
+```text
+read（星河 SQL）→ process（确定性处理）→ analyze（只读服务器上下文）→ validate（最终写入并复读）
 ```
 
-状态机脚本负责真实执行 `read → process → analyze → validate → server write/reread`。脚本退出码非 0 或输出 `ok=false` 时，最终必须报告业务失败；禁止把 Loop 平台 `succeeded` 当成业务成功。
-
-最终答复必须优先复述脚本输出的 `aiwan_inline_result.json`，而不是重新组织一份只含 READ 的摘要。
+不得通过 `$AI小万数据读取 v1.6`、`$AI小万数据处理 v1.6`、`$AI小万经营分析 v1.6`、`$AI小万结果校验 v1.6` 切换阶段。四阶段由包内 `scripts/aiwan_inline_state_machine.py` 统一执行。
 
 ## 输入
+
+只接收业务参数，不接收或校验物理 SkillVersion 路径：
 
 ```json
 {
   "run_id": "<required-or-week-weekly>",
-  "week": "2026-W29",
-  "start_stage": "read",
-  "end_stage": "validate",
-  "scope": {"type": "weekly", "category": null},
-  "rerun": false,
-  "rerun_reason": null
+  "week": "YYYY-Www",
+  "run_dt": "YYYY-MM-DD",
+  "data_end_date": "YYYY-MM-DD",
+  "base_revision": 1
 }
 ```
 
-未提供 `run_id` 时使用 `<week>-weekly`。同一次运行中 `run_id/week` 不得变化。
+- Loop1 未提供 `run_id` 时使用 `loop1-<week>-<data_end_date>-r<base_revision>`；full6 兼容入口仍使用显式 `run_id`。
+- `run_id` 只能包含 `0-9 A-Z a-z . _ : -`；连续非法字符替换为 `_`。
+- 未提供 `data_end_date` 时使用 `run_dt - 1 day`。
+- 同一次运行中 `run_id/week/run_dt/data_end_date` 不得漂移。
 
-### run_id 规范
+## 阶段 A Loop1 固定入口
 
-`run_id` 只能包含后端允许字符：`0-9 A-Z a-z . _ : -`。
-
-- 如果 Loop prompt 或用户输入的 `run_id` 含 `+`、空格、中文或其他非法字符，必须在调用阶段 Skill 前规范化：把连续非法字符替换为 `_`。
-- 禁止把带 `+0800` 的时间戳直接作为 `run_id`；必须改成 `_0800` 或省略时区符号。
-- 规范化后的 `run_id` 必须贯穿四阶段，禁止中途漂移。
-
-## 新阶段职责契约（v1.6.19）
-
-APIHub 不再是每阶段 checkpoint 中心。四阶段职责如下：
-
-| 阶段 | Skill | 服务器/APIHub 使用 | 输入 | 输出 |
-|---|---|---|---|---|
-| read | 本包 `references/read/*` | 禁止读取/写入服务器；必须委托 `xinghe-data-explore` | run_id/week/run_dt/data_end_date/scope | `read_result` / `sql_result` / `raw_cache` |
-| process | 本包 `bin/process-raw-cache.js` | 禁止读取/写入服务器；禁止重新跑 SQL；读取飞书品类映射或快照 | `read_result` + `raw_cache` | `processed_data` + `category_mapping_manifest` |
-| analyze | 本包 `references/analyze/*` | 只允许读取服务器上下文 | `processed_data` + server context | `analysis_result`，含 `findings` + `display_insights` |
-| validate | 本包 `references/validate/*` | 校验后最终写入服务器并复读确认 | `processed_data` + `analysis_result` | `validation_result` |
-
-## 全局硬约束
-
-1. 主编排必须在同一次 invocation 内连续推进 `read → process → analyze → validate`。
-2. 禁止调用四个阶段子 Skill；它们只是版本化模块来源，不是 Loop 运行入口。
-3. 禁止把 `read/process/analyze` 任一阶段摘要作为最终答复。
-4. 只有 `validate` 完成最终服务器写入并复读确认后，才允许宣称完整闭环成功。
-5. 如果任一阶段失败，必须停止后续阶段，并输出失败阶段、失败原因、可重跑建议；不要伪造后续阶段。
-6. `read` 和 `process` 阶段禁止调用服务器/APIHub；如果它们尝试这么做，视为职责错误。
-7. `analyze` 阶段只读服务器，不写服务器。
-8. `validate` 阶段负责最终写服务器，payload 必须包含 `processed_data`、`analysis_result`、`validation_result`。
-9. `read` 阶段必须触发 `$xinghe-data-explore` 执行 6 份已确认 SQL，并返回 `raw_cache/active_fetch_manifest/sql_status/raw_manifest`。6 个 execute_id 成功但未落成 raw CSV/raw_cache 时仍视为 `failed`。
-10. `process` 阶段必须消费 read 阶段产物，运行确定性 process pipeline；不得把 read 的 raw SQL 结果直接传给 analyze。
-11. `process` 阶段必须产出 `category_mapping_manifest`；飞书品类映射读取失败时允许用最近快照，但必须把非实时风险传给 analyze/validate。
-12. `analyze` 阶段必须产出 `analysis_result.display_contract=dashboard-business-overview-insights-map/v1` 和完整 `display_insights`；服务器 bridge 不会从 findings 生成页面文案。`display_insights.secondaryCategories/categories` 必须由 process 产物、`server_cache_bundle`、dashboard 聚合快照或经验证 AI 结论填充，不能留空后依赖 dashboard 兜底。
-13. `validate` 阶段必须校验 `display_insights` 后再写服务器；display 不合法或二级类目/品类 map 为空时 `publish_allowed=false`。
-14. 如果 assistant 准备输出最终答复，但 `stage_results.process/analyze/validate` 任一缺失，必须立刻停止最终答复，继续调用下一个阶段 Skill。
-15. Loop 平台 `succeeded` 不等于业务成功；只有 `validation_result.server_write_confirmed=true` 且复读确认包含同一 `run_id`，才能把 `overall_status` 标为 `success|warn`。
-
-## 单次调用内循环协议
-
-Loop 模式下优先执行机器状态机，而不是手写分阶段对话：
+命中本 Skill 后立即运行下列入口。正常路径不要预读 reference，也不要用自然语言模拟四阶段：
 
 ```bash
-python scripts/aiwan_inline_state_machine.py \
+test -n "${ZLOOP_ACTIVE_SKILL_DIR:-}" || {
+  echo '{"ok":false,"error":{"code":"ACTIVE_SKILL_DIR_MISSING"}}'
+  exit 2
+}
+
+cd "$ZLOOP_ACTIVE_SKILL_DIR" || {
+  echo '{"ok":false,"error":{"code":"ACTIVE_SKILL_DIR_INVALID"}}'
+  exit 2
+}
+
+test -f scripts/aiwan_loop1_tick.py || {
+  echo '{"ok":false,"error":{"code":"SKILL_ENTRYPOINT_MISSING"}}'
+  exit 2
+}
+
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+test -n "$PYTHON_BIN" || {
+  echo '{"ok":false,"error":{"code":"PYTHON_MISSING"}}'
+  exit 2
+}
+
+"$PYTHON_BIN" scripts/aiwan_loop1_tick.py \
+  --week "$WEEK" \
+  --run-dt "$RUN_DT" \
+  --data-end-date "$DATA_END_DATE" \
+  --base-revision "${BASE_REVISION:-1}" \
+  --base-deadline-at "$BASE_DEADLINE_AT"
+```
+
+调度 Prompt 必须动态计算 Asia/Shanghai 的 `RUN_DT/DATA_END_DATE/WEEK`，并把同一分析版本的 60 分钟截止时间稳定传入 `BASE_DEADLINE_AT`。配置时必须读取 `references/loop1-scheduled-prompt.md`。入口变量或文件缺失时必须在 5 秒内失败，禁止降级搜索。
+
+## full6 兼容入口
+
+```bash
+"$PYTHON_BIN" scripts/aiwan_inline_state_machine.py \
   --run-id "$RUN_ID" \
   --week "$WEEK" \
   --run-dt "$RUN_DT" \
   --data-end-date "$DATA_END_DATE"
 ```
 
-该脚本必须完整执行 read → process → analyze → validate，并把最终 JSON 作为本 Skill 的最终答复依据。脚本 exit code 非 0 时，必须把 `aiwan_inline_result.json` 或 stderr 中的失败阶段、错误码和 artifacts_dir 返回给 Loop，不能改写成成功。
+## 快速预检
 
-```text
-stage_order = [read, process, analyze, validate]
+只检查入口、依赖、6 份 SQL、build marker 与输出目录，不执行 SQL、不调用 APIHub、不生成业务结果：
 
-read_result = execute embedded read module
-if read_result.status failed: stop
-if read_result.next_stage == process: immediately call process in the same response turn
-
-processed_data = execute embedded process module with read_result
-if processed_data.status failed: stop
-if processed_data.next_stage == analyze: immediately call analyze in the same response turn
-
-analysis_result = execute embedded analyze module with processed_data
-if analysis_result.status failed: stop
-if analysis_result.next_stage == validate: immediately call validate in the same response turn
-
-validation_result = execute embedded validate module with processed_data + analysis_result
-if validation_result.server_write_confirmed true: final success/warn report
-else: final failed report
+```bash
+cd "$ZLOOP_ACTIVE_SKILL_DIR"
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+test -n "$PYTHON_BIN" || { echo '{"ok":false,"error":{"code":"PYTHON_MISSING"}}'; exit 2; }
+"$PYTHON_BIN" scripts/aiwan_inline_state_machine.py --preflight --json
 ```
 
-执行阶段时不得通过 `$` 调用 AI小万阶段 Skill。只有 `read` 阶段允许通过 `$xinghe-data-explore` 委托 SQL 取数，因为它是底层取数能力而不是 AIWAN 阶段 Skill。
+预检目标耗时小于 3 秒。`ok=false` 时原样返回稳定错误码，不得继续完整运行。
 
-### 阶段继续执行门禁
+## 全局硬约束
 
-每个阶段完成后，先做下面的门禁，而不是总结给用户：
+1. 禁止使用 `find`、`locate` 或递归 `ls` 搜索本 Skill。
+2. 禁止探测 `/mnt/skill`、workspace、HOME 或 `/tmp` 来猜安装位置。
+3. 禁止通过物理路径或 `versions/<version-id>` 判断 SkillVersion；版本选择由平台的 follow-current / pin-version 绑定负责。
+4. Skill 内部路径一律相对 `ZLOOP_ACTIVE_SKILL_DIR`；脚本内部资源一律基于 `__file__` 解析。
+5. 取数方式（必须触发）：用 Skill 工具加载 `xinghe-data-explore` 作为唯一底层取数能力，并遵循其已确认 SQL/异步执行契约；禁止自取数、直连 Hive/One-Service 或自行拼认证信息。Loop1 只允许 4 份基础 SQL，full6 兼容入口为 6 份。
+6. read/process 禁止读写 AIWAN 服务器；analyze 只读；validate 才能最终写入并复读。
+7. process 使用 v30 的流式 Python pipeline，禁止回退到会在 4GB 沙箱 OOM 的全量 Node pipeline。
+8. `analysis_result.display_contract` 必须为 `dashboard-business-overview-insights-map/v1`，且 `display_insights` 完整。
+9. 只有 validate 返回 `server_write_confirmed=true` 且复读命中同一 `run_id`，业务才可成功。
+10. 任一阶段失败立即停止，禁止让 Loop 平台 `succeeded` 掩盖业务失败。
 
-```text
-if current_stage == read and read_result.next_stage == "process":
-  execute embedded process module immediately
+## 成功与失败判定
 
-if current_stage == process and processed_data.next_stage == "analyze":
-  execute embedded analyze module immediately
+- Loop1 待续：`business_status=pending`且退出 0，等待下一 tick 从服务器状态恢复。
+- Loop1 成功：基础四阶段通过、dashboard 复读命中同版本、base job 为 `published`，且 handoff 为 `ready`。
+- full6 成功：四阶段均有结果、`publish_allowed=true`、`server_write_confirmed=true`。
+- 告警成功：满足成功条件，但 read/process/analyze 存在非阻断 warning。
+- 失败：脚本退出码非 0、`ok=false`、阶段缺失、validate 未确认写入或复读不一致。
 
-if current_stage == analyze and analysis_result.next_stage == "validate":
-  execute embedded validate module immediately
-```
+最终答复优先复述 `aiwan_inline_result.json`，不得重新组织成只含 READ 的摘要。失败时原样返回错误码、失败阶段和 `artifacts_dir`。
 
-禁止在 read 阶段之后输出类似“返回 read_result 给主编排”“下一步 process”的最终消息后结束运行。此类文本只能是内部进度，不是最终答复。最终答复必须来自 validate 阶段之后。
+## 故障路由（仅命中错误时读取）
 
-## 子 Skill 调用要求
+- SQL、物化、raw_cache 或数据周问题：读取 `references/read/query-playbook.md`。
+- Loop1 jobs API、CAS、租约、SQL checkpoint、发布复读或 handoff 问题：读取 `references/loop1-control-plane-contract.md`。
+- process、品类映射、标签同步或 OOM 问题：读取 `references/process/server-flow-mapping.md`、`references/process/category-mapping-contract.md`、`references/process/model-tag-sync-contract.md`。
+- analyze 展示、证据、五层分析、模型适配或标签知识问题：读取 `references/analyze/evidence-contract.md`、`references/analyze/display-insights-contract.md`、`references/analyze/five-layer-analysis-method.md`、`references/analyze/model-adaptation.md`、`references/analyze/model-tag-knowledge-contract.md`。
+- validate、标签校验、APIHub write/reread 问题：读取 `references/validate/display-insights-contract.md`、`references/validate/model-tag-validation-contract.md`、`references/apihub-read-write-contract.md`。
+- 需要核对完整四阶段调用契约时：读取 `references/api-playbook.md`。
 
-### 1. READ
-
-执行本包 read 内联模块：
-
-- 只跑 SQL。
-- 必须读取 `references/read/query-playbook.md` 和 6 份 `references/read/sql/*.sql`。
-- 必须委托 `$xinghe-data-explore`，不得自取数。
-- 必须区分 `run_dt` 与 `data_end_date`；`-1 day` 日期宏默认替换为 `data_end_date=run_dt-1 day`。
-- 必须用 `$xinghe-data-explore` 的完整结果落文件能力把 6 个 SQL 结果导出为 CSV；禁止只用 `get_sql_results` 预览行作为 raw_cache 输入。
-- 必须调用 `node bin/package-raw-cache.js --run-dt ... --run-id ... --input-dir ... --out-dir ...` 打包 read 产物。
-- 继续 process 前必须检查 `active_fetch_manifest.json`、`raw_cache_<run_dt>.zip`、`sql_status_<run_dt>.json`、`raw_manifest_<run_dt>.json` 均存在，且 raw_cache 内含 6 个 `raw/*.csv`。
-- 不读服务器。
-- 不写服务器。
-- 返回包含 `raw_cache/active_fetch_manifest/sql_status/raw_manifest` 的 `read_result`。
-
-如果 6 个 SQL 已成功但没有 raw_cache 文件，必须返回：
-
-```json
-{"stage":"read","status":"failed","error":{"code":"READ_ARTIFACTS_MISSING"}}
-```
-
-禁止在这种情况下输出 `overall_status=success|warn`，也禁止让 Loop 平台 `succeeded` 掩盖业务失败。
-
-### 2. PROCESS
-
-执行本包 process 内联模块，并传入完整 `read_result`：
-
-- 只按 process pipeline 处理 read 阶段 raw_cache。
-- 必须读取 `references/process/model-tag-sync-contract.md`、`references/process/server-flow-mapping.md`、`references/process/category-mapping-contract.md`。
-- 必须调用 `node --max-old-space-size=${AIWAN_PROCESS_NODE_OLD_SPACE_MB:-8192} bin/process-raw-cache.js --run-dt ... --run-id ... --input-dir ... --out-dir ... --snapshot-dir references/process/server-snapshot --category-mapping-file ...`，避免 `model_summary` / `model_daily_avg` 大 CSV 在远端默认 Node 堆下 OOM。
-- validate 写服务器时必须显式传 `output_type: "validation_result"`，避免服务器默认 `validate_result` 兼容路径影响 bridge 判断。
-- 调用前必须确认 process 的 `--input-dir` 内有 READ 生成的 `active_fetch_manifest.json` 和 `raw_cache_<run_dt>.zip`；缺失时返回 failed，错误码 `PROCESS_INPUT_MISSING`，不得重新跑 SQL 或编造 processed_data。
-- 必须产出 `metric_snapshot/candidate_anomalies/analysis_history/model_tag_knowledge/category_mapping_manifest/data_quality_report`。
-- 不读服务器。
-- 不写服务器。
-- 不重新跑 SQL。
-- 返回 `processed_data`。
-
-### 3. ANALYZE
-
-执行本包 analyze 内联模块，并传入完整 `processed_data`：
-
-- 必须读取 `references/analyze/evidence-contract.md`、`references/analyze/display-insights-contract.md`、`references/analyze/five-layer-analysis-method.md`、`references/analyze/model-adaptation.md`、`references/analyze/model-tag-knowledge-contract.md`、`references/analyze/insights-schema.json`。
-- 需要读取服务器上下文。
-- 通过 `python scripts/aiwan_apihub.py read --run-id "$RUN_ID" --stage analyze --week "$WEEK" --history-weeks 10 --include run_meta,history_10w,rules,previous_stage_outputs,dashboard_snapshot` 读取。
-- 结合 `processed_data` + server context 生成分析。
-- 必须返回 `findings` 用于追溯，并返回 `display_insights` 作为旧 dashboard 页面主产物。
-- `display_insights` 必须包含 `board`、`tiers.发展/孵化/种子`、`secondaryCategories`、`categories`、`category`、`monitor`、`warnings`。
-- 不写服务器。
-- 返回 `analysis_result`。
-
-### 4. VALIDATE
-
-执行本包 validate 内联模块，并传入完整 `processed_data` 与 `analysis_result`：
-
-- 必须读取 `references/validate/display-insights-contract.md`、`references/validate/insights-schema.json`、`references/validate/model-tag-validation-contract.md`。
-- 校验数据和分析结果。
-- 校验 `display_contract/display_insights` 是否满足服务器 bridge 发布契约。
-- 把最终数据、分析结果、校验结果写入服务器。
-- 通过 `python scripts/aiwan_apihub.py write ...` 写入，并通过 read 复读确认。
-- 写后复读确认。
-- 返回 `validation_result`。
+未命中故障不要预读这些 reference。
 
 ## 最终输出
 
-必须包含：
-
 ```json
 {
+  "ok": true,
   "run_id": "<same-run-id>",
-  "week": "2026-W29",
-  "business_run_id": "<server/business run id if returned>",
+  "week": "YYYY-Www",
+  "entrypoint_resolution_mode": "runtime_active_skill_dir",
+  "orchestrator_build": "v1.6.26-loop1-phase-a-python-process",
   "actual_data_week": {
-    "input_week": "2026-W29",
-    "week_start_dates": [],
+    "input_week": "YYYY-Www",
+    "week_start_dates": ["YYYY-MM-DD", "YYYY-MM-DD"],
     "current_week_start": "YYYY-MM-DD",
     "data_end_date": "YYYY-MM-DD"
   },
@@ -233,12 +168,21 @@ if current_stage == analyze and analysis_result.next_stage == "validate":
     "analyze": {"status": "...", "output_type": "analysis_result"},
     "validate": {"status": "...", "output_type": "validation_result", "server_write_confirmed": true}
   },
-  "server_write_response": {},
+  "timings": {
+    "startup_seconds": 0.0,
+    "preflight_seconds": 0.0,
+    "read_seconds": 0.0,
+    "process_seconds": 0.0,
+    "analyze_seconds": 0.0,
+    "validate_seconds": 0.0,
+    "total_seconds": 0.0
+  },
   "overall_status": "success|warn|failed",
   "publish_allowed": true,
   "checks": [],
-  "warnings": []
+  "warnings": [],
+  "artifacts_dir": "..."
 }
 ```
 
-四阶段未完成或 validate 未写入服务器确认时，`overall_status=failed`、`publish_allowed=false`。
+四阶段未完成或 validate 未确认写入时，`overall_status=failed`、`publish_allowed=false`。

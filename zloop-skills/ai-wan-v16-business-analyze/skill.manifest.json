@@ -42,8 +42,8 @@
   },
   "contracts": {
     "stage": "analyze",
-    "contract_version": "ai-wan-v1.6.5-analyze",
-    "analysis_core_contract_version": "ai-wan-analysis-core/v1.6.5",
+    "contract_version": "ai-wan-v1.6.6-analyze",
+    "analysis_core_contract_version": "ai-wan-analysis-core/v1.6.6-v155-effect",
     "analysis_method": "ai-wan-five-layer-analysis/v1",
     "server_usage": "read_only",
     "input": "processed_data",
@@ -70,7 +70,9 @@
       "analysis_result.display_insights",
       "analysis_result.findings",
       "analysis_result.review_notes",
-      "analysis_result.analysis_trace"
+      "analysis_result.analysis_trace",
+      "analysis_result.model_trace",
+      "analysis_result.llm_policy"
     ],
     "display_contract": "dashboard-business-overview-insights-map/v1",
     "server_bridge_publish_source": "analysis_result.display_insights"

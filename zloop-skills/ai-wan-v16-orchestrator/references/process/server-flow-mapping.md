@@ -9,7 +9,7 @@
 | `scripts/check-wtd-quality.js` | 读取 current/baseline，按目标周比较 Top 类目、重点类目、宽范围下跌、category vs model 对账 | `data_quality_report.wtd_quality`；warn/failed 规则进入 `active_process_manifest.quality_gates` |
 | `scripts/promote-local-imports.js` | staging imports 按 `week_start_date` 分区覆盖到 active imports；manifest 路径/sha256 更新 | `processed_cache/imports` 合并；同分区本次覆盖，其他分区保留 |
 | `scripts/sync-board-metrics-from-feishu.js` | Feishu 大盘指标落 `board_metrics_feishu.csv` | 当前上游缺失时生成空/历史 `board-metrics.json` 并标记 known_gap；后续有快照则接入 |
-| `src/sync.js` | 读取 `model_daily_avg_*.csv`，保留 `KEEP_WEEKS=10`，机型主粒度，周日均，重算 rates/avgPrice，写 `cache.json` | `server_cache_bundle/cache.json` 与 `model-cache.json`；从 detail 口径聚合出主粒度 |
+| `src/sync.js` | 读取 `model_daily_avg_*.csv`，保留 `KEEP_WEEKS=10`，机型主粒度，周日均，重算 rates/avgPrice，写 `cache.json` | `server_cache_bundle/cache.json` 与 `model-cache.json`；从 detail 口径聚合出主粒度；4GB 沙箱下默认按周 × 品类保留 TopN 机型行，避免全量机型 JSON 触发 PROCESS OOM |
 | `src/category-sync.js` | 读取 `category_daily_avg_*.csv`，表头映射，`day_cnt` 周日均，taxonomy 过滤，重算 rates，写 `category-cache.json` | `server_cache_bundle/category-cache.json` |
 | `src/taxonomy-sync.js` | `category_taxonomy.csv` 优先，seed 兜底，过滤 `自营(非聚合)` | `server_cache_bundle/category-taxonomy.json` 与 category rows 过滤 |
 | `src/board-sync.js` | 读取 `board_metrics*.csv`，按 week 去重，保留最近 `KEEP_WEEKS=10`，写 `board-metrics.json` | `server_cache_bundle/board-metrics.json`；缺口不阻断 Process，但 warn |
@@ -60,6 +60,12 @@ tag_snapshot_manifest.json
 ```
 
 `cache.json` 保持旧 `/api/sync` 的默认文件名；`model-cache.json` 是同内容别名，方便新链路显式识别。
+
+沙箱内存约束：
+
+- PROCESS 默认 `AIWAN_PROCESS_NODE_OLD_SPACE_MB=2048`，不得默认 8192MB。
+- `model_summary` 只用于 raw 完整性校验，不参与 dashboard cache，不整表 parse。
+- `model_daily_avg` 的 model cache 默认按周 × 品类保留 TopN（`AIWAN_MODEL_CACHE_TOP_N_PER_CATEGORY_WEEK=80`），优先按 GMV、成交量、下单 UV 排序；被裁剪的低排名机型写入 warning。
 
 ### 标签快照
 

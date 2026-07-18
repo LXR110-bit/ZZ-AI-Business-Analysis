@@ -22,6 +22,7 @@ const RAW_SCRIPTS = [
   'model_daily_avg',
   'model_summary',
 ];
+const BASE_SCRIPTS = RAW_SCRIPTS.filter((script) => !script.startsWith('model_'));
 const PREFIXES = RAW_SCRIPTS;
 const MATERIALIZE_SCRIPTS = new Set(RAW_SCRIPTS.filter((script) => script !== 'model_summary'));
 const METRIC_HEADERS = ['机况uv', '估价uv', '下单uv', '下单量', '发货量', '签收量', '质检量', '成交量', '退回量', '成交gmv'];
@@ -47,6 +48,7 @@ const DEFAULT_VOCAB = {
 };
 const PACKAGE_SNAPSHOT_DIR = path.resolve(__dirname, '../references/server-snapshot');
 const LOW_VOLUME_BASELINE_THRESHOLDS = { gmv: 1000, dealCnt: 2, orderCnt: 5, evaUv: 20 };
+const DEFAULT_MODEL_CACHE_TOP_N_PER_CATEGORY_WEEK = 80;
 
 function nowIso() { return new Date().toISOString(); }
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
@@ -57,6 +59,12 @@ function sha256File(file) { return sha256Buffer(fs.readFileSync(file)); }
 function sha256Json(value) { return sha256Buffer(Buffer.from(JSON.stringify(sortObject(value)), 'utf8')); }
 function rel(from, file) { return path.relative(from, file).split(path.sep).join('/'); }
 function safeReadJson(file, fallback) { return fs.existsSync(file) ? readJson(file) : fallback; }
+function csvDataRowCount(file) {
+  const res = spawnSync('wc', ['-l', file], { encoding: 'utf8' });
+  if (res.status !== 0) throw new Error(`wc -l failed for ${file}: ${res.stderr || res.stdout}`);
+  const lineCount = Number(String(res.stdout || '').trim().split(/\s+/)[0]);
+  return Number.isFinite(lineCount) ? Math.max(lineCount - 1, 0) : 0;
+}
 function uniqueExistingDirs(dirs) {
   const out = [];
   const seen = new Set();
@@ -301,26 +309,26 @@ function scriptRawFile(unpacked, script, runDt) {
   return hit ? path.join(rawDir, hit) : '';
 }
 function monthOf(row) { return String(row.week_start_date || '').slice(0, 7) || 'unknown'; }
-function materializeImports(unpacked, importsDir, runDt, activeKnownGaps = new Set()) {
+function materializeImports(unpacked, importsDir, runDt, activeKnownGaps = new Set(), scripts = RAW_SCRIPTS) {
   ensureDir(importsDir);
   const stats = {};
-  for (const script of RAW_SCRIPTS) {
+  for (const script of scripts) {
     const file = scriptRawFile(unpacked, script, runDt);
     if (!file) throw new Error(`missing raw csv for ${script}`);
-    const parsed = parseCsvFile(file, { repairModelNameCommas: script.startsWith('model') });
     if (!MATERIALIZE_SCRIPTS.has(script)) {
       stats[script] = {
         raw_file: rel(unpacked, file),
-        raw_rows: parsed.rows.length,
+        raw_rows: csvDataRowCount(file),
         import_rows: 0,
         headers: headersFor(script),
         months: [],
-        csv_repair: parsed.repair,
+        csv_repair: { fixed_rows: 0, bad_rows: 0 },
         materialized: false,
         skip_reason: 'unused_by_dashboard_cache',
       };
       continue;
     }
+    const parsed = parseCsvFile(file, { repairModelNameCommas: script.startsWith('model') });
     const { rows, repairs } = canonicalImportRows(script, parsed, runDt);
     if (!rows.length) {
       const knownGap = knownGapForEmptyRaw(script);
@@ -375,6 +383,28 @@ function writeRowsByMonth(importsDir, prefix, rows) {
   }
   for (const [month, list] of byMonth) writeCsv(path.join(importsDir, `${prefix}_${month}.csv`), headersFor(prefix), list);
 }
+function modelCacheLimit() {
+  const raw = Number(process.env.AIWAN_MODEL_CACHE_TOP_N_PER_CATEGORY_WEEK || DEFAULT_MODEL_CACHE_TOP_N_PER_CATEGORY_WEEK);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_MODEL_CACHE_TOP_N_PER_CATEGORY_WEEK;
+}
+function limitModelRowsForCache(rows, warnings) {
+  const limit = modelCacheLimit();
+  const groups = new Map();
+  for (const row of rows) {
+    const key = [row.week, row.category].join('\u001f');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  const out = [];
+  let dropped = 0;
+  for (const groupRows of groups.values()) {
+    groupRows.sort((a, b) => (toNum(b.gmv) - toNum(a.gmv)) || (toNum(b.dealCnt) - toNum(a.dealCnt)) || (toNum(b.orderUv) - toNum(a.orderUv)));
+    out.push(...groupRows.slice(0, limit));
+    dropped += Math.max(groupRows.length - limit, 0);
+  }
+  if (dropped > 0) warnings.push(`model_cache_topn_applied: top ${limit} per week/category, dropped ${dropped} low-rank model rows`);
+  return out;
+}
 function copyDirContents(src, dest) {
   if (!fs.existsSync(src)) return;
   ensureDir(dest);
@@ -389,7 +419,7 @@ function copyDirContents(src, dest) {
 function latestWeeksFromRows(rows) {
   return [...new Set(rows.map((r) => dateToISOWeek(r.week_start_date)).filter(Boolean))].sort().slice(-KEEP_WEEKS);
 }
-function promoteImports({ currentImportsDir, previousProcessedCache, workDir, outputImportsDir }) {
+function promoteImports({ currentImportsDir, previousProcessedCache, workDir, outputImportsDir, scripts = RAW_SCRIPTS }) {
   ensureDir(outputImportsDir);
   const prevDir = path.join(workDir, 'prev_processed');
   if (previousProcessedCache && fs.existsSync(previousProcessedCache)) {
@@ -397,7 +427,15 @@ function promoteImports({ currentImportsDir, previousProcessedCache, workDir, ou
     copyDirContents(path.join(prevDir, 'imports'), outputImportsDir);
   }
   const report = { previous_cache: previousProcessedCache || '', scripts: {} };
+  const activeScripts = new Set(scripts);
   for (const prefix of PREFIXES) {
+    if (!activeScripts.has(prefix)) {
+      for (const file of fs.existsSync(outputImportsDir) ? fs.readdirSync(outputImportsDir) : []) {
+        if (file.startsWith(`${prefix}_`) && file.endsWith('.csv')) fs.rmSync(path.join(outputImportsDir, file));
+      }
+      report.scripts[prefix] = { excluded_by_scope: true, output_rows: 0 };
+      continue;
+    }
     const prevRows = rowsFromImportFiles(outputImportsDir, prefix);
     const curRows = rowsFromImportFiles(currentImportsDir, prefix);
     const curPartitions = new Set(curRows.map((r) => r.week_start_date).filter(Boolean));
@@ -610,7 +648,7 @@ function categoryMappingManifest(mapping, categoryRowsRaw, warnings, knownGaps) 
   };
 }
 
-function buildCaches(importsDir, cacheDir, runDt, snapshotDir, previousCacheDir, warnings, knownGaps, categoryMappingFile) {
+function buildCaches(importsDir, cacheDir, runDt, snapshotDir, previousCacheDir, warnings, knownGaps, categoryMappingFile, sqlScope = 'all', scripts = RAW_SCRIPTS) {
   ensureDir(cacheDir);
   const mapping = resolveCategoryMapping({ categoryMappingFile, snapshotDir, previousCacheDir, warnings, knownGaps });
   const taxonomy = (mapping.rows || []).length ? { syncedAt: mapping.syncedAt, version: mapping.version, source: mapping.source, rows: mapping.rows } : readTaxonomy(snapshotDir, previousCacheDir, warnings);
@@ -631,10 +669,16 @@ function buildCaches(importsDir, cacheDir, runDt, snapshotDir, previousCacheDir,
   const fulfillRows = mergeRowsByKey(fulfillRowsRaw.map((r) => ({ category: r['品类名称'], fulfillmentMethod: r['履约方式（只取线上流程）'], ...normalizeMetricRow(r, headersFor('category_fulfill_daily_avg'), runDt) })).filter((r) => r.week && r.category && !selfCats.has(r.category) && !(r.week === latestWeek && offlineCats.has(r.category))), (r) => [r.week, r.category, r.fulfillmentMethod].join('\u001f'));
   const fulfillCache = { syncedAt: nowIso(), version: '1.5.5-zloop', source: { dir: importsDir, prefix: 'category_fulfill_daily_avg_', grain: 'category_fulfillment_daily_avg' }, weeks: [...new Set(fulfillRows.map((r) => r.week))].sort(), categories, rows: fulfillRows };
 
-  const modelRowsRaw = rowsFromImportFiles(importsDir, 'model_daily_avg');
-  const modelNorm = modelRowsRaw.map((r) => ({ category: r['品类名称'], modelId: String(r['机型id'] || '').replace(/^(\d+)\.0+$/, '$1'), modelName: r['机型名称'], coreEval: r['核心属性（估价）'] || '', gradeEval: r['成色等级（估价）'] || '', coreQc: r['核心属性（质检）'] || '', gradeQc: r['成色等级（质检）'] || '', fulfillmentMethod: r['履约方式（只取线上流程）'] || '', ...normalizeMetricRow(r, headersFor('model_daily_avg'), runDt) })).filter((r) => r.week && r.category && r.modelName && !selfCats.has(r.category) && !(r.week === latestWeek && offlineCats.has(r.category)));
-  const modelMain = mergeRowsByKey(modelNorm, (r) => [r.week, r.category, r.modelId || `name:${r.modelName}`, r.modelName].join('\u001f'));
-  const modelCache = { syncedAt: nowIso(), version: '1.5.5-zloop', source: { dir: importsDir, prefix: 'model_daily_avg_', grain: 'model_main_daily_avg' }, categories: [...new Set(modelMain.map((r) => r.category))].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')), weeks: [...new Set(modelMain.map((r) => r.week))].sort(), rows: modelMain };
+  const modelIncluded = scripts.includes('model_daily_avg');
+  let modelRowsRaw = modelIncluded ? rowsFromImportFiles(importsDir, 'model_daily_avg') : [];
+  let modelNorm = modelRowsRaw.map((r) => ({ category: r['品类名称'], modelId: String(r['机型id'] || '').replace(/^(\d+)\.0+$/, '$1'), modelName: r['机型名称'], coreEval: r['核心属性（估价）'] || '', gradeEval: r['成色等级（估价）'] || '', coreQc: r['核心属性（质检）'] || '', gradeQc: r['成色等级（质检）'] || '', fulfillmentMethod: r['履约方式（只取线上流程）'] || '', ...normalizeMetricRow(r, headersFor('model_daily_avg'), runDt) })).filter((r) => r.week && r.category && r.modelName && !selfCats.has(r.category) && !(r.week === latestWeek && offlineCats.has(r.category)));
+  modelRowsRaw = [];
+  let modelMain = mergeRowsByKey(modelNorm, (r) => [r.week, r.category, r.modelId || `name:${r.modelName}`, r.modelName].join('\u001f'));
+  modelNorm = [];
+  modelMain = limitModelRowsForCache(modelMain, warnings);
+  const modelCache = modelIncluded
+    ? { syncedAt: nowIso(), version: '1.5.5-zloop', source: { dir: importsDir, prefix: 'model_daily_avg_', grain: 'model_main_daily_avg' }, categories: [...new Set(modelMain.map((r) => r.category))].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')), weeks: [...new Set(modelMain.map((r) => r.week))].sort(), rows: modelMain }
+    : { syncedAt: nowIso(), version: '1.5.5-zloop', status: 'disabled', sql_scope: sqlScope, source: { status: 'disabled', sql_scope: sqlScope, reason: 'model_sql_excluded_from_base_scope' }, categories: [], weeks: [], rows: [] };
 
   let boardCache;
   const boardCsv = firstExistingFile(snapshotCandidateDirs(snapshotDir), 'board_metrics_feishu.csv');
@@ -859,24 +903,42 @@ function knownGapForEmptyRaw(script) {
   if (script === 'category_fulfill_summary') return 'category_fulfill_summary_empty';
   return '';
 }
+function resolveFetchScripts(active) {
+  const sqlScope = String(active.sql_scope || 'all').trim().toLowerCase();
+  if (!['all', 'base'].includes(sqlScope)) throw new Error(`active_fetch_manifest.sql_scope must be all or base, got ${active.sql_scope}`);
+  const scripts = Array.isArray(active.scripts) && active.scripts.length ? active.scripts.map(String) : (sqlScope === 'base' ? BASE_SCRIPTS : RAW_SCRIPTS);
+  const expected = sqlScope === 'base' ? BASE_SCRIPTS : RAW_SCRIPTS;
+  const unknown = scripts.filter((script) => !RAW_SCRIPTS.includes(script));
+  const missing = expected.filter((script) => !scripts.includes(script));
+  const extra = scripts.filter((script) => !expected.includes(script));
+  if (new Set(scripts).size !== scripts.length || unknown.length || missing.length || extra.length) {
+    throw new Error(`active_fetch_manifest.scripts do not match sql_scope=${sqlScope}; missing=${missing.join(',') || '<none>'}; extra=${extra.join(',') || '<none>'}; unknown=${unknown.join(',') || '<none>'}`);
+  }
+  return { sqlScope, scripts };
+}
 function validateUnpackedRaw(unpacked, active, runDt) {
   const rawManifestFile = path.join(unpacked, active.raw_manifest || `raw_manifest_${runDt}.json`);
   const sqlStatusFile = path.join(unpacked, active.sql_status || `sql_status_${runDt}.json`);
   const rawManifest = fs.existsSync(rawManifestFile) ? readJson(rawManifestFile) : {};
   const sqlStatus = fs.existsSync(sqlStatusFile) ? readJson(sqlStatusFile) : {};
   if (rawManifest.run_id && rawManifest.run_id !== active.run_id) throw new Error(`raw_manifest.run_id ${rawManifest.run_id} != active_fetch_manifest.run_id ${active.run_id}`);
+  const { sqlScope, scripts } = resolveFetchScripts(active);
+  if (rawManifest.sql_scope && rawManifest.sql_scope !== sqlScope) throw new Error(`raw_manifest.sql_scope ${rawManifest.sql_scope} != active_fetch_manifest.sql_scope ${sqlScope}`);
+  if (Array.isArray(rawManifest.scripts) && rawManifest.scripts.join('\u001f') !== scripts.join('\u001f')) throw new Error('raw_manifest.scripts != active_fetch_manifest.scripts');
   const activeKnownGaps = new Set(Array.isArray(active.known_gaps) ? active.known_gaps.map(String) : []);
-  for (const script of RAW_SCRIPTS) {
+  for (const script of scripts) {
     const file = scriptRawFile(unpacked, script, runDt);
     if (!file) throw new Error(`missing raw/${script}_${runDt}.csv`);
-    const parsed = parseCsvFile(file, { repairModelNameCommas: script.startsWith('model') });
-    if (parsed.rows.length <= 0) {
+    const rows = MATERIALIZE_SCRIPTS.has(script)
+      ? parseCsvFile(file, { repairModelNameCommas: script.startsWith('model') }).rows.length
+      : csvDataRowCount(file);
+    if (rows <= 0) {
       const knownGap = knownGapForEmptyRaw(script);
       if (knownGap && activeKnownGaps.has(knownGap)) continue;
       throw new Error(`raw ${script} row_count=0`);
     }
   }
-  return { rawManifest, sqlStatus };
+  return { rawManifest, sqlStatus, sqlScope, scripts };
 }
 async function processRawCache(options = {}) {
   const runDt = options.runDt;
@@ -904,15 +966,15 @@ async function processRawCache(options = {}) {
     const upstream = validateUnpackedRaw(unpacked, fetch.active, runDt);
     const stagingImports = path.join(workDir, 'staging_imports');
     const fetchKnownGaps = new Set(Array.isArray(fetch.active.known_gaps) ? fetch.active.known_gaps.map(String) : []);
-    const importBuild = materializeImports(unpacked, stagingImports, runDt, fetchKnownGaps);
+    const importBuild = materializeImports(unpacked, stagingImports, runDt, fetchKnownGaps, upstream.scripts);
     const previousProcessedCache = resolvePreviousProcessedCache(inputDir, outDir, options.previousProcessedCache);
     const previousCacheDir = previousProcessedCache ? path.join(workDir, 'prev_processed') : '';
     if (previousProcessedCache && !fs.existsSync(previousCacheDir)) unzip(previousProcessedCache, previousCacheDir);
     const processedRoot = path.join(workDir, 'processed_cache_root');
     const processedImports = path.join(processedRoot, 'imports');
-    const promoteReport = promoteImports({ currentImportsDir: stagingImports, previousProcessedCache, workDir, outputImportsDir: processedImports });
+    const promoteReport = promoteImports({ currentImportsDir: stagingImports, previousProcessedCache, workDir, outputImportsDir: processedImports, scripts: upstream.scripts });
     const cacheDir = path.join(processedRoot, 'cache');
-    const caches = buildCaches(processedImports, cacheDir, runDt, snapshotDir, previousCacheDir, warnings, knownGaps, options.categoryMappingFile);
+    const caches = buildCaches(processedImports, cacheDir, runDt, snapshotDir, previousCacheDir, warnings, knownGaps, options.categoryMappingFile, upstream.sqlScope, upstream.scripts);
     const tagArtifacts = buildTagArtifacts(snapshotDir, cacheDir, outDir, runDt, runId, warnings, knownGaps);
     const rollingStatus = buildRollingStatus(caches);
     const historyWeeksAvailable = (caches.categoryCache.weeks || []).length;
@@ -926,7 +988,7 @@ async function processRawCache(options = {}) {
     writeJson(analysisHistoryFile, analysisHistory);
 
     const manifestFile = path.join(outDir, `manifest_${runDt}.json`);
-    const manifest = { contract_version: CONTRACT_VERSION, run_id: runId, run_dt: runDt, generated_at: nowIso(), upstream_fetch_manifest: fetch.active, raw_manifest: upstream.rawManifest, sql_status: upstream.sqlStatus, imports: importBuild.stats, promote: promoteReport, rolling_status: rollingStatus, history_weeks: KEEP_WEEKS, history_weeks_available: historyWeeksAvailable, dashboard_window_weeks: DASHBOARD_WINDOW_WEEKS };
+    const manifest = { contract_version: CONTRACT_VERSION, run_id: runId, run_dt: runDt, generated_at: nowIso(), sql_scope: upstream.sqlScope, scripts: upstream.scripts, model_enrichment_status: caches.modelCache.status || 'ready', upstream_fetch_manifest: fetch.active, raw_manifest: upstream.rawManifest, sql_status: upstream.sqlStatus, imports: importBuild.stats, promote: promoteReport, rolling_status: rollingStatus, history_weeks: KEEP_WEEKS, history_weeks_available: historyWeeksAvailable, dashboard_window_weeks: DASHBOARD_WINDOW_WEEKS };
     writeJson(manifestFile, manifest);
 
     const stateDir = path.join(processedRoot, 'state');
@@ -970,7 +1032,7 @@ async function processRawCache(options = {}) {
       model_tag_knowledge: tagArtifacts.knowledge.sha256,
       model_tag_sync_manifest: tagArtifacts.syncManifest.sha256
     };
-    const active = { contract_version: CONTRACT_VERSION, stage: 'process', status: qualityGate === 'failed' ? 'failed' : (qualityGate === 'warn' ? 'warn' : 'success'), run_id: runId, run_dt: runDt, target_month: runDt.slice(0, 7), upstream_stage: 'fetch', upstream_run_id: fetch.active.run_id, upstream_raw_cache: path.basename(fetch.rawCache), upstream_raw_cache_sha256: fetch.actualSha, history_weeks: KEEP_WEEKS, history_weeks_available: historyWeeksAvailable, min_history_weeks_for_trend: MIN_HISTORY_WEEKS_FOR_TREND, analysis_scope_hint: historyWeeksAvailable < MIN_HISTORY_WEEKS_FOR_TREND ? 'wow_only' : 'trend_10w', dashboard_window_weeks: DASHBOARD_WINDOW_WEEKS, rolling_week: rollingStatus.rolling_week, final_weeks: rollingStatus.final_weeks, imports_zip: path.basename(importsZip), imports_zip_sha256: artifactHashes.imports_zip, excel: path.basename(xlsxFile), excel_sha256: artifactHashes.excel, manifest: path.basename(manifestFile), manifest_sha256: artifactHashes.manifest, processed_cache: path.basename(processedZip), processed_cache_sha256: artifactHashes.processed_cache, server_cache_bundle: path.basename(serverZip), server_cache_bundle_sha256: artifactHashes.server_cache_bundle, analysis_history: path.basename(analysisHistoryFile), analysis_history_sha256: artifactHashes.analysis_history, data_quality_report: path.basename(qualityFile), data_quality_report_sha256: artifactHashes.data_quality_report, category_mapping_manifest: 'category_mapping_manifest.json', category_mapping_manifest_sha256: artifactHashes.category_mapping_manifest, category_mapping_source: caches.categoryMapping.source, category_mapping_stats: caches.categoryMapping.stats, model_tag_snapshot: `model_tag_snapshot_${runDt}.json`, model_tag_snapshot_sha256: artifactHashes.model_tag_snapshot, model_tag_knowledge: `model_tag_knowledge_${runDt}.json`, model_tag_knowledge_sha256: artifactHashes.model_tag_knowledge, model_tag_sync_manifest: `model_tag_sync_manifest_${runDt}.json`, model_tag_sync_manifest_sha256: artifactHashes.model_tag_sync_manifest, model_tag_source: 'model-tag-monitor-server-front-end-tags', model_tag_stats: { tagged_model_count: tagArtifacts.snapshot.stats.tagged_model_count, category_count: tagArtifacts.snapshot.stats.category_count }, model_tag_feishu_sync: tagArtifacts.syncManifest.feishu_sync, feishu_sync: tagArtifacts.syncManifest.feishu_sync, model_tag_sync_status: tagArtifacts.syncManifest.status, artifact_hashes: artifactHashes, quality_gates: qualityGate, warnings, known_gaps: knownGaps, generated_at: nowIso() };
+    const active = { contract_version: CONTRACT_VERSION, stage: 'process', status: qualityGate === 'failed' ? 'failed' : (qualityGate === 'warn' ? 'warn' : 'success'), run_id: runId, run_dt: runDt, target_month: runDt.slice(0, 7), sql_scope: upstream.sqlScope, scripts: upstream.scripts, model_enrichment_status: caches.modelCache.status || 'ready', upstream_stage: 'fetch', upstream_run_id: fetch.active.run_id, upstream_raw_cache: path.basename(fetch.rawCache), upstream_raw_cache_sha256: fetch.actualSha, history_weeks: KEEP_WEEKS, history_weeks_available: historyWeeksAvailable, min_history_weeks_for_trend: MIN_HISTORY_WEEKS_FOR_TREND, analysis_scope_hint: historyWeeksAvailable < MIN_HISTORY_WEEKS_FOR_TREND ? 'wow_only' : 'trend_10w', dashboard_window_weeks: DASHBOARD_WINDOW_WEEKS, rolling_week: rollingStatus.rolling_week, final_weeks: rollingStatus.final_weeks, imports_zip: path.basename(importsZip), imports_zip_sha256: artifactHashes.imports_zip, excel: path.basename(xlsxFile), excel_sha256: artifactHashes.excel, manifest: path.basename(manifestFile), manifest_sha256: artifactHashes.manifest, processed_cache: path.basename(processedZip), processed_cache_sha256: artifactHashes.processed_cache, server_cache_bundle: path.basename(serverZip), server_cache_bundle_sha256: artifactHashes.server_cache_bundle, analysis_history: path.basename(analysisHistoryFile), analysis_history_sha256: artifactHashes.analysis_history, data_quality_report: path.basename(qualityFile), data_quality_report_sha256: artifactHashes.data_quality_report, category_mapping_manifest: 'category_mapping_manifest.json', category_mapping_manifest_sha256: artifactHashes.category_mapping_manifest, category_mapping_source: caches.categoryMapping.source, category_mapping_stats: caches.categoryMapping.stats, model_tag_snapshot: `model_tag_snapshot_${runDt}.json`, model_tag_snapshot_sha256: artifactHashes.model_tag_snapshot, model_tag_knowledge: `model_tag_knowledge_${runDt}.json`, model_tag_knowledge_sha256: artifactHashes.model_tag_knowledge, model_tag_sync_manifest: `model_tag_sync_manifest_${runDt}.json`, model_tag_sync_manifest_sha256: artifactHashes.model_tag_sync_manifest, model_tag_source: 'model-tag-monitor-server-front-end-tags', model_tag_stats: { tagged_model_count: tagArtifacts.snapshot.stats.tagged_model_count, category_count: tagArtifacts.snapshot.stats.category_count }, model_tag_feishu_sync: tagArtifacts.syncManifest.feishu_sync, feishu_sync: tagArtifacts.syncManifest.feishu_sync, model_tag_sync_status: tagArtifacts.syncManifest.status, artifact_hashes: artifactHashes, quality_gates: qualityGate, warnings, known_gaps: knownGaps, generated_at: nowIso() };
     writeJson(path.join(outDir, 'active_process_manifest.json'), active);
     if (qualityGate === 'failed') return { ok: false, manifest: active, report: qualityReport, outDir };
     return { ok: true, manifest: active, report: qualityReport, outDir };
