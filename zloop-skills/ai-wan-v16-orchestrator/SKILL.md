@@ -1,6 +1,6 @@
 ---
 name: AI小万主编排 v1.6
-description: AI 小万 v1.6/v1.7 主编排：阶段 A 以 4 SQL Loop1 通过 jobs/read+jobs/write 跨 tick 发布基础分析，并保留 full6 兼容入口。
+description: AI 小万 v1.6/v1.7 主编排：阶段 A 以 4 SQL Loop1 通过 jobs/read+jobs/write 跨 tick 发布基础分析；阶段 B 由 Loop2 领取 drilldown 交接单，对下钻品类跑机型 SQL 并增量补机型归因；保留 full6 兼容入口。
 version: 1.6.29
 api_dependencies:
   - 2a56c817-134d-409a-b457-9ecf859217eb
@@ -99,6 +99,38 @@ test -n "$PYTHON_BIN" || {
   --run-dt "$RUN_DT" \
   --data-end-date "$DATA_END_DATE"
 ```
+
+## 阶段 B Loop2 机型下钻入口
+
+Loop2 只在 Loop1 交接单 `model_enrichment_mode=enabled` 且 `drilldown_categories` 非空时推进；否则返回 `business_status=pending`（`enrichment_disabled` / `no_drilldown_categories`）并退出 0。编排协议仿阶段 A：
+
+```text
+tick(read):  领取 drilldown 交接单 → 仅对下钻品类渲染 model_summary/model_daily_avg（注入 cate_name in(...)）
+             → 机型 SQL 异步 submit（单条推进，机型 SQL 重、排队瓶颈）/ 跨 tick poll → 服务器 checkpoint
+             → materialize → process（候选收敛：核心机型 ∪ GMV Top-N ∪ 环比异动机型）→ 返回 analyze_pending
+  ↓
+agent(Claude): 读 model_analyze_input.json（candidate_models 为确定性数字来源），按机型归因 rubric
+             对每个下钻品类的候选机型写 fact/hypothesis/data_gap + 覆盖度 + 待验证问题，分批写到
+             model_analysis_result.json 的 modelDrilldowns；数字只能来自 candidate_models，禁编造。
+  ↓
+tick(finalize): current_stage==analyze → 机器闸门校验（每下钻品类有非空 summary）→ 读 Loop1 已发布
+             display → 增量 merge modelDrilldowns（不清空 Loop1 board/tiers/secondary/category 文本）
+             → validate 携带 expected_base_revision 原子写 → drilldown 交接单 published。
+```
+
+```bash
+"$PYTHON_BIN" scripts/aiwan_loop2_tick.py \
+  --analysis-key "$ANALYSIS_KEY" \
+  --week "$WEEK" \
+  --run-dt "$RUN_DT" \
+  --data-end-date "$DATA_END_DATE" \
+  --base-revision "${BASE_REVISION:-1}"
+```
+
+- Loop2 未提供 `run_id` 时使用 `loop2-<week>-<data_end_date>-r<base_revision>`；`worker_id` 缺省 `loop2:<week>:<data_end_date>:b<base_revision>`，跨 tick 稳定。
+- 机型 SQL 只提交一次，排队/运行中只 poll、不重提；终态失败最多重试 2 次。
+- 核心机型快照缺失/占位时降级为 GMV Top-N + 异动机型兜底，并打 `warn: CORE_MODEL_SNAPSHOT_MISSING`（整体最多 partial_failed，补齐快照后自动补跑）。
+- **上线前置**（见交接说明）：`load_model_rows_for_categories`（机型 CSV 解析）、读取 Loop1 已发布 display、机型 validate 服务器写三处集成 seam 需按真实服务器契约接线；未接线时 process/validate 会显式打 `MODEL_ROWS_PARSER_NOT_WIRED` / 返回 `retryable_failed`，绝不伪装发布。
 
 ## 快速预检
 

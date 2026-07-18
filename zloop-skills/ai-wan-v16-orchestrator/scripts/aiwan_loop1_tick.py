@@ -160,7 +160,66 @@ def pending_result(args: argparse.Namespace, job: dict[str, Any] | None, reason:
     }
 
 
-def ensure_drilldown_handoff(job_client: Any, args: argparse.Namespace) -> dict[str, Any]:
+# 下钻名单选择口径（设计 §5.2/§5.3/§12；阈值版本化，勿散落到 SQL）
+DRILLDOWN_FLOOR_TIERS = ("发展", "孵化")   # always_floor：每周必进机型主指标观察范围
+DRILLDOWN_SEED_TIER = "种子"
+DRILLDOWN_GMV_WOW_THRESHOLD = 0.10        # 种子品类 GMV 环比绝对变化激活阈值
+
+
+def select_drilldown_categories(
+    evidence_pack: dict[str, Any],
+    *,
+    gmv_threshold: float = DRILLDOWN_GMV_WOW_THRESHOLD,
+) -> list[dict[str, Any]]:
+    """确定性算出 Loop2 下钻品类名单：发展+孵化(always_floor) ∪ 种子异动(wow_anomaly)。
+
+    AI 补充(ai_supplement)先留空。数字只读 evidence_pack，不发明。保持 evidence 的
+    impact 排序，按品类去重。
+    """
+    items = evidence_pack.get("category_all") or evidence_pack.get("category_top_changes") or []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        category = str(it.get("category") or "").strip()
+        if not category or category in seen:
+            continue
+        tier = str(it.get("tier") or "").strip()
+        delta = it.get("delta") or {}
+        pct = delta.get("gmv_delta_pct")
+        try:
+            gmv_moved = pct is not None and abs(float(pct)) >= gmv_threshold
+        except (TypeError, ValueError):
+            gmv_moved = False
+        if tier in DRILLDOWN_FLOOR_TIERS:
+            reason = "always_floor"
+        elif tier == DRILLDOWN_SEED_TIER and gmv_moved:
+            reason = "wow_anomaly"
+        else:
+            continue
+        seen.add(category)
+        out.append({
+            "category": category,
+            "tier": tier,
+            "reason": reason,
+            "moved_metrics": ["gmv"] if gmv_moved else [],
+            "direction": it.get("direction"),
+            "gmv_delta": delta.get("gmv_delta"),
+            "gmv_delta_pct": pct,
+        })
+    return out
+
+
+def ensure_drilldown_handoff(
+    job_client: Any,
+    args: argparse.Namespace,
+    *,
+    drilldown_categories: list[dict[str, Any]] | None = None,
+    model_enrichment_mode: str | None = None,
+) -> dict[str, Any]:
+    categories = drilldown_categories or []
+    mode = model_enrichment_mode or ("enabled" if categories else "disabled")
     return job_client.create({
         "kind": "drilldown",
         "analysis_key": args.analysis_key,
@@ -171,18 +230,30 @@ def ensure_drilldown_handoff(job_client: Any, args: argparse.Namespace) -> dict[
         "handoff_revision": 1,
         "status": "ready",
         "current_stage": "read",
-        "model_enrichment_mode": "disabled",
-        "drilldown_categories": [],
+        "model_enrichment_mode": mode,
+        "drilldown_categories": categories,
         "execute_ids": {},
         "sql_hashes": {},
         "sql_checkpoints": {},
     })
 
 
-def published_result(args: argparse.Namespace, job_client: Any, job: dict[str, Any], **extra: Any) -> dict[str, Any]:
+def published_result(
+    args: argparse.Namespace,
+    job_client: Any,
+    job: dict[str, Any],
+    *,
+    drilldown_categories: list[dict[str, Any]] | None = None,
+    model_enrichment_mode: str | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
     result = {"ok": True, "business_status": "published", "run_id": args.run_id, "analysis_key": args.analysis_key, "job": job, **extra}
     try:
-        result["handoff_job"] = ensure_drilldown_handoff(job_client, args)
+        result["handoff_job"] = ensure_drilldown_handoff(
+            job_client, args,
+            drilldown_categories=drilldown_categories,
+            model_enrichment_mode=model_enrichment_mode,
+        )
         result["handoff_status"] = "ready"
     except Exception as exc:
         result["handoff_status"] = "retryable_failed"
@@ -464,10 +535,14 @@ def finalize_after_analyze(args: argparse.Namespace, run_dir: Path, job: dict[st
                 "analysis_key": args.analysis_key,
                 "error": {"code": "VALIDATE_CHECKS_FAILED", "failed_checks": failed[:30]}, "job": job}
     job = checkpoint_update(job_client, args, job, "published", current_stage="validate")
-    return published_result(args, job_client, job, stage_results={
-        "read": "success", "process": processed.get("status"),
-        "analyze": analysis.get("status"), "validate": validation.get("status"),
-    }, artifacts_dir=str(run_dir))
+    drilldown = select_drilldown_categories(scaffold.get("evidence_pack", {}))
+    return published_result(args, job_client, job,
+        drilldown_categories=drilldown,
+        model_enrichment_mode="enabled" if drilldown else "disabled",
+        stage_results={
+            "read": "success", "process": processed.get("status"),
+            "analyze": analysis.get("status"), "validate": validation.get("status"),
+        }, artifacts_dir=str(run_dir))
 
 
 def run_tick(
