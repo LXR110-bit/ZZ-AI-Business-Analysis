@@ -833,6 +833,15 @@ def _num(value: Any) -> float:
         return 0.0
 
 
+def _driver_role(delta_value: Any) -> dict[str, str]:
+    value = _num(delta_value)
+    if value < 0:
+        return {"driver_role": "drag", "driver_label": "拖累"}
+    if value > 0:
+        return {"driver_role": "opportunity", "driver_label": "拉动"}
+    return {"driver_role": "flat", "driver_label": "稳定/波动"}
+
+
 def _compact_category_index_item(item: dict[str, Any], shard_path: str, shard_index: int) -> dict[str, Any]:
     delta = item.get("delta") if isinstance(item.get("delta"), dict) else {}
     cur = item.get("cur") if isinstance(item.get("cur"), dict) else {}
@@ -845,6 +854,7 @@ def _compact_category_index_item(item: dict[str, Any], shard_path: str, shard_in
         "risk_level": item.get("risk_level"),
         "direction": item.get("direction"),
         "chain_breakpoint": item.get("chain_breakpoint"),
+        **_driver_role(delta.get("gmv_delta")),
         "cur": {
             "gmv": cur.get("gmv"),
             "dealCnt": cur.get("dealCnt"),
@@ -945,6 +955,8 @@ def build_analyze_support_artifacts(
             "tier": item.get("tier"),
             "secondaryCategory": item.get("secondaryCategory"),
             "chain_breakpoint": item.get("chain_breakpoint"),
+            "driver_role": item.get("driver_role"),
+            "driver_label": item.get("driver_label"),
             "facts": {
                 "gmv": (item.get("cur") or {}).get("gmv"),
                 "dealCnt": (item.get("cur") or {}).get("dealCnt"),

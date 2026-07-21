@@ -686,6 +686,13 @@ class Loop1TickTests(unittest.TestCase):
         self.assertGreaterEqual(len(index_doc["shards"]), 2)
         self.assertTrue(first_shard_exists)
         self.assertGreater(len(hints_doc["items"]), 0)
+        by_category = {item["category"]: item for item in index_doc["items"]}
+        self.assertEqual(by_category["品类03"]["driver_role"], "drag")
+        self.assertEqual(by_category["品类03"]["driver_label"], "拖累")
+        self.assertEqual(by_category["品类01"]["driver_role"], "opportunity")
+        self.assertEqual(by_category["品类01"]["driver_label"], "拉动")
+        hint_by_category = {item["category"]: item for item in hints_doc["items"]}
+        self.assertEqual(hint_by_category["品类03"]["driver_label"], "拖累")
 
 
     def test_create_conflict_recovers_existing_job_without_resubmitting_sql(self):
