@@ -34,6 +34,8 @@
       "Loop1 识别 USER_CANCELED / USER_CANCELLED 为 CANCELED 失败终态，并按 retry_count 重试，不允许永久 sql_not_ready。",
       "analyze_input.json 必须保留完整 evidence_pack；analysis_digest/index/top_movers/category_shards/category_tail_hints 仅作为非损耗导航产物。",
       "published/late_published 终态必须生成 final_summary.json 与 aiwan_loop1_diagnostics.json；最终回复只输出短 JSON 或引用诊断路径。",
+      "Loop2 独立调度推荐 07:00 Asia/Shanghai；启动前必须复读同 analysis_key/base_revision 的 base job，未 published/late_published 时只返回 pending，禁止 claim handoff 或提交机型 SQL。",
+      "analysis category driver 字段按 GMV delta 符号输出 driver_role/driver_label：正增长为拉动，负增长为拖累，持平为稳定/波动。",
       "Loop1 分析模型规范 ID 必须为 claude-sonnet-4-6[1m]；Loop 服务端当前不能强制限制模型，Runtime 暴露不同 model ID 时以 MODEL_PIN_MISMATCH 失败，未暴露时产物必须标记未验证。",
       "base_deadline_at 过期只标记 base_delayed 并告警，原 revision 仍可恢复；晚发布记录 late_published。",
       "升 base_revision 时仅在日期、SQL hash、文件 hash 全部一致时继承旧成功 checkpoint，避免重复 SQL。",
@@ -47,8 +49,8 @@
   },
   "contracts": {
     "stage": "orchestrator",
-    "contract_version": "ai-wan-v1.6.51-loop-prompt-hardening",
-    "orchestrator_build": "v1.6.51-loop-prompt-hardening",
+    "contract_version": "ai-wan-v1.6.52-loop2-gate-driver-label",
+    "orchestrator_build": "v1.6.52-loop2-gate-driver-label",
     "required_loop_model_id": "claude-sonnet-4-6[1m]",
     "entrypoint": {
       "root_env": "ZLOOP_ACTIVE_SKILL_DIR",

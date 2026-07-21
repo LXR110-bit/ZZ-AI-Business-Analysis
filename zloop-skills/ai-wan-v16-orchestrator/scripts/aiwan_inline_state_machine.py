@@ -42,7 +42,7 @@ except Exception:  # pragma: no cover - only in remote sandbox
     xinghe = None
 
 
-AIWAN_ORCHESTRATOR_BUILD = "v1.6.51-loop-prompt-hardening"
+AIWAN_ORCHESTRATOR_BUILD = "v1.6.52-loop2-gate-driver-label"
 AIWAN_PROCESS_RUNTIME = "python3"
 READ_PATH = "/v2/aiwan/api/aiwan/read"
 WRITE_PATH = "/v2/aiwan/api/aiwan/write"

@@ -1,9 +1,9 @@
-# AI小万 v1.6.49/v1.6.50 zloop 真实 Loop 运行问题与优化台账
+# AI小万 v1.6.49-v1.6.52 zloop 真实 Loop 运行问题与优化台账
 
 审计时间：2026-07-21  
 生产 Loop job：`98cd6ff0-007a-4796-b0fc-1addf37f1add`  
 主编排 Skill：`AI小万主编排 v1.6` / `b28e30d2-b8c6-456f-888d-57c48785286f`  
-当前包版本：`1.6.51`（`zloop-skills/ai-wan-v16-orchestrator.zip` 已同步到本地待发布包）  
+当前包版本：`1.6.52`（`zloop-skills/ai-wan-v16-orchestrator.zip` 已同步到本地待发布包）  
 业务线：`聚合回收 (business_id=5)`  
 生产调度：daily `06:10 Asia/Shanghai`，`concurrency_policy=skip_if_running`
 
@@ -16,6 +16,7 @@
   - `SKILL.md`、`loop1-scheduled-prompt.md` 已明确禁止 `<think>`、长推理、完整 analyze 文案进入 final_text。
   - 本地验证：`python3 -m py_compile zloop-skills/ai-wan-v16-orchestrator/scripts/*.py` 通过；`python3 -m unittest discover -s zloop-skills/ai-wan-v16-orchestrator/test` 110 条通过；`zloop skill-forge package-check ... --mode update` 通过，10 个 warning 均为既有/非阻断项。
   - 已发布到线上主编排 Skill current：`1.6.50` candidate `cand_a53ed377311647fa8e9c1d280489bd43` / version_id `89f669e804dc48369ea9f27dcb7dbc58` / 线上 version `54`；`1.6.51` candidate `cand_caaa4ae4a14e4328a0c246aeacf63fa9` / version_id `ab1aadd18e81408196f713d7c193b4ed` / 线上 version `55` / official package sha256 `e9cc2165b1cca9296a2824119aab1f7438f2a3374d71cef55d5d77e24cde8238`。
+  - 已发布 `1.6.52 / v1.6.52-loop2-gate-driver-label` 到线上主编排 Skill current：candidate `cand_483758d50873411298c72d614210b6b9` / version_id `d80714a7e813471fae98f881b74a710e` / 线上 version `56` / official package sha256 `fe136e3e0d94f53fbfa502d669aad6348010751ba4e64ba43a892eff1388111c`。本版为低风险稳定性/措辞发布：Loop2 独立调度增加 base publication 启动门禁；analysis category driver 字段按 GMV delta 符号标记拉动/拖累/稳定，不改变 Loop1 主链路。
   - 真实生产 Loop 验证：
     - `2fa093b5-3da0-4b8d-a8a5-573a3257a10e`：succeeded，`business_status=late_published`，输出已包含 `final_summary` / `diagnostics` 路径，但 final_text 仍有 `<think>` 前缀。
     - `ab985e82-d968-4782-9852-1803e80b8096`：生产 prompt 加顶层最终输出硬约束后再次 succeeded，业务 JSON 压缩为单行短 JSON，但 final_text 仍有 `<think>` 前缀。结论：内容侧已加约束与 summary 产物，persisted final_text 的思考标签剥离需要平台/模型输出层处理。

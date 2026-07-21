@@ -87,6 +87,13 @@ Loop1 只允许：`category_daily_avg`、`category_summary`、`category_fulfill_
 
 交接创建失败不撤回已发布基础结果；后续 tick 必须继续幂等补建。
 
+## Loop2 启动门禁
+
+- 独立 Loop2 job 推荐调度时间为 **07:00 Asia/Shanghai**。这是基于生产 Loop1 06:10 启动、2026-07-21 完整执行约 40 分钟的实测，给 Loop1 留出约 50 分钟窗口。
+- 固定时间不是可启动证明；Loop2 每个 tick 在 claim drilldown handoff 和提交机型 SQL 前，必须用 `jobs/read` 读取同 `analysis_key/base_revision` 的 base job。
+- 只有 base job 满足以下任一状态才允许继续：`status=published`、`publication_status=published|late_published`、`deliveryState=base_published|late_published`。
+- base 仍处于 `ready/claimed/sql_submitted/sql_running/materializing/processing/analyzing/validating/retryable_failed`、或读取不到 base job 时，Loop2 返回 `pending` 并记录 `base_not_published:*` / `base_job_not_found`；不得 claim handoff、不得提交机型 SQL、不得重触发 Loop1。
+
 ## Dashboard 投影
 
 - 活跃 base job → `base_running`

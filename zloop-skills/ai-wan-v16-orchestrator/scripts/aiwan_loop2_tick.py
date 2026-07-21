@@ -53,6 +53,9 @@ MODEL_HISTORY_PARTIAL = "MODEL_HISTORY_PARTIAL"
 MODEL_HISTORY_WINDOW_WEEKS = 10
 MODEL_HISTORY_RETRIES = 3
 TREND_DEFAULT_THRESHOLD = 0.10
+BASE_READY_STATUSES = {"published"}
+BASE_READY_PUBLICATION_STATUSES = {"published", "late_published"}
+BASE_READY_DELIVERY_STATES = {"base_published", "late_published"}
 
 
 def sql_status(status: Any) -> str:
@@ -600,12 +603,13 @@ def _category_names(handoff: dict[str, Any]) -> list[str]:
     return out
 
 
-def pending_result(args: argparse.Namespace, handoff: dict[str, Any] | None, reason: str) -> dict[str, Any]:
+def pending_result(args: argparse.Namespace, handoff: dict[str, Any] | None, reason: str, **extra: Any) -> dict[str, Any]:
     return {
         "ok": True, "business_status": "pending", "reason": reason,
         "run_id": args.run_id, "analysis_key": args.analysis_key,
         "handoff_status": handoff.get("status") if handoff else None,
         "state_revision": handoff.get("state_revision") if handoff else None,
+        **extra,
     }
 
 
@@ -632,6 +636,56 @@ def checkpoint_update(job_client: Any, args: argparse.Namespace, handoff: dict[s
         "status": status, **fields,
     }
     return job_client.update(args.analysis_key, payload)
+
+
+def base_job_is_ready_for_loop2(base_job: dict[str, Any] | None) -> bool:
+    """Loop2 may start only after Loop1 base publication is durable.
+
+    Fixed schedules are a buffer, not proof.  The runner must re-read the base
+    control-plane job and only proceed after Loop1 has published (including
+    late publication after the SLA deadline).  This prevents Loop2 from
+    consuming half-built Loop1 context when a full Loop1 execution takes longer
+    than expected.
+    """
+    if not isinstance(base_job, dict):
+        return False
+    status = str(base_job.get("status") or "")
+    publication_status = str(base_job.get("publication_status") or "")
+    delivery_state = str(base_job.get("deliveryState") or base_job.get("delivery_state") or "")
+    if status in BASE_READY_STATUSES:
+        return True
+    if publication_status in BASE_READY_PUBLICATION_STATUSES:
+        return True
+    if delivery_state in BASE_READY_DELIVERY_STATES:
+        return True
+    return False
+
+
+def base_job_snapshot(base_job: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(base_job, dict):
+        return {}
+    keys = (
+        "job_id", "kind", "status", "current_stage", "state_revision", "publication_status",
+        "deliveryState", "delivery_state", "model_enrichment_mode", "week", "data_end_date",
+        "base_revision", "updated_at", "published_at", "base_deadline_at",
+    )
+    return {k: base_job.get(k) for k in keys if k in base_job}
+
+
+def ensure_base_ready_for_loop2(args: argparse.Namespace, job_client: Any) -> tuple[bool, dict[str, Any] | None, str | None]:
+    try:
+        base_job = job_client.get(args.analysis_key, args.base_revision, kind="base", handoff_revision=0)
+    except JobApiError as exc:
+        if exc.code in {"JOB_NOT_FOUND", "AIWAN_JOB_NOT_FOUND"}:
+            return False, None, "base_job_not_found"
+        return False, None, f"base_job_read_failed:{exc.code}"
+    if base_job_is_ready_for_loop2(base_job):
+        return True, base_job, None
+    status = str((base_job or {}).get("status") or "unknown")
+    delivery_state = str((base_job or {}).get("deliveryState") or (base_job or {}).get("delivery_state") or "")
+    if delivery_state:
+        return False, base_job, f"base_not_published:{status}:{delivery_state}"
+    return False, base_job, f"base_not_published:{status}"
 
 
 def submit_model_sql(xinghe: Any, name: str, sql: str, args: argparse.Namespace) -> str:
@@ -851,6 +905,14 @@ def run_tick(args: argparse.Namespace, job_client: Any | None = None,
         categories = _category_names(handoff)
         if not categories:
             return pending_result(args, handoff, "no_drilldown_categories")
+
+        base_ready, base_job, base_reason = ensure_base_ready_for_loop2(args, job_client)
+        if not base_ready:
+            return pending_result(
+                args, handoff, base_reason or "base_not_published",
+                base_job=base_job_snapshot(base_job),
+                loop2_start_gate="base_publication_required",
+            )
 
         if handoff.get("lease_owner") and lease_active(handoff) and handoff.get("lease_owner") != args.worker_id:
             return pending_result(args, handoff, "lease_held_by_other_worker")

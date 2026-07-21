@@ -829,7 +829,7 @@ def build_caches(imports_dir: Path, cache_dir: Path, run_dt: str, snapshot_dir: 
                 raise RuntimeError(f"DATA_INTEGRITY_BOARD_METRICS_INVALID: sqldau {target_week}.{field} must be positive")
     board_cache = {
         "syncedAt": now_iso(),
-        "version": "1.6.51-zloop",
+        "version": "1.6.52-zloop",
         "source": {"script": "sqldau", "grain": "week_daily_average", "targetWeeks": category_weeks},
         "weeks": [row["week"] for row in board_rows],
         "rows": board_rows,

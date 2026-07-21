@@ -17,14 +17,29 @@ from test_loop1_tick import FakeXinghe  # noqa: E402
 
 
 class FakeDrilldownClient:
-    """只维护一个 drilldown 交接单，支持 get/claim/update（CAS）。"""
+    """维护 base job + drilldown 交接单，支持 get/claim/update（CAS）。"""
 
-    def __init__(self, handoff):
+    def __init__(self, handoff, base_job=None):
         self.handoff = handoff
+        self.base_job = base_job if base_job is not None else {
+            "job_id": "base:2026-W29:2026-07-16:b1",
+            "kind": "base",
+            "analysis_key": "2026-W29:2026-07-16",
+            "week": "2026-W29",
+            "data_end_date": "2026-07-16",
+            "base_revision": 1,
+            "status": "published",
+            "publication_status": "published",
+            "deliveryState": "base_published",
+            "state_revision": 9,
+            "model_enrichment_mode": "disabled",
+        }
         self.updates = []
         self.claims = []
 
     def get(self, analysis_key, base_revision, kind="drilldown", handoff_revision=1):
+        if kind == "base":
+            return json.loads(json.dumps(self.base_job)) if self.base_job is not None else {}
         return self._copy()
 
     def claim(self, analysis_key, payload):
@@ -203,6 +218,47 @@ class Loop2TickTests(unittest.TestCase):
             result = loop2.run_tick(args, jobs, FakeXinghe(), FakeLoop2Adapter())
         self.assertEqual(result["business_status"], "pending")
         self.assertEqual(result["reason"], "no_drilldown_categories")
+
+    def test_pending_when_base_job_not_published_and_does_not_claim_or_submit_sql(self):
+        base_job = {
+            "job_id": "base:2026-W29:2026-07-16:b1",
+            "kind": "base",
+            "analysis_key": "2026-W29:2026-07-16",
+            "status": "sql_running",
+            "current_stage": "read",
+            "deliveryState": "base_running",
+            "state_revision": 3,
+        }
+        jobs = FakeDrilldownClient(make_handoff(), base_job=base_job)
+        xinghe = FakeXinghe()
+        args = make_args()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"SANDBOX_OUTPUT_DIR": tmp}):
+            result = loop2.run_tick(args, jobs, xinghe, FakeLoop2Adapter())
+        self.assertEqual(result["business_status"], "pending")
+        self.assertEqual(result["reason"], "base_not_published:sql_running:base_running")
+        self.assertEqual(result["loop2_start_gate"], "base_publication_required")
+        self.assertEqual(jobs.claims, [])
+        self.assertEqual(xinghe.submissions, [])
+
+    def test_late_published_base_job_allows_loop2_start(self):
+        base_job = {
+            "job_id": "base:2026-W29:2026-07-16:b1",
+            "kind": "base",
+            "analysis_key": "2026-W29:2026-07-16",
+            "status": "published",
+            "publication_status": "late_published",
+            "deliveryState": "late_published",
+            "state_revision": 10,
+        }
+        jobs = FakeDrilldownClient(make_handoff(), base_job=base_job)
+        xinghe = FakeXinghe()
+        args = make_args()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"SANDBOX_OUTPUT_DIR": tmp}):
+            result = loop2.run_tick(args, jobs, xinghe, FakeLoop2Adapter())
+        self.assertEqual(result["business_status"], "pending")
+        self.assertEqual(result["reason"], "sql_not_ready")
+        self.assertEqual(len(jobs.claims), 1)
+        self.assertEqual(len(xinghe.submissions), 1)
 
     def test_submits_model_sqls_once_and_polls_cross_tick(self):
         jobs = FakeDrilldownClient(make_handoff())
