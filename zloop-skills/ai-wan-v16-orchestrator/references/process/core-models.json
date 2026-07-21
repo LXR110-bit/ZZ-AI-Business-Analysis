@@ -1,0 +1,30 @@
+{
+  "syncedAt": null,
+  "version": "0.0.0-placeholder",
+  "status": "pending_business_sheet",
+  "note": "待业务提供飞书核心机型 sheet 后填充。当前为占位空快照：Loop2 机型基线在快照不可用时降级为 异动机型 + GMV Top-N 兜底，并打 warn: CORE_MODEL_SNAPSHOT_MISSING（整体状态最多 partial_failed，补齐快照后自动补跑，见设计 §11）。填充请走 scripts/sync_core_models.py（沙箱内不直连飞书，离线导出 sheet CSV 后同步）。",
+  "source": {
+    "sourceType": "server_snapshot",
+    "file": "references/process/core-models.json",
+    "capturedFrom": "model-tag-monitor/current/core-models.json",
+    "feishuSheet": "https://zhuanspirit.feishu.cn/sheets/MLFVsurp5hTNeJtBHxCcFSUTnJf?sheet=1RgTJG",
+    "worksheet": "02_机型与标签",
+    "worksheetId": "2oFLlx"
+  },
+  "schema": {
+    "category": "品类名（必须存在于 category-taxonomy.json）",
+    "secondary_category": "二级类目/板块",
+    "model_id": "稳定合法机型 ID（必填，不得在同步脚本里静默猜测）",
+    "model_name": "机型名",
+    "active": "是否核心观测机型=是 → 每周必输出主指标",
+    "anomaly_enabled": "是否用于异动分析=是 → 允许进入细粒度归因",
+    "effective_from": "生效起（生产启用前补齐或经明确映射生成）",
+    "effective_to": "生效止",
+    "reason": "关注理由",
+    "owner": "负责人",
+    "updated_at": "更新时间",
+    "tags": "标签数组（同 category+model_id 多行取并集）",
+    "source_row_numbers": "原始 sheet 行号数组（保留可追溯）"
+  },
+  "rows": []
+}

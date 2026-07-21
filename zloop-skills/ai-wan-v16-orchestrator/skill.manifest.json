@@ -8,19 +8,7 @@
   "dependencies": {
     "skills": [
       {
-        "name": "AI小万数据读取 v1.6",
-        "kind": "exact"
-      },
-      {
-        "name": "AI小万数据处理 v1.6",
-        "kind": "exact"
-      },
-      {
-        "name": "AI小万经营分析 v1.6",
-        "kind": "exact"
-      },
-      {
-        "name": "AI小万结果校验 v1.6",
+        "name": "xinghe-data-explore",
         "kind": "exact"
       }
     ],
@@ -29,11 +17,28 @@
     ]
   },
   "verification": {
-    "smoke_prompt": "说明 AI小万主编排 v1.6 如何只通过 /api/aiwan/read 和 /api/aiwan/write 执行 orchestrator 阶段，并在失败时写 checkpoint；不要依赖上一阶段聊天上下文。",
-    "side_effect_policy": "apihub_read_write_only",
+    "smoke_prompt": "使用当前 active Skill 根目录运行 scripts/aiwan_inline_state_machine.py --preflight --json；禁止执行 SQL 和服务器写入；确认 Loop1/full7 入口、Python raw package、Python PROCESS、zloop_runtime、7 份 SQL（含 sqldau）、build marker 和输出目录均通过，且 preflight_seconds 小于 3 秒。",
+    "side_effect_policy": "allow_write_with_confirmation",
     "user_scenarios": [
-      "AI 小万 v1.6 多阶段 Loop 自动执行。",
-      "手动单独重跑或检查某个阶段。"
+      "follow-current 绑定下从 ZLOOP_ACTIVE_SKILL_DIR 启动，准备阶段不执行递归搜索。",
+      "pin-version 与 trial-run 候选包使用相同 active-root 契约。",
+      "active root 或入口缺失时 5 秒内返回结构化错误。",
+      "Loop1 只提交 5 份基础 SQL（含 sqldau），pending tick 退出 0，下一 tick 按 execute_id 恢复。",
+      "sqldau 必须生成目标周 APP DAU/回收入口 UV；Process 从 SQL 产物生成 board-metrics.json，不读取飞书静态快照。",
+      "Loop1 发布复读命中同一 analysis_key/base_revision，model_enrichment_mode=disabled 时发布 base_published；Loop2/handoff 为预留能力，不纳入当前上线闭环。",
+      "scheduled-agent job 必须绑定 preferred_skill_id=b28e30d2-b8c6-456f-888d-57c48785286f，Prompt 禁止触发 Loop 管理意图。",
+      "analysis_result 写完后可用 aiwan_loop1_tick.py --check-analysis-result --run-dir <dir> --fix-analysis-result 做本地自检；finalize 前 pre-lint 只做禁词替换、短历史禁词替换和闸门触发词补齐，并记录 analysis_result_autofix.json。",
+      "Loop1 在 UV 非零但订单链路全 0 时，必须 retryable/failed gate 并禁止缓存或发布 DATA_INTEGRITY_ORDER_CHAIN_EMPTY。",
+      "Loop1 process 仅因 WTD 经营下跌低于 0.5 时必须 warn-only 继续 analyze/validate/publish，不能返回 retryable_failed。",
+      "Loop1 analyze/finalize 跨 tick 前必须续租并刷新 state_revision；validate/gate 失败时保留 validating 状态，不做 validating -> analyzing 回滚，并识别 API Hub 包装的下游 409。",
+      "Loop1 识别 USER_CANCELED / USER_CANCELLED 为 CANCELED 失败终态，并按 retry_count 重试，不允许永久 sql_not_ready。",
+      "analyze_input.json 必须保留完整 evidence_pack；analysis_digest/index/top_movers/category_shards/category_tail_hints 仅作为非损耗导航产物。",
+      "published/late_published 终态必须生成 final_summary.json 与 aiwan_loop1_diagnostics.json；最终回复只输出短 JSON 或引用诊断路径。",
+      "Loop1 分析模型规范 ID 必须为 claude-sonnet-4-6[1m]；Loop 服务端当前不能强制限制模型，Runtime 暴露不同 model ID 时以 MODEL_PIN_MISMATCH 失败，未暴露时产物必须标记未验证。",
+      "base_deadline_at 过期只标记 base_delayed 并告警，原 revision 仍可恢复；晚发布记录 late_published。",
+      "升 base_revision 时仅在日期、SQL hash、文件 hash 全部一致时继承旧成功 checkpoint，避免重复 SQL。",
+      "validate 携带 publication_bundle，基础缓存与洞察校验通过后最后原子替换 dashboard.json。",
+      "full7 兼容入口保留，PROCESS 使用 v30 流式 Python pipeline 避免 4GB 沙箱 OOM。"
     ]
   },
   "zloop": {
@@ -42,16 +47,74 @@
   },
   "contracts": {
     "stage": "orchestrator",
-    "contract_version": "ai-wan-v1.6-apihub-stage",
-    "api_bridge": {
-      "read": "POST /api/aiwan/read",
-      "write": "POST /api/aiwan/write"
+    "contract_version": "ai-wan-v1.6.51-loop-prompt-hardening",
+    "orchestrator_build": "v1.6.51-loop-prompt-hardening",
+    "required_loop_model_id": "claude-sonnet-4-6[1m]",
+    "entrypoint": {
+      "root_env": "ZLOOP_ACTIVE_SKILL_DIR",
+      "root_env_fallback": "CLAUDE_SKILLS_DIR/b28e30d2-b8c6-456f-888d-57c48785286f",
+      "script": "scripts/aiwan_loop1_tick.py",
+      "compatibility_script": "scripts/aiwan_inline_state_machine.py",
+      "preflight": "<python3-or-python> scripts/aiwan_inline_state_machine.py --preflight --json",
+      "resolution_mode": "active_skill_dir_then_claude_skills_root",
+      "search_fallback": false
     },
     "stage_order": [
       "read",
       "process",
       "analyze",
       "validate"
-    ]
+    ],
+    "server_usage": {
+      "loop1_control_plane": "create_get_claim_post_state",
+      "read": "sql_checkpoint_only",
+      "process": "job_checkpoint_only",
+      "analyze": "read_only",
+      "validate": "final_write_reread_base_publish"
+    },
+    "api_bridge": {
+      "runtime_client": "zloop_runtime.hub",
+      "read_public_id": "2a56c817-134d-409a-b457-9ecf859217eb",
+      "read_registered_path": "POST /api/aiwan/jobs/read",
+      "read_runtime_path": "/v2/aiwan/api/aiwan/jobs/read",
+      "write_public_id": "d2d9e941-7662-4361-9ad8-f73d38cbd92b",
+      "write_registered_path": "POST /api/aiwan/jobs/write",
+      "write_runtime_path": "/v2/aiwan/api/aiwan/jobs/write",
+      "jobs_registration_status": "bound_two_endpoint_action_contract",
+      "jobs_read_public_id": "2a56c817-134d-409a-b457-9ecf859217eb",
+      "jobs_write_public_id": "d2d9e941-7662-4361-9ad8-f73d38cbd92b",
+      "jobs_read_runtime_path": "/v2/aiwan/api/aiwan/jobs/read",
+      "jobs_write_runtime_path": "/v2/aiwan/api/aiwan/jobs/write",
+      "legacy_read_public_id": "f3f2a89f-3c54-4f3d-92a0-04d2a25a6b8d",
+      "legacy_write_public_id": "c7af7d71-d114-44f4-87ac-8d225ad0b6c4",
+      "legacy_read_runtime_path": "/v2/aiwan/api/aiwan/read",
+      "legacy_write_runtime_path": "/v2/aiwan/api/aiwan/write",
+      "legacy_full6_read_write_status": "compatibility_only_not_loop1_control_plane",
+      "jobs_runtime_paths": [
+        "POST /v2/aiwan/api/aiwan/jobs/read",
+        "POST /v2/aiwan/api/aiwan/jobs/write"
+      ]
+    },
+    "required_stage_outputs": {
+      "read": [
+        "read_result",
+        "raw_cache",
+        "sql_status",
+        "server_sql_checkpoints"
+      ],
+      "process": [
+        "processed_data",
+        "category_mapping_manifest"
+      ],
+      "analyze": [
+        "analysis_result.findings",
+        "analysis_result.display_insights"
+      ],
+      "validate": [
+        "validation_result",
+        "server_write_confirmed",
+        "base_job_published"
+      ]
+    }
   }
 }

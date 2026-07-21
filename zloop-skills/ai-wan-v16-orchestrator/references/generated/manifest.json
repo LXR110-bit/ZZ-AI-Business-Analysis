@@ -1,0 +1,11 @@
+{
+  "generated_files": [
+    "evals/evals.json",
+    "references/generated/apis/aiwan-primary-if-aiwan-jobs-read.md",
+    "references/generated/apis/aiwan-primary-if-aiwan-jobs-write.md",
+    "references/generated/apis/aiwan-run-read.md",
+    "references/generated/apis/aiwan-run-write.md",
+    "references/generated/examples.md"
+  ],
+  "version": 1
+}

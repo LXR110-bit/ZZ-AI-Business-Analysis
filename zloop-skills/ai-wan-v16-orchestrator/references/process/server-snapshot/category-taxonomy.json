@@ -1,0 +1,907 @@
+{
+  "syncedAt": "2026-07-14T05:35:57.619Z",
+  "version": "1.3.0",
+  "source": {
+    "sourceType": "server_snapshot",
+    "file": "references/process/server-snapshot/category-taxonomy.json",
+    "capturedFrom": "model-tag-monitor/current/category-taxonomy.json"
+  },
+  "rows": [
+    {
+      "category": "组装机",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 1042317.4286
+    },
+    {
+      "category": "运动相机",
+      "tier": "发展",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 665929.5714
+    },
+    {
+      "category": "显卡",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 299580.1429
+    },
+    {
+      "category": "无人机",
+      "tier": "发展",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 280720.5714
+    },
+    {
+      "category": "数码相机",
+      "tier": "发展",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 159670.7143
+    },
+    {
+      "category": "名酒",
+      "tier": "孵化",
+      "board": "名酒礼品",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 102229.4286
+    },
+    {
+      "category": "台球杆",
+      "tier": "孵化",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 90231.7143
+    },
+    {
+      "category": "显示器",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 84841.4286
+    },
+    {
+      "category": "内存条",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 74309.1429
+    },
+    {
+      "category": "VR眼镜",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 66963.1429
+    },
+    {
+      "category": "台式机",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 58700
+    },
+    {
+      "category": "便携/无线音箱",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 57677.5714
+    },
+    {
+      "category": "电纸书",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 51320
+    },
+    {
+      "category": "键盘",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 50813
+    },
+    {
+      "category": "CPU处理器",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 43626.1429
+    },
+    {
+      "category": "品牌台式机",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 39129.1429
+    },
+    {
+      "category": "投影仪",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 37437.7143
+    },
+    {
+      "category": "组装自行车",
+      "tier": "孵化",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 27897.4286
+    },
+    {
+      "category": "鼠标",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 27638.7143
+    },
+    {
+      "category": "羽毛球拍",
+      "tier": "孵化",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 23701.4286
+    },
+    {
+      "category": "智能手环",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 22308.5714
+    },
+    {
+      "category": "扫地机器人",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 21094.8571
+    },
+    {
+      "category": "硬盘",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 18722.5714
+    },
+    {
+      "category": "民谣吉他",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 18299.7143
+    },
+    {
+      "category": "AR眼镜",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 16936
+    },
+    {
+      "category": "三脚架/云台",
+      "tier": "发展",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 16697.1429
+    },
+    {
+      "category": "自动挡吉他",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 16639
+    },
+    {
+      "category": "一体机",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 16135.5714
+    },
+    {
+      "category": "拍立得",
+      "tier": "发展",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 15153.2857
+    },
+    {
+      "category": "手表/腕表",
+      "tier": "种子",
+      "board": "腕表",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 8021.1429
+    },
+    {
+      "category": "电吉他",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 7516.5714
+    },
+    {
+      "category": "摄像机",
+      "tier": "种子",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 7074.8571
+    },
+    {
+      "category": "积木",
+      "tier": "孵化",
+      "board": "潮玩手办",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 6492.8571
+    },
+    {
+      "category": "打印机/复印机",
+      "tier": "种子",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 6198.2857
+    },
+    {
+      "category": "脱毛仪",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 6057.5714
+    },
+    {
+      "category": "智能眼镜",
+      "tier": "种子",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 5915.4286
+    },
+    {
+      "category": "主板",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 5847.8571
+    },
+    {
+      "category": "无人机配件",
+      "tier": "发展",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 5642.4286
+    },
+    {
+      "category": "翻译机",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 5618.7143
+    },
+    {
+      "category": "麦克风",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 4837.2857
+    },
+    {
+      "category": "手写板",
+      "tier": "种子",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 4636.1429
+    },
+    {
+      "category": "空气净化器",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 4179.1429
+    },
+    {
+      "category": "电吹风",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 3914
+    },
+    {
+      "category": "路由器",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 3784.7143
+    },
+    {
+      "category": "盲盒收纳",
+      "tier": "孵化",
+      "board": "潮玩手办",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 3760.8571
+    },
+    {
+      "category": "电钢琴",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 3616.1429
+    },
+    {
+      "category": "蒸汽拖把/拖地机",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 3191.8571
+    },
+    {
+      "category": "女士香水",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 3026.7143
+    },
+    {
+      "category": "直播声卡",
+      "tier": "种子",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 2827.2857
+    },
+    {
+      "category": "电动自行车",
+      "tier": "孵化",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 2513.7143
+    },
+    {
+      "category": "机械硬盘",
+      "tier": "发展",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 2465.2857
+    },
+    {
+      "category": "吸尘器",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 2412.4286
+    },
+    {
+      "category": "乳液面霜",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 2247.5714
+    },
+    {
+      "category": "电子美容仪",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 2178.1429
+    },
+    {
+      "category": "HiFi播放器",
+      "tier": "种子",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 1911.4286
+    },
+    {
+      "category": "存储卡",
+      "tier": "种子",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 1599.2857
+    },
+    {
+      "category": "折叠自行车",
+      "tier": "种子",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 1568.7143
+    },
+    {
+      "category": "增倍镜",
+      "tier": "种子",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 1476.4286
+    },
+    {
+      "category": "MP3/MP4",
+      "tier": "种子",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 1185
+    },
+    {
+      "category": "卷/直发器",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 1014.5714
+    },
+    {
+      "category": "网球拍",
+      "tier": "孵化",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 964.8571
+    },
+    {
+      "category": "咖啡机",
+      "tier": "种子",
+      "board": "厨房小电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 918.7143
+    },
+    {
+      "category": "声卡",
+      "tier": "种子",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 914
+    },
+    {
+      "category": "录音笔",
+      "tier": "发展",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 888.8571
+    },
+    {
+      "category": "胶片相机",
+      "tier": "种子",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 867
+    },
+    {
+      "category": "照片打印机",
+      "tier": "种子",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 818.2857
+    },
+    {
+      "category": "随身WIFI",
+      "tier": "种子",
+      "board": "智能数码",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 764.5714
+    },
+    {
+      "category": "乒乓球拍",
+      "tier": "孵化",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 635.8571
+    },
+    {
+      "category": "转接环",
+      "tier": "种子",
+      "board": "摄影摄像",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 574.2857
+    },
+    {
+      "category": "除湿机",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 491.1429
+    },
+    {
+      "category": "精华/精油",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 484.8571
+    },
+    {
+      "category": "饮水机",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 386.5714
+    },
+    {
+      "category": "净水器",
+      "tier": "种子",
+      "board": "厨房小电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 384.5714
+    },
+    {
+      "category": "加湿器",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 372.1429
+    },
+    {
+      "category": "微波炉",
+      "tier": "种子",
+      "board": "厨房小电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 366
+    },
+    {
+      "category": "电贝斯",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 360
+    },
+    {
+      "category": "电吉他音箱",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 357.2857
+    },
+    {
+      "category": "雪鞋",
+      "tier": "种子",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 328.5
+    },
+    {
+      "category": "雪板",
+      "tier": "种子",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 323.6667
+    },
+    {
+      "category": "监控摄像头",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 245
+    },
+    {
+      "category": "电风扇",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 212.1429
+    },
+    {
+      "category": "雪板固定器",
+      "tier": "种子",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 200
+    },
+    {
+      "category": "除螨仪",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 191.7143
+    },
+    {
+      "category": "眼霜",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 178.8571
+    },
+    {
+      "category": "台灯",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 109.4286
+    },
+    {
+      "category": "化妆水/喷雾",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 97
+    },
+    {
+      "category": "猫砂盆",
+      "tier": "种子",
+      "board": "宠物母婴",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 92.2857
+    },
+    {
+      "category": "宠物烘干机",
+      "tier": "种子",
+      "board": "宠物母婴",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 88
+    },
+    {
+      "category": "自行车码表",
+      "tier": "种子",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 80.2857
+    },
+    {
+      "category": "普通旧衣",
+      "tier": "种子",
+      "board": "服饰",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 79.2857
+    },
+    {
+      "category": "骑行头盔",
+      "tier": "种子",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 67.5
+    },
+    {
+      "category": "气垫粉底",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 56.4286
+    },
+    {
+      "category": "洗面奶",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 34.8571
+    },
+    {
+      "category": "心率带",
+      "tier": "种子",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 34
+    },
+    {
+      "category": "面膜",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 22.5
+    },
+    {
+      "category": "腮红",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 20
+    },
+    {
+      "category": "蜜粉/散粉",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 18
+    },
+    {
+      "category": "粉底液",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 17.6667
+    },
+    {
+      "category": "卸妆油",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "合成器键盘",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "妆前乳",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "尼龙弦吉他",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "已下线",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "按摩器",
+      "tier": "种子",
+      "board": "生活家电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "散热器",
+      "tier": "种子",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "机箱",
+      "tier": "种子",
+      "board": "电脑办公",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "民谣吉他音箱",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "烤箱",
+      "tier": "种子",
+      "board": "厨房小电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "眼影",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "空气炸锅",
+      "tier": "种子",
+      "board": "厨房小电",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "粉饼",
+      "tier": "种子",
+      "board": "美妆护肤",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "综合效果器",
+      "tier": "种子",
+      "board": "乐器",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    },
+    {
+      "category": "骑行台",
+      "tier": "种子",
+      "board": "运动户外",
+      "status": "在售",
+      "confidence": "高",
+      "lastWeekGmv": 0
+    }
+  ]
+}
